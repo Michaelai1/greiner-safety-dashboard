@@ -307,15 +307,51 @@
     var w = $('#list-jobs'); w.innerHTML = '';
     $('#n-jobs').textContent = jobs.length + ' active';
     if (!jobs.length) w.appendChild(el('div', 'empty', 'No active jobs.'));
-    jobs.forEach(function (j) {
+    jobs.forEach(function (j, i) {
       var c = el('div', 'card');
+      var btn = el('button', 'acc');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-controls', 'job-' + i);
       var row = el('div', 'row');
       var left = el('div');
       left.appendChild(el('div', 'card-t', j.name));
       left.appendChild(el('div', 'card-s', j.job_number + (j.address ? ' · ' + j.address : '')));
       row.appendChild(left);
-      row.appendChild(el('span', 'pill p-ok', 'Active'));
-      c.appendChild(row); w.appendChild(c);
+      var right = el('div', 'row');
+      right.appendChild(el('span', 'pill p-ok', 'Active'));
+      right.appendChild(el('span', 'chev', '›'));
+      row.appendChild(right);
+      btn.appendChild(row);
+
+      var body = el('div', 'acc-body hide');
+      body.id = 'job-' + i;
+      [['Job number', j.job_number], ['Address', j.address],
+       ['Started', j.start_date ? fmtDate(j.start_date) : null],
+       ['Foreman', j.foreman_name], ['Project manager', j.pm_name],
+       ['General contractor', j.gc_name]].forEach(function (p) {
+        if (!p[1]) return;
+        var r = el('div', 'cert');
+        r.appendChild(el('div', null, p[0]));
+        r.appendChild(el('div', 'card-s', p[1]));
+        body.appendChild(r);
+      });
+      var reps = (STATE.bundle.reports || []).filter(function (r) { return r.job_id === j.id; });
+      var sum = el('div', 'cert');
+      sum.appendChild(el('div', null, 'Reports on this job'));
+      sum.appendChild(el('div', 'card-s', String(reps.length)));
+      body.appendChild(sum);
+      if (j.foreman_phone) {
+        var call = el('a', 'btn btn-out btn-sm', 'Call ' + j.foreman_name);
+        call.href = 'tel:' + String(j.foreman_phone).replace(/[^0-9+]/g, '');
+        call.style.width = '100%'; call.style.marginTop = '.4rem';
+        body.appendChild(call);
+      }
+      btn.onclick = function () {
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!open));
+        body.classList.toggle('hide', open);
+      };
+      c.appendChild(btn); c.appendChild(body); w.appendChild(c);
     });
   }
 
