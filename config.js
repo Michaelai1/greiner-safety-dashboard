@@ -19,9 +19,10 @@ window.CONFIG = {
   gatePassword: '1234',
 
   /* --- the actual credential ------------------------------------------
-     Resolves server-side to exactly one company_id. Every RPC and every
-     document call is scoped by it, so this portal physically cannot read
-     another Creekside client's data. Rotate in cs_portal_tokens.         */
+     scope 'full'. Resolves server-side to exactly one company_id. Every RPC
+     and every document call is scoped by it, so this portal physically
+     cannot read another Creekside client's data. Rotate in cs_portal_tokens.
+     Used by index.html ONLY. Never put this in a URL.                    */
   portalToken: 'fea75235d660d45bd176f764c315c055bf29d1a37a5989f3',
 
   /* --- Creekside project (reports, jobs, certs, stats, documents) ----- */
@@ -42,10 +43,15 @@ window.CONFIG = {
   },
 
   /* --- inspect.html identity ------------------------------------------
-     inspect.html?k=<inspectKey> preloads this person. The key only unlocks
-     submitting for this contractor; it grants no read access to anything. */
+     scope 'submit'. This one DOES travel in the URL (inspect.html?k=...),
+     so it is a different token to portalToken above and is deliberately
+     near-useless if it leaks: server side it can fetch the blank template
+     and the job names, and write one report. It cannot read a single
+     existing report, certification, safety stat, or document. Anyone who
+     gets this link can file a bogus inspection and nothing else.
+     Revoke:  update cs_portal_tokens set active=false where token='...';  */
   inspector:  'Tony Sweet',
-  inspectKey: 'fea75235d660d45bd176f764c315c055bf29d1a37a5989f3',
+  inspectKey: '376327ee16666d72cf96c26be2babf36dcebbb1bcfe4be9f',
 
   /* --- Jobs -------------------------------------------------------------
      defaultJobNumber preselects the job picker on inspect.html.          */

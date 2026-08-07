@@ -49,14 +49,32 @@ never queries a table. It calls security-definer functions that resolve the
 token to exactly one `company_id` server side:
 
 ```
-cs_portal_bundle      reports, jobs, certs, stats, docs  (read)
-cs_portal_report      one full report for the PDF        (read)
-cs_portal_template    the inspection template            (read)
-cs_portal_add_job     add a job                          (write)
-cs_portal_save_stats  upsert one year of stats           (write)
-cs_portal_submit      submit an inspection               (write)
-cs_portal_doc_add / cs_portal_doc_delete                 (write)
+                                                    full   submit
+cs_portal_bundle    reports, jobs, certs, stats, docs   yes    NO
+cs_portal_report    one full report for the PDF         yes    NO
+cs_portal_add_job   add a job                           yes    NO
+cs_portal_save_stats one year of stats                  yes    NO
+cs_portal_doc_add / _doc_delete                         yes    NO
+company-docs (edge) upload / download / delete          yes    NO
+cs_portal_template  the blank inspection template       yes    yes
+cs_portal_jobs      active job names only               yes    yes
+cs_portal_submit    write one inspection                yes    yes
 ```
+
+### Two tokens, two scopes
+
+The inspection link travels in a URL, so it must never carry dashboard access.
+There are two tokens per contractor:
+
+| Token | Where it lives | What it can do |
+|---|---|---|
+| `portalToken` (scope `full`) | `config.js`, used by `index.html` only | Everything for one company |
+| `inspectKey` (scope `submit`) | **in the URL** `inspect.html?k=...` | Fetch the blank template, list job names, write one report. Nothing else. |
+
+A submit token is deliberately near-useless if it leaks. Verified: it returns
+`insufficient scope` on the report bundle, on any single report, on add-job, on
+save-stats, and on every document action. Worst case for a leaked inspect link
+is somebody files a bogus inspection, which is visible and deletable.
 
 There is no code path in this repo that can reach another Creekside client's
 data, because there is no query that takes a company id from the client. A
@@ -102,13 +120,20 @@ Target is under an hour.
    from cs_companies where name = '<Exact company name>'
    returning token;
    ```
-3. **Edit `config.js` only** — `contractor`, `pageTitle`, `portalToken`,
-   `inspector`, `inspectKey`, `defaultJobNumber`, `gatePassword`. If they have
+3. **Mint the submit token too:**
+   ```sql
+   insert into cs_portal_tokens (token, company_id, label, scope)
+   select encode(gen_random_bytes(24),'hex'), id, '<Name> inspect link', 'submit'
+   from cs_companies where name = '<Exact company name>'
+   returning token;
+   ```
+4. **Edit `config.js` only** — `contractor`, `pageTitle`, `portalToken` (full),
+   `inspector`, `inspectKey` (submit), `defaultJobNumber`, `gatePassword`. If they have
    their own ToolGuard QR project, swap `toolguard.url` / `anonKey`; if they
    have none, set `toolguard.anonKey` to `''` and the Inspections list shows
    empty rather than erroring.
-4. **Add the GoDaddy CNAME** with the new subdomain.
-5. **Pages → Custom domain**, Enforce HTTPS.
+5. **Add the GoDaddy CNAME** with the new subdomain.
+6. **Pages → Custom domain**, Enforce HTTPS.
 
 Nothing else is contractor-specific. `app.js`, `inspect.js`, and `app.css` are
 byte-identical between deployments.

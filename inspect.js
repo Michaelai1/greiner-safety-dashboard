@@ -19,11 +19,13 @@
   var OUTBOX = 'cs_outbox_' + C.creekside.templateCode;
   var state = { tpl: null, jobs: [], answers: {}, notes: {}, photos: {} };
 
+  // Always the submit-scoped key. This page must never hold portalToken:
+  // its URL ends up in history, texts, and screenshots.
   function rpc(fn, args) {
     return fetch(C.creekside.url + '/rest/v1/rpc/' + fn, {
       method: 'POST',
       headers: { apikey: C.creekside.anonKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ p_token: C.portalToken }, args || {}))
+      body: JSON.stringify(Object.assign({ p_token: C.inspectKey }, args || {}))
     }).then(function (r) {
       return r.json().then(function (b) {
         if (!r.ok) throw new Error((b && b.message) || 'request failed');
@@ -299,10 +301,10 @@
   flush();
   Promise.all([
     rpc('cs_portal_template', { p_code: C.creekside.templateCode }),
-    rpc('cs_portal_bundle')
+    rpc('cs_portal_jobs')          // job names only — not the full bundle
   ]).then(function (r) {
     state.tpl = r[0];
-    state.jobs = r[1].jobs || [];
+    state.jobs = r[1] || [];
     $('#form').classList.remove('hide');
     render();
   }).catch(function (e) {
