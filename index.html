@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f172a">
+<title>Safety Dashboard</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+</head>
+<body>
+
+<!-- ===================== GATE ===================== -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="mark" style="margin:0 auto 1rem">CS</div>
+    <h2 id="gate-co">Safety Dashboard</h2>
+    <p class="muted small" id="gate-by"></p>
+    <input id="gate-in" type="password" inputmode="numeric" autocomplete="off"
+           placeholder="••••" aria-label="Access code">
+    <p class="err" id="gate-err" role="alert"></p>
+    <button class="btn btn-gold" id="gate-go">Open dashboard</button>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" class="hide">
+  <header class="hdr">
+    <div class="hdr-in">
+      <div class="mark">CS</div>
+      <div>
+        <h1 id="app-title">Safety Dashboard</h1>
+        <div class="by" id="app-by"></div>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" data-tab="home"  aria-selected="true">Reports</button>
+      <button class="tab" role="tab" data-tab="jobs"  aria-selected="false">Jobs</button>
+      <button class="tab" role="tab" data-tab="certs" aria-selected="false">Certifications</button>
+      <button class="tab" role="tab" data-tab="stats" aria-selected="false">Safety Stats</button>
+      <button class="tab" role="tab" data-tab="docs"  aria-selected="false">Documents</button>
+      <button class="tab" role="tab" data-tab="progs" aria-selected="false">Written Programs</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ---------- HOME: reports + inspections ---------- -->
+    <section id="p-home" class="panel">
+      <div class="sec">
+        <a class="btn btn-gold" id="start-inspection" href="#">Start Safety 101 Inspection</a>
+      </div>
+
+      <div class="sec">
+        <div class="sec-h"><h2>Reports</h2><span class="small muted" id="n-reports"></span></div>
+        <p class="sec-note">Site safety reports completed by Creekside Safety and your safety team.</p>
+        <div id="list-reports"><div class="empty">Loading…</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-h"><h2>Inspections</h2><span class="small muted" id="n-insp"></span></div>
+        <p class="sec-note">Inspections submitted by your crews in the field.</p>
+        <div id="list-insp"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- JOBS ---------- -->
+    <section id="p-jobs" class="panel hide">
+      <div class="sec">
+        <div class="sec-h"><h2>Jobs</h2><span class="small muted" id="n-jobs"></span></div>
+        <p class="sec-note">Active job sites. Reports and inspections attach to these.</p>
+        <div id="list-jobs"></div>
+        <button class="btn btn-out" id="job-add-toggle">Add job</button>
+        <div id="job-form" class="card hide" style="margin-top:.7rem">
+          <div class="f-grid">
+            <div class="full"><label for="j-name">Job name</label>
+              <input id="j-name" type="text" placeholder="Purdue Academic Bldg."></div>
+            <div><label for="j-num">Job number</label>
+              <input id="j-num" type="text" placeholder="C803-2026"></div>
+            <div><label for="j-addr">Address</label>
+              <input id="j-addr" type="text" placeholder="Optional"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-gold btn-sm" id="j-save">Save job</button>
+            <button class="btn btn-out btn-sm" id="j-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- CERTIFICATIONS ---------- -->
+    <section id="p-certs" class="panel hide">
+      <div class="sec">
+        <div class="sec-h"><h2>Certifications</h2><span class="small muted" id="n-certs"></span></div>
+        <p class="sec-note">Tap a name to see their certifications. Gold means expiring within 60 days.</p>
+        <div id="list-certs"></div>
+      </div>
+    </section>
+
+    <!-- ---------- SAFETY STATS ---------- -->
+    <section id="p-stats" class="panel hide">
+      <div class="sec">
+        <div class="sec-h"><h2>Safety Stats</h2></div>
+        <p class="sec-note">Enter your numbers for the year. TRIR and DART are calculated for you.</p>
+        <div class="card">
+          <table class="stat-tbl">
+            <thead><tr>
+              <th>Year</th><th>Recordables</th><th>DART cases</th><th>Hours</th>
+              <th>TRIR</th><th>DART</th><th>EMR</th>
+            </tr></thead>
+            <tbody id="stat-rows"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-t">Add or update a year</div>
+          <div class="f-grid">
+            <div><label for="s-year">Year</label><input id="s-year" type="number" inputmode="numeric"></div>
+            <div><label for="s-hours">Total hours worked</label><input id="s-hours" type="number" inputmode="decimal" placeholder="0"></div>
+            <div><label for="s-rec">Recordables</label><input id="s-rec" type="number" inputmode="numeric" placeholder="0"></div>
+            <div><label for="s-dart">DART cases</label><input id="s-dart" type="number" inputmode="numeric" placeholder="0"></div>
+            <div class="full"><label for="s-emr">EMR (from your carrier, optional)</label>
+              <input id="s-emr" type="number" inputmode="decimal" step="0.01" placeholder="0.00"></div>
+          </div>
+          <button class="btn btn-gold" id="s-save" style="margin-top:.75rem">Save year</button>
+          <p class="small muted" style="margin-top:.6rem">
+            TRIR = recordables × 200,000 ÷ hours. DART = DART cases × 200,000 ÷ hours.
+            EMR is issued by your insurance carrier and is entered, not calculated.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- DOCUMENTS ---------- -->
+    <section id="p-docs" class="panel hide">
+      <div class="sec">
+        <div class="sec-h"><h2>Documents</h2><span class="small muted" id="n-docs"></span></div>
+        <p class="sec-note">Your safety records, kept in one place. Private to Greiner Brothers.</p>
+        <input type="file" id="doc-file" class="file-in">
+        <div id="doc-cats"></div>
+      </div>
+    </section>
+
+    <!-- ---------- WRITTEN PROGRAMS ---------- -->
+    <section id="p-progs" class="panel hide">
+      <div class="sec">
+        <div class="sec-h"><h2>Written Safety Programs</h2></div>
+        <p class="sec-note">Your written programs, kept current and readable on any phone.</p>
+        <div class="card center" style="padding:2rem 1rem">
+          <div class="mark" style="margin:0 auto .85rem">CS</div>
+          <div class="card-t">In progress</div>
+          <p class="card-s" style="max-width:34ch;margin:.4rem auto 0">
+            Creekside is building these out for Greiner Brothers now. In the meantime
+            any program documents you already have live under Documents.
+          </p>
+          <button class="btn btn-out" id="progs-to-docs" style="margin-top:1.1rem;max-width:260px">
+            Open Documents
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <div style="height:2rem"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

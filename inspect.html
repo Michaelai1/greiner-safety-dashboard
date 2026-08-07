@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f172a">
+<title>Safety 101 Inspection</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+<style>
+  .who{background:var(--navy-2);border-bottom:1px solid var(--line);padding:.7rem var(--pad)}
+  .who b{color:var(--gold)}
+  .prog{position:sticky;top:0;z-index:40;height:4px;background:var(--navy-2)}
+  .prog i{display:block;height:100%;background:var(--gold);width:0;transition:width .2s}
+  .secw{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:.7rem;
+    background:var(--navy-2);overflow:hidden}
+  .sech{display:flex;align-items:center;justify-content:space-between;gap:.6rem;width:100%;
+    padding:.9rem 1rem;background:none;border:0;color:inherit;text-align:left}
+  .sech .t{font-weight:700;font-size:.95rem}
+  .sech .c{font-size:.75rem;color:var(--grey)}
+  .secb{padding:0 1rem 1rem}
+  .item{padding:.8rem 0;border-top:1px solid var(--line)}
+  .item p{margin:0 0 .55rem;font-size:.9375rem}
+  .yn{display:flex;gap:.4rem}
+  .yn button{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--navy-3);
+    background:transparent;color:var(--grey);font-weight:700;font-size:.875rem}
+  .yn button[aria-pressed="true"][data-v="yes"]{background:var(--ok);border-color:var(--ok);color:#06240f}
+  .yn button[aria-pressed="true"][data-v="no"]{background:var(--bad);border-color:var(--bad);color:#fff}
+  .yn button[aria-pressed="true"][data-v="na"]{background:var(--navy-3);border-color:var(--navy-3);color:var(--paper)}
+  .photo{margin-top:.55rem}
+  .photo button{width:100%;min-height:44px;border-radius:10px;border:1px dashed var(--gold-dim);
+    background:transparent;color:var(--gold);font-size:.8125rem;font-weight:600}
+  .thumbs{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+  .thumbs img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--navy-3)}
+  .done{min-height:100dvh;display:grid;place-items:center;padding:2rem var(--pad);text-align:center}
+  .tick{width:64px;height:64px;border-radius:50%;background:var(--ok);color:#06240f;
+    display:grid;place-items:center;font-size:2rem;margin:0 auto 1rem}
+  .bar{position:sticky;bottom:0;background:rgba(15,23,42,.97);border-top:1px solid var(--line);
+    padding:.75rem var(--pad) calc(.75rem + env(safe-area-inset-bottom))}
+</style>
+</head>
+<body>
+
+<div id="deny" class="gate hide">
+  <div class="gate-card">
+    <h2>Link not valid</h2>
+    <p class="muted small">This inspection link is missing its key or the key is wrong.
+      Ask Creekside for a new link.</p>
+  </div>
+</div>
+
+<div id="form" class="hide">
+  <div class="prog"><i id="prog"></i></div>
+  <div class="who">
+    <div class="small">Inspector <b id="who-name"></b> · <span id="who-co"></span></div>
+  </div>
+
+  <main class="wrap">
+    <div class="sec">
+      <h2 style="font-size:1.15rem" id="tpl-name">Safety 101 Inspection</h2>
+      <p class="sec-note" id="tpl-date"></p>
+      <div class="card">
+        <label for="job" class="small muted" style="display:block;margin-bottom:.3rem">Job site</label>
+        <select id="job"></select>
+        <div class="f-grid" style="margin-top:.6rem">
+          <div class="full"><label for="h_location">Inspection location detail</label>
+            <input id="h_location" type="text" placeholder="Area, floor, zone"></div>
+        </div>
+      </div>
+    </div>
+    <div id="sections"></div>
+    <div class="sec">
+      <div class="card">
+        <label for="sig" class="small muted" style="display:block;margin-bottom:.3rem">
+          Type your name to sign</label>
+        <input id="sig" type="text" autocomplete="name">
+      </div>
+    </div>
+    <div style="height:1rem"></div>
+  </main>
+
+  <div class="bar">
+    <button class="btn btn-gold" id="submit">Submit inspection</button>
+    <p class="small muted center" id="sum" style="margin:.5rem 0 0"></p>
+  </div>
+</div>
+
+<div id="done" class="done hide">
+  <div>
+    <div class="tick">✓</div>
+    <h2>Submitted</h2>
+    <p class="muted small" id="done-ref"></p>
+    <p class="muted small" style="max-width:32ch;margin:.8rem auto 0">
+      It is on the Greiner Brothers dashboard now.</p>
+    <button class="btn btn-out" id="again" style="margin-top:1.5rem;max-width:280px">
+      Start another inspection</button>
+  </div>
+</div>
+
+<input type="file" id="cam" accept="image/*" capture="environment" class="file-in" multiple>
+
+<script src="inspect.js"></script>
+</body>
+</html>
