@@ -437,9 +437,11 @@
 
       var body = el('div', 'acc-body hide');
       body.id = 'job-' + i;
+      // foreman shows as name and number, plain text — no call button
+      var foreman = [j.foreman_name, j.foreman_phone].filter(Boolean).join('  ·  ');
       [['Job number', j.job_number], ['Address', j.address],
        ['Started', j.start_date ? fmtDate(j.start_date) : null],
-       ['Foreman', j.foreman_name], ['Project manager', j.pm_name],
+       ['Foreman', foreman], ['Project manager', j.pm_name],
        ['General contractor', j.gc_name]].forEach(function (p) {
         if (!p[1]) return;
         var r = el('div', 'cert');
@@ -452,12 +454,6 @@
       sum.appendChild(el('div', null, 'Reports on this job'));
       sum.appendChild(el('div', 'card-s', String(reps.length)));
       body.appendChild(sum);
-      if (j.foreman_phone) {
-        var call = el('a', 'btn btn-out btn-sm', 'Call ' + j.foreman_name);
-        call.href = 'tel:' + String(j.foreman_phone).replace(/[^0-9+]/g, '');
-        call.style.width = '100%'; call.style.marginTop = '.4rem';
-        body.appendChild(call);
-      }
       btn.onclick = function () {
         var open = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', String(!open));
@@ -577,9 +573,12 @@
       $('#j-save').disabled = true;
       rpc('cs_portal_add_job', {
         p_job_number: $('#j-num').value.trim() || 'NEW',
-        p_name: name, p_address: addr
+        p_name: name, p_address: addr,
+        p_foreman_name: $('#j-fore').value.trim() || null,
+        p_foreman_phone: $('#j-phone').value.trim() || null
       }).then(refresh).then(function () {
         $('#j-name').value = $('#j-num').value = $('#j-addr').value = '';
+        $('#j-fore').value = $('#j-phone').value = '';
         $('#job-form').classList.add('hide'); toast('Job added');
       }).catch(function (e) { toast(e.message); })
         .then(function () { $('#j-save').disabled = false; });

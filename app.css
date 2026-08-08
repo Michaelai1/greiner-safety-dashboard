@@ -104,9 +104,23 @@ h1,h2,h3{margin:0;line-height:1.2}
 .f-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.5rem}
 .f-grid label{display:block;font-size:.75rem;color:var(--grey);margin-bottom:.25rem}
 .f-grid .full{grid-column:1/-1}
-input[type=text],input[type=number],select,textarea{width:100%;min-height:48px;padding:.6rem .7rem;
+.f-grid .opt{font-weight:400;text-transform:none;letter-spacing:0;color:var(--grey-d)}
+/* list every type we use — a missing one falls back to a white browser
+   default, which is what happened to type=tel */
+input[type=text],input[type=number],input[type=tel],input[type=email],
+input[type=search],input[type=password],select,textarea{width:100%;min-height:48px;padding:.6rem .7rem;
   background:var(--navy);border:1px solid var(--navy-3);border-radius:10px;color:var(--paper)}
 textarea{min-height:80px;resize:vertical}
+/* Chrome paints autofilled fields white, which wrecks the dark theme. There is
+   no way to set the background directly, so pin it with an inset shadow. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--paper);
+  -webkit-box-shadow:0 0 0 1000px var(--navy) inset;
+  caret-color:var(--paper);
+  transition:background-color 9999s ease-in-out 0s;
+}
 
 
 .doc-cat{margin-bottom:1.1rem}
