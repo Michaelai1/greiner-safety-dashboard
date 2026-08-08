@@ -136,12 +136,11 @@ unauthenticated static page, and the portal token is the credential.
 Target is under an hour.
 
 1. **Duplicate the repo.** Change `CNAME` to `<name>.creeksidesafety.com`.
-2. **Mint a token:**
+2. **Mint the full-scope row** (its token is never used by the page; the PIN is):
    ```sql
-   insert into cs_portal_tokens (token, company_id, label)
-   select encode(gen_random_bytes(24),'hex'), id, '<Name> dashboard'
-   from cs_companies where name = '<Exact company name>'
-   returning token;
+   insert into cs_portal_tokens (token, company_id, label, scope)
+   select encode(gen_random_bytes(24),'hex'), id, '<Name> dashboard', 'full'
+   from cs_companies where name = '<Exact company name>';
    ```
 3. **Mint the submit token too:**
    ```sql
@@ -150,13 +149,21 @@ Target is under an hour.
    from cs_companies where name = '<Exact company name>'
    returning token;
    ```
-4. **Edit `config.js` only** — `contractor`, `pageTitle`, `portalToken` (full),
-   `inspector`, `inspectKey` (submit), `defaultJobNumber`, `gatePassword`. If they have
+4. **Set their PIN:**
+   ```sql
+   update cs_portal_tokens
+      set slug = '<name>',
+          pin_hash = extensions.crypt('THEIRPIN', extensions.gen_salt('bf', 10))
+    where scope = 'full'
+      and company_id = (select id from cs_companies where name = '<Exact company name>');
+   ```
+5. **Edit `config.js` only** — `contractor`, `pageTitle`, `slug`,
+   `inspector`, `inspectKey` (submit), `defaultJobNumber`. If they have
    their own ToolGuard QR project, swap `toolguard.url` / `anonKey`; if they
    have none, set `toolguard.anonKey` to `''` and the Inspections list shows
    empty rather than erroring.
-5. **Add the GoDaddy CNAME** with the new subdomain.
-6. **Pages → Custom domain**, Enforce HTTPS.
+6. **Add the GoDaddy CNAME** with the new subdomain.
+7. **Pages → Custom domain**, Enforce HTTPS.
 
 Nothing else is contractor-specific. `app.js`, `inspect.js`, and `app.css` are
 byte-identical between deployments.

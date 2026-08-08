@@ -19,8 +19,9 @@
   var OUTBOX = 'cs_outbox_' + C.creekside.templateCode;
   var state = { tpl: null, jobs: [], answers: {}, notes: {}, photos: {} };
 
-  // Always the submit-scoped key. This page must never hold portalToken:
-  // its URL ends up in history, texts, and screenshots.
+  // Always the submit-scoped key — the only static token left in the system.
+  // Its URL ends up in history, texts and screenshots, so server side it can
+  // only read the blank template and job names and write one report.
   function rpc(fn, args) {
     return fetch(C.creekside.url + '/rest/v1/rpc/' + fn, {
       method: 'POST',
