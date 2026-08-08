@@ -10,20 +10,16 @@ window.CONFIG = {
   brand:       'Creekside Safety',
   pageTitle:   'Greiner Brothers Safety Dashboard',
 
-  /* --- the dashboard gate --------------------------------------------
-     CONVENIENCE GATE, NOT SECURITY. This runs in the browser and anyone
-     who opens devtools can read it. It exists so a phone left unlocked on
-     a job site does not show the dashboard, nothing more. The real access
-     control is portalToken below, which is checked server side on every
-     single read and write.                                              */
-  gatePassword: '1234',
+  /* --- sign-in ----------------------------------------------------------
+     `slug` is PUBLIC. It is not a credential. It only names which portal to
+     sign in to; the PIN is verified server side against a bcrypt hash and
+     exchanged for a session.
 
-  /* --- the actual credential ------------------------------------------
-     scope 'full'. Resolves server-side to exactly one company_id. Every RPC
-     and every document call is scoped by it, so this portal physically
-     cannot read another Creekside client's data. Rotate in cs_portal_tokens.
-     Used by index.html ONLY. Never put this in a URL.                    */
-  portalToken: 'fea75235d660d45bd176f764c315c055bf29d1a37a5989f3',
+     There is deliberately NO dashboard token in this file. An earlier version
+     shipped one and it meant anyone who viewed source on the live subdomain
+     had full read access. Do not reintroduce one.                        */
+  slug: 'greiner',
+
 
   /* --- Creekside project (reports, jobs, certs, stats, documents) ----- */
   creekside: {
@@ -43,15 +39,16 @@ window.CONFIG = {
   },
 
   /* --- inspect.html identity ------------------------------------------
-     scope 'submit'. This one DOES travel in the URL (inspect.html?k=...),
-     so it is a different token to portalToken above and is deliberately
+     scope 'submit'. The ONLY static token left in the system, and it DOES
+     travel in the URL (inspect.html?k=...),
+     so it is deliberately
      near-useless if it leaks: server side it can fetch the blank template
      and the job names, and write one report. It cannot read a single
      existing report, certification, safety stat, or document. Anyone who
      gets this link can file a bogus inspection and nothing else.
      Revoke:  update cs_portal_tokens set active=false where token='...';  */
   inspector:  'Tony Sweet',
-  inspectKey: '376327ee16666d72cf96c26be2babf36dcebbb1bcfe4be9f',
+  inspectKey: '720abf2f713292291b23cb0ddf0d3304acc20265e8ed768f',
 
   /* --- Jobs -------------------------------------------------------------
      defaultJobNumber preselects the job picker on inspect.html.          */

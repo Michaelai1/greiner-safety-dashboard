@@ -13,18 +13,69 @@
   };
   var esc = function (s) { return String(s == null ? '' : s); };
 
-  /* ---------- data access -------------------------------------------
-     Every Creekside read/write goes through a security-definer RPC that
-     resolves portalToken to one company_id server side. There is no code
-     path here that can reach another contractor's rows. */
-  function rpc(fn, args) {
+  /* ---------- session + data access -----------------------------------
+     There is no token in config.js. The PIN is verified server side and
+     exchanged for a random 30-day session, kept in localStorage on this
+     device only. Every read and write carries that session, which the
+     database resolves to exactly one company_id. */
+  var SESSION_KEY = 'cs_session_' + C.slug;
+
+  function getSession() {
+    try {
+      var raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      var s = JSON.parse(raw);
+      if (!s.session || (s.expires_at && new Date(s.expires_at) <= new Date())) {
+        localStorage.removeItem(SESSION_KEY); return null;
+      }
+      return s.session;
+    } catch (e) { return null; }
+  }
+  function setSession(obj) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(obj)); } catch (e) {}
+  }
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+  }
+
+  function post(fn, body) {
     return fetch(C.creekside.url + '/rest/v1/rpc/' + fn, {
       method: 'POST',
       headers: { apikey: C.creekside.anonKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ p_token: C.portalToken }, args || {}))
+      body: JSON.stringify(body)
     }).then(function (r) {
       return r.json().then(function (b) {
         if (!r.ok) throw new Error((b && b.message) || ('request failed (' + r.status + ')'));
+        return b;
+      });
+    });
+  }
+
+  // any call that comes back "invalid token" means the session died server
+  // side, so drop it and show sign-in rather than leaving a broken screen
+  function rpc(fn, args) {
+    var sess = getSession();
+    if (!sess) { showGate(); return Promise.reject(new Error('signed out')); }
+    return post(fn, Object.assign({ p_token: sess }, args || {}))
+      .catch(function (e) {
+        if (/invalid token|insufficient scope/i.test(e.message)) {
+          clearSession(); showGate();
+          throw new Error('Session expired — sign in again');
+        }
+        throw e;
+      });
+  }
+
+  function docsFn(action, body) {
+    var sess = getSession();
+    if (!sess) { showGate(); return Promise.reject(new Error('signed out')); }
+    return fetch(C.creekside.url + '/functions/v1/' + C.docsFunction, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ token: sess, action: action }, body || {}))
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok) throw new Error((b && b.error) || 'request failed');
         return b;
       });
     });
@@ -762,26 +813,49 @@
 
   }
 
-  /* ---------- gate ------------------------------------------------------
-     Convenience only. See config.js. Real scoping is the portal token. */
+  /* ---------- sign in ---------------------------------------------------
+     The old version compared a string in this file. That stopped nobody who
+     opened devtools. Now the code goes to the server, is checked against a
+     bcrypt hash, is rate limited by IP, and comes back as a session. */
+  var booted = false;
+
+  function showGate() {
+    $('#app').classList.add('hide');
+    $('#gate').classList.remove('hide');
+    var i = $('#gate-in');
+    if (i) { i.value = ''; }
+  }
   function openApp() {
     $('#gate').classList.add('hide');
     $('#app').classList.remove('hide');
-    boot();
+    if (!booted) { booted = true; boot(); }
   }
-  function tryGate() {
-    if ($('#gate-in').value === C.gatePassword) {
-      try { sessionStorage.setItem('cs_gate', '1'); } catch (e) {}
-      openApp();
-    } else {
-      $('#gate-err').textContent = 'Wrong code';
-      $('#gate-in').value = '';
-      $('#gate-in').focus();
-    }
+
+  function signIn() {
+    var pin = $('#gate-in').value.trim();
+    var err = $('#gate-err');
+    var btn = $('#gate-go');
+    if (!pin) { err.textContent = 'Enter your code'; return; }
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    err.textContent = '';
+    post('cs_portal_login', { p_slug: C.slug, p_pin: pin })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          err.textContent = (res && res.error) || 'Wrong code';
+          $('#gate-in').value = ''; $('#gate-in').focus();
+          return;
+        }
+        setSession(res);
+        openApp();
+      })
+      .catch(function (e) { err.textContent = e.message; })
+      .then(function () { btn.disabled = false; btn.textContent = 'Sign in'; });
   }
+
   $('#gate-co').textContent = C.contractor;
   $('#gate-by').textContent = 'Safety dashboard · ' + C.brand;
-  $('#gate-go').onclick = tryGate;
-  $('#gate-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') tryGate(); });
-  try { if (sessionStorage.getItem('cs_gate') === '1') openApp(); } catch (e) {}
+  $('#gate-go').onclick = signIn;
+  $('#gate-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
+
+  if (getSession()) openApp(); else showGate();
 })();

@@ -38,53 +38,76 @@ Check propagation with `dig greiner.creeksidesafety.com +short` — you want
 
 ## Security model — read this before changing anything
 
-**The password is not the security.** `gatePassword` in `config.js` runs in the
-browser. Anyone who opens devtools can read it. It exists so a phone left
-unlocked on a job site does not show the dashboard. That is all it does.
+**There is no secret in this repo.** `config.js` carries a public `slug` and the
+Supabase anon key. The anon key on its own reaches nothing: every `cs_` table is
+RLS-locked, verified — a direct anon read of `cs_reports` returns zero rows and
+an anon insert is rejected.
 
-**The actual control is `portalToken`.** All Creekside `cs_` tables have RLS on
-and are unreachable with the anon key — verified: a direct anon read of
-`cs_reports` returns zero rows and an anon insert is rejected. The dashboard
-never queries a table. It calls security-definer functions that resolve the
-token to exactly one `company_id` server side:
+### Signing in
 
-```
-                                                    full   submit
-cs_portal_bundle    reports, jobs, certs, stats, docs   yes    NO
-cs_portal_report    one full report for the PDF         yes    NO
-cs_portal_add_job   add a job                           yes    NO
-cs_portal_save_stats one year of stats                  yes    NO
-cs_portal_doc_add / _doc_delete                         yes    NO
-company-docs (edge) upload / download / delete          yes    NO
-cs_portal_template  the blank inspection template       yes    yes
-cs_portal_jobs      active job names only               yes    yes
-cs_portal_submit    write one inspection                yes    yes
-```
+The user enters a PIN. It goes to `cs_portal_login(slug, pin)`, which:
 
-### Two tokens, two scopes
+- rate limits **before** checking anything: 8 failures per IP or 25 per portal in
+  15 minutes and it stops answering. The client IP comes from
+  `x-forwarded-for`, which PostgREST does expose to RPCs.
+- compares against a **bcrypt hash** (`extensions.crypt`), never a stored PIN
+- returns a random 32-byte session, good for 30 days, recorded in
+  `cs_portal_sessions` with the IP and user agent that created it
 
-The inspection link travels in a URL, so it must never carry dashboard access.
-There are two tokens per contractor:
+The session lives in `localStorage` on that device. Every read and write carries
+it, and the database resolves it to exactly one `company_id`.
 
-| Token | Where it lives | What it can do |
+> `cs_portal_login` **returns** `{ok:false, error}` instead of raising. That is
+> deliberate: `RAISE EXCEPTION` aborts the transaction, which rolled back the
+> row recording the failed attempt, so the rate limiter counted nothing and
+> never fired. Caught by brute-forcing 12 wrong PINs and still getting in. If
+> you refactor this, keep it returning a status object.
+
+### Two credentials, and only one of them is static
+
+| | Where it lives | What it can do |
 |---|---|---|
-| `portalToken` (scope `full`) | `config.js`, used by `index.html` only | Everything for one company |
-| `inspectKey` (scope `submit`) | **in the URL** `inspect.html?k=...` | Fetch the blank template, list job names, write one report. Nothing else. |
+| **PIN → session** | typed by the user, session in `localStorage` | Everything, for one company, 30 days |
+| **Inspect key** (`scope=submit`) | **in the URL**, `inspect.html?k=…` | Load the blank form, list job names, file one report. Nothing else. |
 
-A submit token is deliberately near-useless if it leaks. Verified: it returns
-`insufficient scope` on the report bundle, on any single report, on add-job, on
-save-stats, and on every document action. Worst case for a leaked inspect link
-is somebody files a bogus inspection, which is visible and deletable.
+`cs_portal_cid` accepts a session token for any scope, but a **static** token
+only when it is `submit`-scoped. A full-scope static token no longer resolves
+anywhere — tested against the bundle, single reports, add-job, save-stats, and
+all three document actions.
 
-There is no code path in this repo that can reach another Creekside client's
-data, because there is no query that takes a company id from the client. A
-leaked token exposes one contractor, and you revoke it by flipping one row:
+Worst case for a leaked inspect link is somebody files a junk inspection, which
+you can see and delete.
+
+### Changing the PIN
 
 ```sql
-update cs_portal_tokens set active = false where token = '...';
+update cs_portal_tokens
+   set pin_hash = extensions.crypt('NEWPIN', extensions.gen_salt('bf', 10))
+ where slug = 'greiner';
 ```
 
-`cs_portal_tokens` itself is unreadable by anon.
+Everyone stays signed in. To force them out too:
+
+```sql
+delete from cs_portal_sessions where slug = 'greiner';
+```
+
+### Seeing and revoking sessions
+
+```sql
+select right(token,8) as tail, ip, user_agent, created_at, expires_at
+from cs_portal_sessions where slug = 'greiner' order by created_at desc;
+
+delete from cs_portal_sessions where slug = 'greiner';          -- sign everyone out
+update cs_portal_tokens set active = false where slug = 'greiner';  -- kill the portal
+```
+
+### What this is not
+
+One PIN per company, not per person. It proves *someone at Greiner* is holding
+the code; it does not tell you it was Tony. If you ever need per-person identity
+or a who-opened-what audit trail, that is Supabase Auth with a user per person,
+and the RPCs would take `auth.uid()` instead of a session token.
 
 ### Documents
 
