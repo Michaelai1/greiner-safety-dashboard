@@ -100,52 +100,214 @@
   function buildPdf(rep) {
     return loadJsPDF().then(function (ns) {
       var doc = new ns.jsPDF({ unit: 'pt', format: 'letter' });
-      var M = 48, W = 612 - M * 2, y = M;
-      function line(txt, size, bold, color) {
+      var PW = 612, PH = 792, M = 46, W = PW - M * 2, y = 0;
+      var NAVY = '#0f172a', GOLD = '#eab308', INK = '#1f2937', GREY = '#6b7280',
+          LITE = '#f3f4f6', LINE = '#e5e7eb', RED = '#b91c1c', GREEN = '#15803d';
+      var title = templateTitle(rep.template_code);
+
+      function ensure(h) { if (y + h > PH - 56) { doc.addPage(); y = M; } }
+      function setF(size, bold, color) {
         doc.setFont('helvetica', bold ? 'bold' : 'normal');
-        doc.setFontSize(size || 10);
-        doc.setTextColor(color || '#111111');
-        var parts = doc.splitTextToSize(String(txt), W);
-        for (var i = 0; i < parts.length; i++) {
-          if (y > 720) { doc.addPage(); y = M; }
-          doc.text(parts[i], M, y); y += (size || 10) + 4;
+        doc.setFontSize(size); doc.setTextColor(color || INK);
+      }
+      function para(txt, size, bold, color, x, width, gap) {
+        setF(size, bold, color);
+        var lines = doc.splitTextToSize(String(txt), width || W);
+        for (var i = 0; i < lines.length; i++) {
+          ensure(size + 4);
+          doc.text(lines[i], x || M, y); y += size + (gap == null ? 3.5 : gap);
         }
       }
-      doc.setFillColor('#0f172a'); doc.rect(0, 0, 612, 76, 'F');
-      doc.setTextColor('#eab308'); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
-      doc.text(C.contractor, M, 34);
-      doc.setTextColor('#ffffff'); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-      doc.text((rep.template_code || 'Report') + '  ·  ' + fmtDate(rep.report_date), M, 54);
-      doc.setFontSize(8); doc.setTextColor('#94a3b8');
-      doc.text('Prepared by ' + C.brand, 612 - M, 54, { align: 'right' });
-      y = 110;
+      // small status chip; returns nothing, fixed 30pt wide
+      function chip(x, cy, label, fg, bg) {
+        doc.setFillColor(bg); doc.roundedRect(x, cy - 8, 30, 11.5, 2.5, 2.5, 'F');
+        setF(6.6, true, fg);
+        doc.text(label, x + 15, cy, { align: 'center' });
+      }
 
-      line('Inspector: ' + (rep.inspector_name || '—'), 10, true);
-      if (rep.job_id) line('Job: ' + jobName(rep.job_id), 10);
-      line('Result: ' + String(rep.overall || '').toUpperCase() +
-           (rep.defect_count ? ('   ·   ' + rep.defect_count + ' item(s) marked No') : ''), 10, true,
-           rep.has_defects ? '#b91c1c' : '#15803d');
-      y += 8;
+      /* ---- header band ---- */
+      doc.setFillColor(NAVY); doc.rect(0, 0, PW, 92, 'F');
+      setF(17, true, GOLD);  doc.text(C.contractor, M, 36);
+      setF(11, false, '#ffffff'); doc.text(title, M, 56);
+      setF(8.5, false, '#94a3b8');
+      doc.text('Prepared with ' + C.brand, PW - M, 36, { align: 'right' });
+      doc.text(fmtDate(rep.report_date), PW - M, 56, { align: 'right' });
 
-      var f = rep.fields || {}, items = rep.items || {};
-      var secs = (f.sections || []);
+      /* ---- meta strip ---- */
+      y = 116;
+      var metas = [
+        ['JOB', rep.job_id ? jobName(rep.job_id) : (rep.items && rep.items['Job site']) || '—'],
+        ['INSPECTOR', rep.inspector_name || '—'],
+        ['SIGNED', rep.signature_typed || '—']
+      ];
+      var mx = M;
+      metas.forEach(function (mp) {
+        setF(6.6, true, GREY); doc.text(mp[0], mx, y);
+        setF(9.5, true, INK);
+        var v = doc.splitTextToSize(String(mp[1]), 170)[0] || '—';
+        doc.text(v, mx, y + 13);
+        mx += 178;
+      });
+      y += 34;
+
+      // result banner
+      var flagged = rep.defect_count || 0;
+      doc.setFillColor(flagged ? '#fef2f2' : '#f0fdf4');
+      doc.roundedRect(M, y - 4, W, 26, 4, 4, 'F');
+      setF(10, true, flagged ? RED : GREEN);
+      doc.text(flagged
+        ? flagged + ' item' + (flagged === 1 ? '' : 's') + ' flagged for correction'
+        : 'All checked items passed', M + 12, y + 12.5);
+      y += 40;
+
+      var answers = rep.items || {};
+      var secs = (rep.fields || {}).sections || [];
+      var photos = [];
+      (rep.photos || []).forEach(function (ph) {
+        if (ph && ph.data && String(ph.data).indexOf('data:image') === 0) photos.push(ph);
+      });
+      function labelFor(itemId) {
+        for (var i = 0; i < secs.length; i++) {
+          var hit = (secs[i].items || []).filter(function (it) { return it.id === itemId; })[0];
+          if (hit) return { label: hit.label, section: secs[i].title };
+        }
+        return { label: itemId, section: '' };
+      }
+
+      /* ---- sections ---- */
       if (secs.length) {
+        var skipped = [];
         secs.forEach(function (sec) {
-          line(sec.title, 12, true, '#0f172a');
-          (sec.items || []).forEach(function (it) {
-            var v = items[it.id];
-            if (it.type === 'comment') { if (v) line('• ' + it.label + ': ' + v, 9); return; }
-            if (!v) return;
-            line('• [' + String(v).toUpperCase() + ']  ' + it.label, 9,
-                 false, v === 'no' ? '#b91c1c' : '#111111');
+          var answered = (sec.items || []).filter(function (it) {
+            var v = answers[it.id];
+            return v != null && v !== '';
           });
-          if (sec.notes) line('   Notes: ' + sec.notes, 9, false, '#475569');
-          y += 6;
+          if (!answered.length && !sec.notes) { skipped.push(sec.title); return; }
+
+          // count section problems (inverted items flag on yes)
+          var probs = answered.filter(function (it) {
+            return it.type !== 'multi' && it.type !== 'comment' &&
+                   answers[it.id] === (it.invert ? 'yes' : 'no');
+          }).length;
+
+          ensure(30);
+          doc.setFillColor(LITE); doc.rect(M, y - 10, W, 17, 'F');
+          setF(9.5, true, NAVY); doc.text(sec.title, M + 8, y + 1.5);
+          setF(7.5, true, probs ? RED : GREEN);
+          doc.text(probs ? probs + ' FLAGGED' : 'CLEAR', PW - M - 8, y + 1.5, { align: 'right' });
+          y += 18;
+
+          answered.forEach(function (it) {
+            var v = String(answers[it.id]);
+            if (it.type === 'comment') {
+              para(it.label + ' — ' + v, 8.5, false, GREY, M + 6, W - 12);
+              y += 2; return;
+            }
+            var isYN = v === 'yes' || v === 'no' || v === 'na';
+            var lines = doc.splitTextToSize(it.label, W - 48);
+            ensure(lines.length * 12 + 4);
+            if (isYN) {
+              var bad = v === (it.invert ? 'yes' : 'no');
+              var lbl = v === 'na' ? 'N/A' : v.toUpperCase();
+              chip(M + 4, y, lbl,
+                   v === 'na' ? GREY : bad ? RED : GREEN,
+                   v === 'na' ? '#f3f4f6' : bad ? '#fee2e2' : '#dcfce7');
+              setF(8.5, bad, bad ? RED : INK);
+            } else {
+              // multi select or free value — show the value after the label
+              chip(M + 4, y, 'SEL', GREY, '#f3f4f6');
+              setF(8.5, true, INK);
+              lines = doc.splitTextToSize(it.label + ':  ' + v, W - 48);
+            }
+            for (var li = 0; li < lines.length; li++) {
+              ensure(12);
+              doc.text(lines[li], M + 42, y);
+              y += 11;
+            }
+            y += 2.5;
+          });
+
+          if (sec.notes) {
+            ensure(16);
+            para('Notes: ' + sec.notes, 8.5, false, GREY, M + 6, W - 12);
+          }
+          y += 8;
+        });
+
+        if (skipped.length) {
+          y += 2;
+          para('Not covered on this visit: ' + skipped.join(' · '), 7.5, false, '#9ca3af');
+          y += 4;
+        }
+      } else if ((rep.fields || {}).kv) {
+        /* crew submission — label / value rows */
+        (rep.fields.kv || []).forEach(function (row) {
+          var v = String(row.value == null || row.value === '' ? '—' : row.value);
+          var isYN = /^(yes|no|na|n\/a)$/i.test(v);
+          ensure(14);
+          if (isYN) {
+            var lo = v.toLowerCase().replace('n/a', 'na');
+            chip(M + 4, y, lo === 'na' ? 'N/A' : lo.toUpperCase(),
+                 lo === 'no' ? RED : lo === 'yes' ? GREEN : GREY,
+                 lo === 'no' ? '#fee2e2' : lo === 'yes' ? '#dcfce7' : '#f3f4f6');
+            setF(8.5, false, INK);
+            doc.text(doc.splitTextToSize(row.label, W - 48)[0], M + 42, y);
+            y += 13.5;
+          } else {
+            setF(7, true, GREY); doc.text(row.label.toUpperCase(), M + 4, y); y += 10;
+            para(v, 9, false, INK, M + 4, W - 8); y += 3;
+          }
         });
       } else {
-        Object.keys(items).forEach(function (k) { line('• ' + k + ': ' + items[k], 9); });
+        Object.keys(answers).forEach(function (k) {
+          para(k + ':  ' + answers[k], 8.5, false, INK, M + 4);
+        });
       }
-      if (rep.signature_typed) { y += 10; line('Signed: ' + rep.signature_typed, 10, true); }
+
+      /* ---- photos appendix ---- */
+      if (photos.length) {
+        // bring the first photo row with the header, or the header strands
+        // alone at the bottom of a page
+        y += 6; ensure(250);
+        doc.setFillColor(LITE); doc.rect(M, y - 10, W, 17, 'F');
+        setF(9.5, true, NAVY); doc.text('Photos (' + photos.length + ')', M + 8, y + 1.5);
+        y += 22;
+        var colW = (W - 16) / 2, col = 0, rowH = 0;
+        photos.forEach(function (ph) {
+          var w2 = colW, h2 = colW * 0.75;
+          try {
+            var props = doc.getImageProperties(ph.data);
+            h2 = Math.min(200, colW * props.height / props.width);
+          } catch (e) {}
+          var meta = labelFor(ph.item_id);
+          var capLines = doc.splitTextToSize(
+            (meta.section ? meta.section + ' — ' : '') + meta.label, colW);
+          var blockH = h2 + capLines.length * 9 + 14;
+          if (col === 0) { ensure(blockH); rowH = blockH; }
+          var x = M + col * (colW + 16);
+          try { doc.addImage(ph.data, 'JPEG', x, y, w2, h2); } catch (e2) {
+            setF(8, false, GREY); doc.text('(photo could not be embedded)', x, y + 10);
+          }
+          setF(7.5, false, GREY);
+          for (var ci = 0; ci < capLines.length; ci++) {
+            doc.text(capLines[ci], x, y + h2 + 10 + ci * 9);
+          }
+          if (col === 1) { y += Math.max(rowH, blockH); col = 0; }
+          else { col = 1; rowH = Math.max(rowH, blockH); }
+        });
+        if (col === 1) y += rowH;
+      }
+
+      /* ---- footer on every page ---- */
+      var total = doc.getNumberOfPages();
+      for (var pg = 1; pg <= total; pg++) {
+        doc.setPage(pg);
+        doc.setDrawColor(LINE); doc.setLineWidth(0.6);
+        doc.line(M, PH - 40, PW - M, PH - 40);
+        setF(7.5, false, '#9ca3af');
+        doc.text(C.contractor + '  ·  ' + title + '  ·  ' + fmtDate(rep.report_date), M, PH - 28);
+        doc.text('Page ' + pg + ' of ' + total, PW - M, PH - 28, { align: 'right' });
+      }
       return doc.output('blob');
     });
   }
@@ -262,17 +424,31 @@
   }
 
   // ToolGuard rows have a free-form `fields` object rather than a template.
+  function humanize(k) {
+    return String(k).replace(/[_-]+/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
   function tgPdf(r, share) {
+    var kv = [], photos = [];
+    Object.keys(r.fields || {}).forEach(function (k) {
+      var v = r.fields[k];
+      if (typeof v === 'string' && v.indexOf('data:image') === 0) {
+        photos.push({ item_id: k, data: v }); return;
+      }
+      if (v && typeof v === 'object') v = JSON.stringify(v);
+      kv.push({ label: humanize(k), value: v });
+    });
     var pseudo = {
       template_code: (r.inspection_subtype || r.form_type || 'inspection'),
       report_date: r.inspection_date || (r.submitted_at || '').slice(0, 10),
       inspector_name: r.inspector_name, overall: r.has_defects ? 'fail' : 'pass',
       has_defects: r.has_defects, defect_count: r.defect_count,
-      items: {}, fields: {}, job_id: null
+      items: { 'Job site': r.jobsite || '—' },
+      fields: { kv: kv }, photos: photos, job_id: null
     };
-    Object.keys(r.fields || {}).forEach(function (k) { pseudo.items[k] = r.fields[k]; });
-    if (r.asset_id) pseudo.items['Asset'] = r.asset_id;
-    if (r.jobsite) pseudo.items['Job site'] = r.jobsite;
+    if (r.asset_id) kv.unshift({ label: 'Asset', value: r.asset_id });
+    if (r.jobsite)  kv.unshift({ label: 'Job site', value: r.jobsite });
     buildPdf(pseudo).then(function (blob) {
       var name = reportFilename(pseudo);
       var file = new File([blob], name, { type: 'application/pdf' });
