@@ -39,8 +39,6 @@
       <button class="tab" role="tab" data-tab="jobs"  aria-selected="false">Jobs</button>
       <button class="tab" role="tab" data-tab="certs" aria-selected="false">Certifications</button>
       <button class="tab" role="tab" data-tab="stats" aria-selected="false">Safety Stats</button>
-      <button class="tab" role="tab" data-tab="docs"  aria-selected="false">Documents</button>
-      <button class="tab" role="tab" data-tab="progs" aria-selected="false">Written Programs</button>
     </nav>
   </header>
 
@@ -102,7 +100,7 @@
     <section id="p-stats" class="panel hide">
       <div class="sec">
         <div class="sec-h"><h2>Safety Stats</h2></div>
-        <p class="sec-note">Enter your numbers for the year. TRIR and DART are calculated for you.</p>
+        <p class="sec-note">Your recordable rates, ready when a GC or carrier asks.</p>
         <div class="card">
           <table class="stat-tbl">
             <thead><tr>
@@ -112,51 +110,11 @@
             <tbody id="stat-rows"></tbody>
           </table>
         </div>
-        <div class="card">
-          <div class="card-t">Add or update a year</div>
-          <div class="f-grid">
-            <div><label for="s-year">Year</label><input id="s-year" type="number" inputmode="numeric"></div>
-            <div><label for="s-hours">Total hours worked</label><input id="s-hours" type="number" inputmode="decimal" placeholder="0"></div>
-            <div><label for="s-rec">Recordables</label><input id="s-rec" type="number" inputmode="numeric" placeholder="0"></div>
-            <div><label for="s-dart">DART cases</label><input id="s-dart" type="number" inputmode="numeric" placeholder="0"></div>
-            <div class="full"><label for="s-emr">EMR (from your carrier, optional)</label>
-              <input id="s-emr" type="number" inputmode="decimal" step="0.01" placeholder="0.00"></div>
-          </div>
-          <button class="btn btn-gold" id="s-save" style="margin-top:.75rem">Save year</button>
-          <p class="small muted" style="margin-top:.6rem">
-            TRIR = recordables × 200,000 ÷ hours. DART = DART cases × 200,000 ÷ hours.
-            EMR is issued by your insurance carrier and is entered, not calculated.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- DOCUMENTS ---------- -->
-    <section id="p-docs" class="panel hide">
-      <div class="sec">
-        <div class="sec-h"><h2>Documents</h2><span class="small muted" id="n-docs"></span></div>
-        <p class="sec-note">Your safety records, kept in one place. Private to Greiner Brothers.</p>
-        <input type="file" id="doc-file" class="file-in">
-        <div id="doc-cats"></div>
-      </div>
-    </section>
-
-    <!-- ---------- WRITTEN PROGRAMS ---------- -->
-    <section id="p-progs" class="panel hide">
-      <div class="sec">
-        <div class="sec-h"><h2>Written Safety Programs</h2></div>
-        <p class="sec-note">Your written programs, kept current and readable on any phone.</p>
-        <div class="card center" style="padding:2rem 1rem">
-          <div class="mark" style="margin:0 auto .85rem">CS</div>
-          <div class="card-t">In progress</div>
-          <p class="card-s" style="max-width:34ch;margin:.4rem auto 0">
-            Creekside is building these out for Greiner Brothers now. In the meantime
-            any program documents you already have live under Documents.
-          </p>
-          <button class="btn btn-out" id="progs-to-docs" style="margin-top:1.1rem;max-width:260px">
-            Open Documents
-          </button>
-        </div>
+        <p class="small muted" style="margin-top:.9rem">
+          TRIR = recordables &times; 200,000 &divide; hours. DART = DART cases &times; 200,000 &divide; hours.
+          EMR is issued by your carrier. These numbers and your OSHA 300 logs are
+          entered by Creekside in the office portal.
+        </p>
       </div>
     </section>
 

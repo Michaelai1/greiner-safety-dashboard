@@ -30,18 +30,6 @@
     });
   }
 
-  function docsFn(action, body) {
-    return fetch(C.creekside.url + '/functions/v1/' + C.docsFunction, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ token: C.portalToken, action: action }, body || {}))
-    }).then(function (r) {
-      return r.json().then(function (b) {
-        if (!r.ok) throw new Error((b && b.error) || 'request failed');
-        return b;
-      });
-    });
-  }
 
   // ToolGuard QR project — separate Supabase, read only.
   function toolguard() {
@@ -431,80 +419,13 @@
       tr.appendChild(el('td', null, s.emr == null ? '—' : Number(s.emr).toFixed(2)));
       tb.appendChild(tr);
     });
-    if (!$('#s-year').value) $('#s-year').value = new Date().getFullYear();
   }
 
-  function renderDocs() {
-    var docs = STATE.bundle.docs || [];
-    $('#n-docs').textContent = docs.length ? docs.length + ' file' + (docs.length === 1 ? '' : 's') : '';
-    var w = $('#doc-cats'); w.innerHTML = '';
-    C.docCategories.forEach(function (cat) {
-      var mine = docs.filter(function (d) { return d.category === cat; });
-      var box = el('div', 'doc-cat');
-      box.appendChild(el('h3', null, cat));
-      if (!mine.length) box.appendChild(el('div', 'empty', 'Nothing uploaded'));
-      mine.forEach(function (d) {
-        var c = el('div', 'card');
-        var row = el('div', 'row');
-        var left = el('div');
-        left.appendChild(el('div', 'card-t', d.filename));
-        left.appendChild(el('div', 'card-s', fmtDate(d.created_at) +
-          (d.size_bytes ? ' · ' + Math.max(1, Math.round(d.size_bytes / 1024)) + ' KB' : '')));
-        row.appendChild(left); c.appendChild(row);
-        var br = el('div', 'btn-row');
-        var dl = el('button', 'btn btn-out btn-sm', 'Download');
-        dl.onclick = function () {
-          docsFn('download', { path: d.path })
-            .then(function (r) { window.open(r.signedUrl, '_blank'); })
-            .catch(function (e) { toast(e.message); });
-        };
-        var rm = el('button', 'btn btn-out btn-sm', 'Delete');
-        rm.onclick = function () {
-          if (!confirm('Delete ' + d.filename + '?')) return;
-          docsFn('delete', { path: d.path })
-            .then(function () { return rpc('cs_portal_doc_delete', { p_id: d.id }); })
-            .then(refresh).then(function () { toast('Deleted'); })
-            .catch(function (e) { toast(e.message); });
-        };
-        br.appendChild(dl); br.appendChild(rm); c.appendChild(br);
-        box.appendChild(c);
-      });
-      var up = el('button', 'btn btn-out btn-sm', 'Upload to ' + cat);
-      up.style.width = '100%';
-      up.onclick = function () { pickFile(cat); };
-      box.appendChild(up);
-      w.appendChild(box);
-    });
-  }
 
-  function pickFile(cat) {
-    var input = $('#doc-file');
-    input.value = '';
-    input.onchange = function () {
-      var f = input.files && input.files[0];
-      if (!f) return;
-      toast('Uploading ' + f.name + '…');
-      docsFn('upload', { category: cat, filename: f.name })
-        .then(function (r) {
-          return fetch(r.signedUrl, {
-            method: 'PUT', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f
-          }).then(function (res) {
-            if (!res.ok) throw new Error('upload failed');
-            return rpc('cs_portal_doc_add', {
-              p_category: cat, p_filename: f.name, p_path: r.path, p_size: f.size
-            });
-          });
-        })
-        .then(refresh)
-        .then(function () { toast('Uploaded'); })
-        .catch(function (e) { toast(e.message); });
-    };
-    input.click();
-  }
 
   /* ---------- tabs ---------------------------------------------------- */
   function show(tab) {
-    ['home', 'jobs', 'certs', 'stats', 'docs', 'progs'].forEach(function (t) {
+    ['home', 'jobs', 'certs', 'stats'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
@@ -517,7 +438,7 @@
   function refresh() {
     return rpc('cs_portal_bundle').then(function (b) {
       STATE.bundle = b;
-      renderHome(); renderJobs(); renderCerts(); renderStats(); renderDocs();
+      renderHome(); renderJobs(); renderCerts(); renderStats();
       return b;
     });
   }
@@ -538,7 +459,6 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
       b.onclick = function () { show(b.dataset.tab); };
     });
-    $('#progs-to-docs').onclick = function () { show('docs'); };
 
     $('#job-add-toggle').onclick = function () { $('#job-form').classList.toggle('hide'); };
     $('#j-cancel').onclick = function () { $('#job-form').classList.add('hide'); };
@@ -556,22 +476,6 @@
         .then(function () { $('#j-save').disabled = false; });
     };
 
-    $('#s-save').onclick = function () {
-      var y = parseInt($('#s-year').value, 10);
-      var h = parseFloat($('#s-hours').value);
-      if (!y || !h) { toast('Year and total hours are required'); return; }
-      $('#s-save').disabled = true;
-      rpc('cs_portal_save_stats', {
-        p_year: y,
-        p_recordables: parseInt($('#s-rec').value, 10) || 0,
-        p_dart_cases: parseInt($('#s-dart').value, 10) || 0,
-        p_total_hours: h,
-        p_emr: $('#s-emr').value === '' ? null : parseFloat($('#s-emr').value),
-        p_deaths: 0
-      }).then(refresh).then(function () { toast('Saved ' + y); })
-        .catch(function (e) { toast(e.message); })
-        .then(function () { $('#s-save').disabled = false; });
-    };
   }
 
   /* ---------- gate ------------------------------------------------------
