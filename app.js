@@ -41,7 +41,14 @@
   }
 
   /* ---------- small helpers ------------------------------------------ */
-  var STATE = { bundle: null, tg: [], range: 'all', from: null, to: null };
+  var STATE = {
+    bundle: null, tg: [],
+    // one filter per list, so narrowing reports does not move the inspections
+    filters: {
+      rep:  { range: 'all', from: null, to: null },
+      insp: { range: 'all', from: null, to: null }
+    }
+  };
 
   function toast(msg) {
     var t = el('div', 'toast', msg);
@@ -280,69 +287,131 @@
     }).catch(function () { printFallback(pseudo); });
   }
 
-  // date on a ToolGuard row can be the inspection date or the submit timestamp
-  function rowDate(r) {
+  /* ---------- date filtering ------------------------------------------
+     One control, mounted twice. Reports date off report_date, crew rows off
+     inspection_date (falling back to when it was submitted). */
+  function repDate(r)  { return r.report_date ? String(r.report_date).slice(0, 10) : null; }
+  function inspDate(r) {
     var d = r.inspection_date || r.submitted_at;
     return d ? String(d).slice(0, 10) : null;
   }
 
-  function inRange(r) {
-    var d = rowDate(r);
-    if (!d) return STATE.range === 'all';
-    if (STATE.range === 'all') return true;
-    if (STATE.range === 'custom') {
-      if (STATE.from && d < STATE.from) return false;
-      if (STATE.to   && d > STATE.to)   return false;
+  function inRange(dateStr, f) {
+    if (!dateStr) return f.range === 'all';
+    if (f.range === 'all') return true;
+    if (f.range === 'custom') {
+      if (f.from && dateStr < f.from) return false;
+      if (f.to   && dateStr > f.to)   return false;
       return true;
     }
     var cut = new Date();
-    cut.setDate(cut.getDate() - Number(STATE.range));
-    return d >= cut.toISOString().slice(0, 10);
+    cut.setDate(cut.getDate() - Number(f.range));
+    return dateStr >= cut.toISOString().slice(0, 10);
   }
 
-  function rangeLabel(shown, total) {
-    if (STATE.range === 'all') return total ? total + ' total' : '';
-    return shown + ' of ' + total;
-  }
+  // Builds the segmented control + custom range into a mount point. Ids are
+  // namespaced by key so two of them can live on the same screen.
+  function mountFilter(host, key, onChange) {
+    var f = STATE.filters[key];
+    host.innerHTML =
+      '<div class="filter-row"><div class="segbar" role="group" aria-label="Filter by date">' +
+        [['7', 'Week'], ['30', 'Month'], ['all', 'All'], ['custom', 'Custom']].map(function (o) {
+          return '<button class="seg" type="button" data-range="' + o[0] + '"' +
+                 (f.range === o[0] ? ' aria-pressed="true"' : '') + '>' + o[1] + '</button>';
+        }).join('') +
+      '</div></div>' +
+      '<div class="range hide" data-role="range">' +
+        '<div class="range-f"><label for="' + key + '-from">From</label>' +
+          '<input id="' + key + '-from" type="date" aria-label="From date"></div>' +
+        '<div class="range-f"><label for="' + key + '-to">To</label>' +
+          '<input id="' + key + '-to" type="date" aria-label="To date"></div>' +
+      '</div>' +
+      '<p class="range-note hide" data-role="note"><span data-role="txt"></span>' +
+        '<button class="range-clear hide" type="button" data-role="clear">Clear</button></p>';
 
-  function rangeNote(shown) {
-    var n = $('#range-note');
-    if (!n) return;
-    var txt = '';
-    if (STATE.range === '7')  txt = 'Last 7 days';
-    if (STATE.range === '30') txt = 'Last 30 days';
-    if (STATE.range === 'custom') {
-      if (STATE.from || STATE.to) {
-        txt = (STATE.from ? fmtDate(STATE.from) : 'Anything') + ' to ' +
-              (STATE.to ? fmtDate(STATE.to) : 'today');
-      } else { txt = 'Pick a start and end date'; }
+    var rangeBox = host.querySelector('[data-role=range]');
+    var fromIn   = host.querySelector('#' + key + '-from');
+    var toIn     = host.querySelector('#' + key + '-to');
+
+    function apply() {
+      var a = fromIn.value || null, b = toIn.value || null;
+      if (a && b && a > b) { toast('From date is after To date'); return; }
+      f.from = a; f.to = b;
+      onChange();
     }
-    if (txt && STATE.range !== 'all') txt += '  ·  ' + shown + (shown === 1 ? ' inspection' : ' inspections');
-    $('#range-txt').textContent = txt;
-    n.classList.toggle('hide', !txt);
-    // Clear only means something once a custom date is actually set
-    $('#r-clear').classList.toggle('hide',
-      !(STATE.range === 'custom' && (STATE.from || STATE.to)));
+    Array.prototype.forEach.call(host.querySelectorAll('.seg'), function (btn) {
+      btn.onclick = function () {
+        f.range = btn.dataset.range;
+        Array.prototype.forEach.call(host.querySelectorAll('.seg'), function (x) {
+          x.setAttribute('aria-pressed', String(x.dataset.range === f.range));
+        });
+        rangeBox.classList.toggle('hide', f.range !== 'custom');
+        onChange();
+      };
+    });
+    fromIn.onchange = apply;
+    toIn.onchange = apply;
+    host.querySelector('[data-role=clear]').onclick = function () {
+      fromIn.value = ''; toIn.value = '';
+      f.from = f.to = null;
+      onChange();
+    };
+  }
+
+  function paintNote(host, key, shown) {
+    var f = STATE.filters[key];
+    var note = host.querySelector('[data-role=note]');
+    var txt = '';
+    if (f.range === '7')  txt = 'Last 7 days';
+    if (f.range === '30') txt = 'Last 30 days';
+    if (f.range === 'custom') {
+      txt = (f.from || f.to)
+        ? (f.from ? fmtDate(f.from) : 'Anything') + ' to ' + (f.to ? fmtDate(f.to) : 'today')
+        : 'Pick a start and end date';
+    }
+    if (txt && f.range !== 'all') {
+      txt += '  \u00b7  ' + shown + (shown === 1 ? ' result' : ' results');
+    }
+    host.querySelector('[data-role=txt]').textContent = txt;
+    note.classList.toggle('hide', !txt);
+    host.querySelector('[data-role=clear]')
+        .classList.toggle('hide', !(f.range === 'custom' && (f.from || f.to)));
+  }
+
+  function countLabel(key, shown, total) {
+    return STATE.filters[key].range === 'all'
+      ? (total ? total + ' total' : '')
+      : shown + ' of ' + total;
   }
 
   function renderHome() {
-    var reps = STATE.bundle.reports || [];
+    var hostRep  = document.querySelector('[data-filter=rep]');
+    var hostInsp = document.querySelector('[data-filter=insp]');
+
+    var reps  = (STATE.bundle.reports || []).filter(function (r) {
+      return inRange(repDate(r), STATE.filters.rep);
+    });
     var lr = $('#list-reports'); lr.innerHTML = '';
-    $('#n-reports').textContent = reps.length ? reps.length + ' total' : '';
-    if (!reps.length) lr.appendChild(el('div', 'empty', 'No reports yet. They appear here as Creekside completes them.'));
+    $('#n-reports').textContent = countLabel('rep', reps.length, (STATE.bundle.reports || []).length);
+    if (!reps.length) {
+      lr.appendChild(el('div', 'empty', (STATE.bundle.reports || []).length
+        ? 'No reports in this date range.'
+        : 'No reports yet. They appear here as Creekside completes them.'));
+    }
     reps.forEach(function (r) { lr.appendChild(reportCard(r)); });
+    if (hostRep) paintNote(hostRep, 'rep', reps.length);
 
     var all = STATE.tg || [];
-    var shown = all.filter(inRange);
+    var shown = all.filter(function (r) { return inRange(inspDate(r), STATE.filters.insp); });
     var li = $('#list-insp'); li.innerHTML = '';
-    $('#n-insp').textContent = rangeLabel(shown.length, all.length);
-    rangeNote(shown.length);
+    $('#n-insp').textContent = countLabel('insp', shown.length, all.length);
     if (!shown.length) {
       li.appendChild(el('div', 'empty', all.length
         ? 'No crew inspections in this date range.'
         : 'No crew inspections yet.'));
     }
     shown.forEach(function (r) { li.appendChild(inspCard(r)); });
+    if (hostInsp) paintNote(hostInsp, 'insp', shown.length);
   }
 
   function renderJobs() {
@@ -494,31 +563,9 @@
       b.onclick = function () { show(b.dataset.tab); };
     });
 
-    // date filter — applies as you change it, no Apply button to hunt for
-    function setRange(v) {
-      STATE.range = v;
-      Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
-        b.setAttribute('aria-pressed', String(b.dataset.range === v));
-      });
-      $('#range-custom').classList.toggle('hide', v !== 'custom');
-      renderHome();
-    }
-    Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
-      b.onclick = function () { setRange(b.dataset.range); };
+    Array.prototype.forEach.call(document.querySelectorAll('.filter-mount'), function (host) {
+      mountFilter(host, host.dataset.filter, renderHome);
     });
-    function applyDates() {
-      var f = $('#r-from').value || null, t = $('#r-to').value || null;
-      if (f && t && f > t) { toast('From date is after To date'); return; }
-      STATE.from = f; STATE.to = t;
-      renderHome();
-    }
-    $('#r-from').onchange = applyDates;
-    $('#r-to').onchange = applyDates;
-    $('#r-clear').onclick = function () {
-      $('#r-from').value = ''; $('#r-to').value = '';
-      STATE.from = STATE.to = null;
-      renderHome();
-    };
 
     $('#job-add-toggle').onclick = function () { $('#job-form').classList.toggle('hide'); };
     $('#j-cancel').onclick = function () { $('#job-form').classList.add('hide'); };

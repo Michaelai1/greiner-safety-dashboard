@@ -52,30 +52,14 @@
       <div class="sec">
         <div class="sec-h"><h2>Reports</h2><span class="small muted" id="n-reports"></span></div>
         <p class="sec-note">Site safety reports completed by Creekside Safety and your safety team.</p>
+        <div class="filter-mount" data-filter="rep"></div>
         <div id="list-reports"><div class="empty">Loading…</div></div>
       </div>
 
       <div class="sec">
         <div class="sec-h"><h2>Inspections</h2><span class="small muted" id="n-insp"></span></div>
         <p class="sec-note">Inspections submitted by your crews in the field.</p>
-        <div class="filter-row">
-          <div class="segbar" role="group" aria-label="Filter inspections by date">
-            <button class="seg" data-range="7"      type="button">Week</button>
-            <button class="seg" data-range="30"     type="button">Month</button>
-            <button class="seg" data-range="all"    type="button" aria-pressed="true">All</button>
-            <button class="seg" data-range="custom" type="button">Custom</button>
-          </div>
-        </div>
-        <div id="range-custom" class="range hide">
-          <div class="range-f"><label for="r-from">From</label>
-            <input id="r-from" type="date" aria-label="From date"></div>
-          <div class="range-f"><label for="r-to">To</label>
-            <input id="r-to" type="date" aria-label="To date"></div>
-        </div>
-        <p class="range-note hide" id="range-note">
-          <span id="range-txt"></span>
-          <button class="range-clear hide" id="r-clear" type="button">Clear</button>
-        </p>
+        <div class="filter-mount" data-filter="insp"></div>
         <div id="list-insp"><div class="empty">Loading…</div></div>
       </div>
     </section>
