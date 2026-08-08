@@ -302,11 +302,27 @@
 
   function rangeLabel(shown, total) {
     if (STATE.range === 'all') return total ? total + ' total' : '';
+    return shown + ' of ' + total;
+  }
+
+  function rangeNote(shown) {
+    var n = $('#range-note');
+    if (!n) return;
+    var txt = '';
+    if (STATE.range === '7')  txt = 'Last 7 days';
+    if (STATE.range === '30') txt = 'Last 30 days';
     if (STATE.range === 'custom') {
-      if (!STATE.from && !STATE.to) return shown + ' of ' + total;
-      return shown + ' of ' + total + ' in range';
+      if (STATE.from || STATE.to) {
+        txt = (STATE.from ? fmtDate(STATE.from) : 'Anything') + ' to ' +
+              (STATE.to ? fmtDate(STATE.to) : 'today');
+      } else { txt = 'Pick a start and end date'; }
     }
-    return shown + ' in last ' + STATE.range + ' days';
+    if (txt && STATE.range !== 'all') txt += '  ·  ' + shown + (shown === 1 ? ' inspection' : ' inspections');
+    $('#range-txt').textContent = txt;
+    n.classList.toggle('hide', !txt);
+    // Clear only means something once a custom date is actually set
+    $('#r-clear').classList.toggle('hide',
+      !(STATE.range === 'custom' && (STATE.from || STATE.to)));
   }
 
   function renderHome() {
@@ -320,6 +336,7 @@
     var shown = all.filter(inRange);
     var li = $('#list-insp'); li.innerHTML = '';
     $('#n-insp').textContent = rangeLabel(shown.length, all.length);
+    rangeNote(shown.length);
     if (!shown.length) {
       li.appendChild(el('div', 'empty', all.length
         ? 'No crew inspections in this date range.'
@@ -477,7 +494,7 @@
       b.onclick = function () { show(b.dataset.tab); };
     });
 
-    // date filter
+    // date filter — applies as you change it, no Apply button to hunt for
     function setRange(v) {
       STATE.range = v;
       Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
@@ -489,14 +506,14 @@
     Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
       b.onclick = function () { setRange(b.dataset.range); };
     });
-    $('#r-apply').onclick = function () {
-      STATE.from = $('#r-from').value || null;
-      STATE.to   = $('#r-to').value || null;
-      if (STATE.from && STATE.to && STATE.from > STATE.to) {
-        toast('From date is after To date'); return;
-      }
+    function applyDates() {
+      var f = $('#r-from').value || null, t = $('#r-to').value || null;
+      if (f && t && f > t) { toast('From date is after To date'); return; }
+      STATE.from = f; STATE.to = t;
       renderHome();
-    };
+    }
+    $('#r-from').onchange = applyDates;
+    $('#r-to').onchange = applyDates;
     $('#r-clear').onclick = function () {
       $('#r-from').value = ''; $('#r-to').value = '';
       STATE.from = STATE.to = null;

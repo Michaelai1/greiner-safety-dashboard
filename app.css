@@ -120,27 +120,58 @@ textarea{min-height:80px;resize:vertical}
   color:var(--paper);padding:.7rem 1.1rem;border-radius:99px;font-size:.875rem;z-index:99;
   max-width:calc(100vw - 2rem);text-align:center}
 
+/* Date filter — a real iOS segmented control.
+   Deliberately NOT gold: gold means "an action you can take" on this app
+   (Start inspection, Share, Apply). A filter is state, so it uses a raised
+   thumb on a sunken track, the way iOS does it, and stays quieter than the
+   cards it sits above. */
+.filter-row{ display:flex; align-items:center; gap:.6rem; margin-bottom:.8rem; }
+.segbar{
+  display:flex; flex:1; gap:0; padding:3px;
+  background:rgba(255,255,255,.055); border-radius:10px;
+}
+.seg{
+  flex:1; min-height:36px; padding:.3rem .25rem; border:0; border-radius:7px;
+  background:transparent; color:var(--grey);
+  font-size:.8125rem; font-weight:600; letter-spacing:-.01em; white-space:nowrap;
+  transition:background .15s, color .15s;
+}
+.seg[aria-pressed="true"]{
+  background:var(--navy-3); color:var(--paper);
+  box-shadow:0 1px 2px rgba(0,0,0,.35);
+}
+
+/* custom range: two fields side by side, never wrapping on a phone */
+.range{
+  display:grid; grid-template-columns:1fr 1fr; gap:.55rem;
+  padding:.7rem; margin-bottom:.6rem;
+  background:rgba(255,255,255,.04); border-radius:10px;
+}
+.range-f label{
+  display:block; margin-bottom:.25rem;
+  font-size:.6875rem; font-weight:700; letter-spacing:.05em;
+  text-transform:uppercase; color:var(--grey-d);
+}
+.range input[type=date]{
+  width:100%; min-height:40px; padding:.3rem .5rem;
+  background:var(--navy); border:1px solid var(--navy-3); border-radius:8px;
+  color:var(--paper); font:inherit; font-size:.8125rem;
+  -webkit-appearance:none; appearance:none;
+}
+.range input[type=date]:focus{ border-color:var(--gold); outline:none; }
+
+.range-note{
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+  font-size:.75rem; color:var(--grey-d); margin:0 0 .8rem;
+}
+.range-clear{
+  flex:0 0 auto; min-height:32px; padding:.2rem .6rem; border:0; border-radius:8px;
+  background:transparent; color:var(--gold); font-size:.8125rem; font-weight:700;
+}
+
 /* the printable report (used for PDF fallback) */
 @media print{
   body{background:#fff;color:#000}
-  .hdr,.tabs,.no-print{display:none !important}
+  .hdr,.tabs,.filter-row,.range,.no-print{display:none !important}
   .card{border:1px solid #ccc;background:#fff;color:#000}
 }
-
-/* segmented date filter — iOS-style, every segment a 44px target */
-.segbar{
-  display:flex; gap:2px; padding:2px; margin-bottom:.7rem;
-  background:var(--navy-2); border:1px solid var(--line); border-radius:10px;
-}
-.seg{
-  flex:1; min-height:40px; padding:.45rem .3rem; border:0; border-radius:8px;
-  background:transparent; color:var(--grey); font-size:.8125rem; font-weight:700;
-  white-space:nowrap;
-}
-.seg[aria-pressed="true"]{ background:var(--gold); color:var(--navy); }
-input[type=date]{
-  width:100%; min-height:48px; padding:.55rem .7rem; background:var(--navy);
-  border:1px solid var(--navy-3); border-radius:10px; color:var(--paper);
-  font:inherit; -webkit-appearance:none; appearance:none;
-}
-input[type=date]::-webkit-date-and-time-value{ text-align:left; }

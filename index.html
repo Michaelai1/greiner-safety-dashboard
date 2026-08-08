@@ -58,22 +58,24 @@
       <div class="sec">
         <div class="sec-h"><h2>Inspections</h2><span class="small muted" id="n-insp"></span></div>
         <p class="sec-note">Inspections submitted by your crews in the field.</p>
-        <div class="segbar" role="group" aria-label="Filter inspections by date">
-          <button class="seg" data-range="7"   type="button">Week</button>
-          <button class="seg" data-range="30"  type="button">Month</button>
-          <button class="seg" data-range="all" type="button" aria-pressed="true">All</button>
-          <button class="seg" data-range="custom" type="button">Dates</button>
-        </div>
-        <div id="range-custom" class="card hide" style="margin-bottom:.7rem">
-          <div class="f-grid">
-            <div><label for="r-from">From</label><input id="r-from" type="date"></div>
-            <div><label for="r-to">To</label><input id="r-to" type="date"></div>
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-gold btn-sm" id="r-apply">Apply</button>
-            <button class="btn btn-out btn-sm" id="r-clear">Clear</button>
+        <div class="filter-row">
+          <div class="segbar" role="group" aria-label="Filter inspections by date">
+            <button class="seg" data-range="7"      type="button">Week</button>
+            <button class="seg" data-range="30"     type="button">Month</button>
+            <button class="seg" data-range="all"    type="button" aria-pressed="true">All</button>
+            <button class="seg" data-range="custom" type="button">Custom</button>
           </div>
         </div>
+        <div id="range-custom" class="range hide">
+          <div class="range-f"><label for="r-from">From</label>
+            <input id="r-from" type="date" aria-label="From date"></div>
+          <div class="range-f"><label for="r-to">To</label>
+            <input id="r-to" type="date" aria-label="To date"></div>
+        </div>
+        <p class="range-note hide" id="range-note">
+          <span id="range-txt"></span>
+          <button class="range-clear hide" id="r-clear" type="button">Clear</button>
+        </p>
         <div id="list-insp"><div class="empty">Loading…</div></div>
       </div>
     </section>
