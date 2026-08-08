@@ -41,7 +41,7 @@
   }
 
   /* ---------- small helpers ------------------------------------------ */
-  var STATE = { bundle: null, tg: [] };
+  var STATE = { bundle: null, tg: [], range: 'all', from: null, to: null };
 
   function toast(msg) {
     var t = el('div', 'toast', msg);
@@ -58,13 +58,17 @@
     if (!d) return null;
     return Math.round((new Date(d + 'T12:00:00') - new Date()) / 86400000);
   }
+  // template_code is a slug; show something a superintendent recognises
+  var TITLES = { site_safety_v2: 'Site Safety Inspection', safety101: 'Safety 101 Inspection' };
+  function templateTitle(code) {
+    if (!code) return 'Report';
+    return TITLES[code] || String(code).replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function jobName(id) {
     var j = (STATE.bundle.jobs || []).filter(function (x) { return x.id === id; })[0];
     return j ? (j.job_number + ' — ' + j.name) : '';
-  }
-  function rate(n, hours) {
-    if (!hours || hours <= 0) return '—';
-    return (Number(n) * 200000 / Number(hours)).toFixed(2);
   }
 
   /* ---------- PDF ------------------------------------------------------
@@ -208,8 +212,7 @@
     var c = el('div', 'card');
     var row = el('div', 'row');
     var left = el('div');
-    left.appendChild(el('div', 'card-t', (r.template_code === C.creekside.templateCode
-      ? 'Safety 101 Inspection' : (r.template_code || 'Report'))));
+    left.appendChild(el('div', 'card-t', templateTitle(r.template_code)));
     left.appendChild(el('div', 'card-s',
       fmtDate(r.report_date) + (r.inspector_name ? ' · ' + r.inspector_name : '') +
       (r.job_id ? ' · ' + jobName(r.job_id) : '')));
@@ -277,6 +280,35 @@
     }).catch(function () { printFallback(pseudo); });
   }
 
+  // date on a ToolGuard row can be the inspection date or the submit timestamp
+  function rowDate(r) {
+    var d = r.inspection_date || r.submitted_at;
+    return d ? String(d).slice(0, 10) : null;
+  }
+
+  function inRange(r) {
+    var d = rowDate(r);
+    if (!d) return STATE.range === 'all';
+    if (STATE.range === 'all') return true;
+    if (STATE.range === 'custom') {
+      if (STATE.from && d < STATE.from) return false;
+      if (STATE.to   && d > STATE.to)   return false;
+      return true;
+    }
+    var cut = new Date();
+    cut.setDate(cut.getDate() - Number(STATE.range));
+    return d >= cut.toISOString().slice(0, 10);
+  }
+
+  function rangeLabel(shown, total) {
+    if (STATE.range === 'all') return total ? total + ' total' : '';
+    if (STATE.range === 'custom') {
+      if (!STATE.from && !STATE.to) return shown + ' of ' + total;
+      return shown + ' of ' + total + ' in range';
+    }
+    return shown + ' in last ' + STATE.range + ' days';
+  }
+
   function renderHome() {
     var reps = STATE.bundle.reports || [];
     var lr = $('#list-reports'); lr.innerHTML = '';
@@ -284,10 +316,16 @@
     if (!reps.length) lr.appendChild(el('div', 'empty', 'No reports yet. They appear here as Creekside completes them.'));
     reps.forEach(function (r) { lr.appendChild(reportCard(r)); });
 
+    var all = STATE.tg || [];
+    var shown = all.filter(inRange);
     var li = $('#list-insp'); li.innerHTML = '';
-    $('#n-insp').textContent = STATE.tg.length ? STATE.tg.length + ' total' : '';
-    if (!STATE.tg.length) li.appendChild(el('div', 'empty', 'No crew inspections yet.'));
-    STATE.tg.forEach(function (r) { li.appendChild(inspCard(r)); });
+    $('#n-insp').textContent = rangeLabel(shown.length, all.length);
+    if (!shown.length) {
+      li.appendChild(el('div', 'empty', all.length
+        ? 'No crew inspections in this date range.'
+        : 'No crew inspections yet.'));
+    }
+    shown.forEach(function (r) { li.appendChild(inspCard(r)); });
   }
 
   function renderJobs() {
@@ -399,33 +437,12 @@
     });
   }
 
-  function renderStats() {
-    var rows = (STATE.bundle.stats || []).slice(0, C.statsYears);
-    var tb = $('#stat-rows'); tb.innerHTML = '';
-    if (!rows.length) {
-      var tr = el('tr');
-      var td = el('td', null, 'No years entered yet.');
-      td.colSpan = 7; td.style.textAlign = 'left'; td.style.color = '#64748b';
-      tr.appendChild(td); tb.appendChild(tr);
-    }
-    rows.forEach(function (s) {
-      var tr = el('tr');
-      [['y', s.year], ['n', s.recordables], ['n', s.dart_cases],
-       ['n', Number(s.total_hours).toLocaleString('en-US')]].forEach(function (c) {
-        tr.appendChild(el('td', null, String(c[1])));
-      });
-      tr.appendChild(el('td', 'calc', rate(s.recordables, s.total_hours)));
-      tr.appendChild(el('td', 'calc', rate(s.dart_cases, s.total_hours)));
-      tr.appendChild(el('td', null, s.emr == null ? '—' : Number(s.emr).toFixed(2)));
-      tb.appendChild(tr);
-    });
-  }
 
 
 
   /* ---------- tabs ---------------------------------------------------- */
   function show(tab) {
-    ['home', 'jobs', 'certs', 'stats'].forEach(function (t) {
+    ['home', 'jobs', 'certs'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
@@ -438,7 +455,7 @@
   function refresh() {
     return rpc('cs_portal_bundle').then(function (b) {
       STATE.bundle = b;
-      renderHome(); renderJobs(); renderCerts(); renderStats();
+      renderHome(); renderJobs(); renderCerts();
       return b;
     });
   }
@@ -460,15 +477,43 @@
       b.onclick = function () { show(b.dataset.tab); };
     });
 
+    // date filter
+    function setRange(v) {
+      STATE.range = v;
+      Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.range === v));
+      });
+      $('#range-custom').classList.toggle('hide', v !== 'custom');
+      renderHome();
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (b) {
+      b.onclick = function () { setRange(b.dataset.range); };
+    });
+    $('#r-apply').onclick = function () {
+      STATE.from = $('#r-from').value || null;
+      STATE.to   = $('#r-to').value || null;
+      if (STATE.from && STATE.to && STATE.from > STATE.to) {
+        toast('From date is after To date'); return;
+      }
+      renderHome();
+    };
+    $('#r-clear').onclick = function () {
+      $('#r-from').value = ''; $('#r-to').value = '';
+      STATE.from = STATE.to = null;
+      renderHome();
+    };
+
     $('#job-add-toggle').onclick = function () { $('#job-form').classList.toggle('hide'); };
     $('#j-cancel').onclick = function () { $('#job-form').classList.add('hide'); };
     $('#j-save').onclick = function () {
       var name = $('#j-name').value.trim();
+      var addr = $('#j-addr').value.trim();
       if (!name) { toast('Job name is required'); return; }
+      if (!addr) { toast('Address is required'); return; }
       $('#j-save').disabled = true;
       rpc('cs_portal_add_job', {
         p_job_number: $('#j-num').value.trim() || 'NEW',
-        p_name: name, p_address: $('#j-addr').value.trim() || null
+        p_name: name, p_address: addr
       }).then(refresh).then(function () {
         $('#j-name').value = $('#j-num').value = $('#j-addr').value = '';
         $('#job-form').classList.add('hide'); toast('Job added');

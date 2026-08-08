@@ -108,7 +108,7 @@ input[type=text],input[type=number],select,textarea{width:100%;min-height:48px;p
   background:var(--navy);border:1px solid var(--navy-3);border-radius:10px;color:var(--paper)}
 textarea{min-height:80px;resize:vertical}
 
-/* documents */
+
 .doc-cat{margin-bottom:1.1rem}
 .doc-cat h3{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);
   margin-bottom:.5rem}
@@ -126,3 +126,21 @@ textarea{min-height:80px;resize:vertical}
   .hdr,.tabs,.no-print{display:none !important}
   .card{border:1px solid #ccc;background:#fff;color:#000}
 }
+
+/* segmented date filter — iOS-style, every segment a 44px target */
+.segbar{
+  display:flex; gap:2px; padding:2px; margin-bottom:.7rem;
+  background:var(--navy-2); border:1px solid var(--line); border-radius:10px;
+}
+.seg{
+  flex:1; min-height:40px; padding:.45rem .3rem; border:0; border-radius:8px;
+  background:transparent; color:var(--grey); font-size:.8125rem; font-weight:700;
+  white-space:nowrap;
+}
+.seg[aria-pressed="true"]{ background:var(--gold); color:var(--navy); }
+input[type=date]{
+  width:100%; min-height:48px; padding:.55rem .7rem; background:var(--navy);
+  border:1px solid var(--navy-3); border-radius:10px; color:var(--paper);
+  font:inherit; -webkit-appearance:none; appearance:none;
+}
+input[type=date]::-webkit-date-and-time-value{ text-align:left; }

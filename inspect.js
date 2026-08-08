@@ -78,7 +78,10 @@
         if (it.type === 'comment') return;
         total++;
         var v = state.answers[it.id];
-        if (v) { answered++; if (v === 'no') no++; }
+        if (!v) return;
+        answered++;
+        // inverted items flag on "yes"; the server recounts this the same way
+        if (it.type !== 'multi' && v === (it.invert ? 'yes' : 'no')) no++;
       });
     });
     return { answered: answered, total: total, no: no };
@@ -168,22 +171,55 @@
       return box;
     }
 
-    // default: yes / no / n-a
+    // multi-select: tap any number of options (confined space can be both)
+    if (it.type === 'multi' && Array.isArray(it.options)) {
+      box.appendChild(el('p', null, it.label));
+      var picked = [];
+      var wrapM = el('div', 'yn');
+      wrapM.style.flexWrap = 'wrap';
+      it.options.forEach(function (o) {
+        var b = el('button', null, o);
+        b.type = 'button';
+        b.style.flex = '1 1 auto';
+        b.setAttribute('aria-pressed', 'false');
+        b.onclick = function () {
+          var i = picked.indexOf(o);
+          if (i > -1) picked.splice(i, 1); else picked.push(o);
+          b.setAttribute('aria-pressed', String(picked.indexOf(o) > -1));
+          b.dataset.v = picked.indexOf(o) > -1 ? 'na' : '';
+          state.answers[it.id] = picked.join(', ');
+          if (!picked.length) delete state.answers[it.id];
+          updateProgress();
+        };
+        wrapM.appendChild(b);
+      });
+      box.appendChild(wrapM);
+      return box;
+    }
+
+    // default: yes / no / n-a.
+    // `invert` items are the ones where Yes is the finding ("are there other
+    // site conditions to address?"), so the buttons flip and the photo prompt
+    // follows the bad answer, not the literal "no".
+    var bad = it.invert ? 'yes' : 'no';
     box.appendChild(el('p', null, it.label));
     var yn = el('div', 'yn');
     var ph = null;
-    [['yes', 'Yes'], ['no', 'No'], ['na', 'N/A']].forEach(function (o) {
+    var order = it.invert ? [['no', 'No'], ['yes', 'Yes'], ['na', 'N/A']]
+                          : [['yes', 'Yes'], ['no', 'No'], ['na', 'N/A']];
+    order.forEach(function (o) {
       var b = el('button', null, o[1]);
       b.type = 'button'; b.dataset.v = o[0];
+      if (it.invert) b.dataset.inv = '1';
       b.setAttribute('aria-pressed', 'false');
       b.onclick = function () {
         state.answers[it.id] = o[0];
         Array.prototype.forEach.call(yn.children, function (x) {
           x.setAttribute('aria-pressed', String(x.dataset.v === o[0]));
         });
-        // photo prompt only on a failed item
-        if (o[0] === 'no' && !ph) { ph = photoBlock(it.id); box.appendChild(ph); }
-        if (o[0] !== 'no' && ph) { ph.remove(); ph = null; delete state.photos[it.id]; }
+        // photo prompt only on the answer that is actually a problem
+        if (o[0] === bad && !ph) { ph = photoBlock(it.id); box.appendChild(ph); }
+        if (o[0] !== bad && ph) { ph.remove(); ph = null; delete state.photos[it.id]; }
         updateProgress();
       };
       yn.appendChild(b);

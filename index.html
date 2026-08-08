@@ -38,7 +38,6 @@
       <button class="tab" role="tab" data-tab="home"  aria-selected="true">Reports</button>
       <button class="tab" role="tab" data-tab="jobs"  aria-selected="false">Jobs</button>
       <button class="tab" role="tab" data-tab="certs" aria-selected="false">Certifications</button>
-      <button class="tab" role="tab" data-tab="stats" aria-selected="false">Safety Stats</button>
     </nav>
   </header>
 
@@ -59,6 +58,22 @@
       <div class="sec">
         <div class="sec-h"><h2>Inspections</h2><span class="small muted" id="n-insp"></span></div>
         <p class="sec-note">Inspections submitted by your crews in the field.</p>
+        <div class="segbar" role="group" aria-label="Filter inspections by date">
+          <button class="seg" data-range="7"   type="button">Week</button>
+          <button class="seg" data-range="30"  type="button">Month</button>
+          <button class="seg" data-range="all" type="button" aria-pressed="true">All</button>
+          <button class="seg" data-range="custom" type="button">Dates</button>
+        </div>
+        <div id="range-custom" class="card hide" style="margin-bottom:.7rem">
+          <div class="f-grid">
+            <div><label for="r-from">From</label><input id="r-from" type="date"></div>
+            <div><label for="r-to">To</label><input id="r-to" type="date"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-gold btn-sm" id="r-apply">Apply</button>
+            <button class="btn btn-out btn-sm" id="r-clear">Clear</button>
+          </div>
+        </div>
         <div id="list-insp"><div class="empty">Loading…</div></div>
       </div>
     </section>
@@ -77,7 +92,7 @@
             <div><label for="j-num">Job number</label>
               <input id="j-num" type="text" placeholder="C803-2026"></div>
             <div><label for="j-addr">Address</label>
-              <input id="j-addr" type="text" placeholder="Optional"></div>
+              <input id="j-addr" type="text" placeholder="536 W. Michigan St." required></div>
           </div>
           <div class="btn-row">
             <button class="btn btn-gold btn-sm" id="j-save">Save job</button>
@@ -96,27 +111,6 @@
       </div>
     </section>
 
-    <!-- ---------- SAFETY STATS ---------- -->
-    <section id="p-stats" class="panel hide">
-      <div class="sec">
-        <div class="sec-h"><h2>Safety Stats</h2></div>
-        <p class="sec-note">Your recordable rates, ready when a GC or carrier asks.</p>
-        <div class="card">
-          <table class="stat-tbl">
-            <thead><tr>
-              <th>Year</th><th>Recordables</th><th>DART cases</th><th>Hours</th>
-              <th>TRIR</th><th>DART</th><th>EMR</th>
-            </tr></thead>
-            <tbody id="stat-rows"></tbody>
-          </table>
-        </div>
-        <p class="small muted" style="margin-top:.9rem">
-          TRIR = recordables &times; 200,000 &divide; hours. DART = DART cases &times; 200,000 &divide; hours.
-          EMR is issued by your carrier. These numbers and your OSHA 300 logs are
-          entered by Creekside in the office portal.
-        </p>
-      </div>
-    </section>
 
   </main>
   <div style="height:2rem"></div>

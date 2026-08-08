@@ -29,7 +29,7 @@ window.CONFIG = {
   creekside: {
     url: 'https://gvfolfzseqwhhimbxgjv.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2Zm9sZnpzZXF3aGhpbWJ4Z2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzQzOTcsImV4cCI6MjA5OTcxMDM5N30.ZpJWG4a0evolcjxr36IDaA4o0pjRjw1cCGOWV9ofDE0',
-    templateCode: 'safety101',
+    templateCode: 'site_safety_v2',
   },
 
   /* --- ToolGuard QR project (crew inspections from the field) ---------
