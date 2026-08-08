@@ -159,13 +159,12 @@ textarea{min-height:80px;resize:vertical}
   -webkit-appearance:none; appearance:none;
 }
 .range input[type=date]:focus{ border-color:var(--gold); outline:none; }
-/* the native calendar glyph ships black, which disappears on a dark field.
-   invert flips it to white; color-scheme also makes the iOS/desktop picker
-   itself render dark instead of a white sheet. */
+/* color-scheme:dark makes the browser draw the calendar glyph light AND opens
+   the picker sheet dark. Do NOT add filter:invert on top of it - that flips the
+   already-light glyph back to black, which is the bug this replaced. */
 .range input[type=date]{ color-scheme:dark; }
 .range input[type=date]::-webkit-calendar-picker-indicator{
-  filter:invert(1) brightness(1.6); opacity:.75; cursor:pointer;
-  padding:2px; margin-left:2px;
+  opacity:.9; cursor:pointer; padding:2px; margin-left:2px;
 }
 .range input[type=date]::-webkit-calendar-picker-indicator:hover{ opacity:1; }
 
