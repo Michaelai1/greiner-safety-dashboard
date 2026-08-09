@@ -57,6 +57,20 @@
     <section id="p-home" class="panel">
       <div class="sec">
         <a class="btn btn-gold" id="start-inspection" href="#">Start Safety Inspection</a>
+        <button class="btn btn-out" id="send-insp" style="margin-top:.55rem">Send inspection link</button>
+        <div id="send-form" class="card hide" style="margin-top:.7rem">
+          <div class="f-grid">
+            <div><label for="si-name">Name</label>
+              <input id="si-name" type="text" autocomplete="off" placeholder="Name"></div>
+            <div><label for="si-phone">Phone</label>
+              <input id="si-phone" type="tel" inputmode="tel" placeholder="317-555-0134"></div>
+          </div>
+          <p class="err small" id="si-err" style="min-height:1em"></p>
+          <div class="btn-row">
+            <button class="btn btn-gold btn-sm" id="si-send">Text the link</button>
+            <button class="btn btn-out btn-sm" id="si-cancel">Cancel</button>
+          </div>
+        </div>
       </div>
 
       <div class="sec">

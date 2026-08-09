@@ -542,6 +542,33 @@
 
   // Builds the segmented control + custom range into a mount point. Ids are
   // namespaced by key so two of them can live on the same screen.
+  /* ---------- send the inspection link by text -------------------------
+     Name + phone, and the link goes out over SMS: it opens Messages with the
+     text already written, so delivery needs no backend. The link carries the
+     submit-scope key only - whoever gets it can file a report and nothing
+     else. */
+  function wireSendForm() {
+    var btn = $('#send-insp'), form = $('#send-form');
+    if (!btn || !form) return;
+    btn.onclick = function () { form.classList.toggle('hide'); };
+    $('#si-cancel').onclick = function () { form.classList.add('hide'); };
+    $('#si-send').onclick = function () {
+      var name  = $('#si-name').value.trim();
+      var phone = $('#si-phone').value.trim();
+      var err = $('#si-err');
+      if (!phone) { err.textContent = 'A phone number is required.'; return; }
+      err.textContent = '';
+      var link = new URL('inspect.html?k=' + encodeURIComponent(C.inspectKey),
+                         location.href).href;
+      var msg = (name ? 'Hi ' + name + ', ' : '') + 'please complete the ' +
+        C.contractor + ' ' + templateTitle(C.creekside.templateCode) + ': ' + link;
+      location.href = 'sms:' + phone.replace(/[^+\d]/g, '') +
+        '?&body=' + encodeURIComponent(msg);
+      toast('Opening Messages…');
+      form.classList.add('hide');
+    };
+  }
+
   function mountFilter(host, key, onChange) {
     var f = STATE.filters[key];
     host.innerHTML =
@@ -805,6 +832,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('.filter-mount'), function (host) {
       mountFilter(host, host.dataset.filter, renderHome);
     });
+    wireSendForm();
 
     $('#job-add-toggle').onclick = function () { $('#job-form').classList.toggle('hide'); };
     $('#j-cancel').onclick = function () { $('#job-form').classList.add('hide'); };
