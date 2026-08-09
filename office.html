@@ -3618,6 +3618,16 @@ document.addEventListener('keydown', e => {
       'background:#fff;border-radius:7px;padding:5px 10px;font:inherit;font-size:12px;' +
       'font-weight:700;cursor:pointer">Sign out</button>';
     if (side) side.appendChild(box);
+    // link back to the phone build, same sign-in
+    if (side && !document.getElementById('live-to-phone')) {
+      var ph = document.createElement('a');
+      ph.id = 'live-to-phone';
+      ph.href = 'index.html';
+      ph.textContent = '\u2190 Phone view';
+      ph.style.cssText = 'display:block;padding:9px 14px;font-size:12px;font-weight:700;' +
+        'color:#1e3a8a;text-decoration:none;border-top:1px solid #e5e7eb';
+      side.appendChild(ph);
+    }
     var b = document.getElementById('live-signout-btn');
     if (b) b.onclick = function () {
       if (!confirm('Sign out?')) return;

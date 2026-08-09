@@ -789,6 +789,7 @@
     };
     document.title = C.pageTitle;
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
+    var sw = $('#to-office'); if (sw) sw.classList.remove('hide');
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; })])
       .then(renderHome)
