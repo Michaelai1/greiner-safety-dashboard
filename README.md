@@ -62,13 +62,22 @@ one signs you in on the other. Same PIN, same session, one origin.
 ### Add or change a person
 
 ```sql
-select cs_portal_set_user('greiner', 'Tony Sweet', '418702', 'Safety');
-select cs_portal_set_user('greiner', 'Randy Greiner', '905513', 'Owner');
+select cs_portal_set_user('greiner', 'Tony Sweet', '4827', 'Safety');
+select cs_portal_set_user('greiner', 'Randy Greiner', '9153', 'Owner');
 ```
 
-Same call creates or updates. Minimum 6 digits, and it refuses a PIN already in
-use by someone else on that portal — otherwise the first matching hash would
-win and one person would silently sign in as another.
+Same call creates or updates. Minimum 4 digits. It refuses:
+
+- a PIN already used by someone else on that portal (otherwise the first
+  matching hash wins and one person silently signs in as another)
+- repeated or sequential digits — 0000, 1111, 1234, 4321 — which are what
+  actually gets guessed
+
+> A 4-digit PIN is 10,000 combinations, so the throttle carries the weight that
+> PIN length does not. Failures are capped at **5 per IP / 15 min**, and per
+> portal at **10 / 15 min, 20 / hour, 50 / day**. Fifty guesses a day is roughly
+> 200 days to walk the whole keyspace, ~100 expected. If you want more margin,
+> use 6 digits — `cs_portal_set_user` takes any length from 4 up.
 
 ```sql
 update cs_portal_users set active = false where slug='greiner' and name='Tony Sweet';
@@ -79,9 +88,10 @@ delete from cs_portal_sessions where user_name = 'Tony Sweet';   -- kick them no
 
 The user enters their PIN. It goes to `cs_portal_login(slug, pin)`, which:
 
-- rate limits **before** checking anything: 8 failures per IP or 25 per portal in
-  15 minutes and it stops answering. The client IP comes from
-  `x-forwarded-for`, which PostgREST does expose to RPCs.
+- rate limits **before** checking anything, across four stacked windows: 5
+  failures per IP in 15 min, and per portal 10 / 15 min, 20 / hour, 50 / day.
+  The client IP comes from `x-forwarded-for`, which PostgREST does expose to
+  RPCs.
 - walks the portal's active users and compares against each **bcrypt hash**
   (`extensions.crypt`); no PIN is ever stored
 - returns a random 32-byte session, good for 30 days, recorded in
