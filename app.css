@@ -35,6 +35,8 @@ h1,h2,h3{margin:0;line-height:1.2}
 .mark{width:34px;height:34px;border-radius:8px;background:var(--gold);color:var(--navy);
   display:grid;place-items:center;font-weight:800;font-size:.9rem;flex:0 0 auto}
 .hdr h1{font-size:1rem;font-weight:700;letter-spacing:-.01em}
+.signout{flex:0 0 auto;min-height:36px;padding:.35rem .7rem;border:1px solid var(--navy-3);
+  border-radius:8px;background:transparent;color:var(--grey);font-size:.75rem;font-weight:700}
 .hdr .by{font-size:.6875rem;color:var(--grey);letter-spacing:.06em;text-transform:uppercase}
 
 /* gate */

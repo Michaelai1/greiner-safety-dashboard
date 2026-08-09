@@ -34,6 +34,10 @@
   function setSession(obj) {
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(obj)); } catch (e) {}
   }
+  function sessionUser() {
+    try { return (JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {}).user || ''; }
+    catch (e) { return ''; }
+  }
   function clearSession() {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   }
@@ -771,7 +775,18 @@
 
   function boot() {
     $('#app-title').textContent = C.pageTitle;
-    $('#app-by').textContent = 'Prepared by ' + C.brand;
+    var who = sessionUser();
+    $('#app-by').textContent = who
+      ? 'Signed in as ' + who + ' · ' + C.brand
+      : 'Prepared by ' + C.brand;
+
+    $('#signout').onclick = function () {
+      if (!confirm('Sign out of this dashboard?')) return;
+      var sess = getSession();
+      clearSession();
+      if (sess) post('cs_portal_logout', { p_token: sess }).catch(function () {});
+      location.reload();
+    };
     document.title = C.pageTitle;
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
 

@@ -5,8 +5,9 @@ Two static pages. No build step. Deployed on GitHub Pages at
 
 | File | What it is |
 |---|---|
-| `index.html` | The dashboard Tony opens. Reports, Inspections, Jobs, Certifications, Safety Stats, Documents, Written Programs. |
-| `inspect.html` | The Safety 101 form. Opens preloaded as the inspector, no login. |
+| `index.html` | The **phone** dashboard. Reports, Inspections, Jobs, Certifications. |
+| `office.html` | The **desk** view. Everything above plus Findings, Documents, OSHA/TRIR/DART/EMR entry, prequal PDF. |
+| `inspect.html` | The site safety form. Opens preloaded as the inspector, no login. |
 | `config.js` | **The only file you edit per contractor.** |
 | `app.css` / `app.js` / `inspect.js` | Shared, contractor-agnostic. Copy verbatim. |
 
@@ -43,14 +44,46 @@ Supabase anon key. The anon key on its own reaches nothing: every `cs_` table is
 RLS-locked, verified — a direct anon read of `cs_reports` returns zero rows and
 an anon insert is rejected.
 
+### One portal per contractor, one PIN per person
+
+Each contractor gets its own subdomain, its own copy of this repo, and its own
+`slug`. A PIN from one portal does nothing on another — different slug,
+different company, and the login only ever looks at users on the slug it was
+handed.
+
+Inside a portal, **every person has their own PIN**, in `cs_portal_users`. That
+is what makes sessions say *Tony Sweet* rather than *someone at Greiner*, lets
+you revoke one person without changing anyone else's code, and puts a real name
+on submitted work. Greiner currently has one user: Tony Sweet.
+
+`index.html` and `office.html` ship from the same deployment, so signing in on
+one signs you in on the other. Same PIN, same session, one origin.
+
+### Add or change a person
+
+```sql
+select cs_portal_set_user('greiner', 'Tony Sweet', '418702', 'Safety');
+select cs_portal_set_user('greiner', 'Randy Greiner', '905513', 'Owner');
+```
+
+Same call creates or updates. Minimum 6 digits, and it refuses a PIN already in
+use by someone else on that portal — otherwise the first matching hash would
+win and one person would silently sign in as another.
+
+```sql
+update cs_portal_users set active = false where slug='greiner' and name='Tony Sweet';
+delete from cs_portal_sessions where user_name = 'Tony Sweet';   -- kick them now
+```
+
 ### Signing in
 
-The user enters a PIN. It goes to `cs_portal_login(slug, pin)`, which:
+The user enters their PIN. It goes to `cs_portal_login(slug, pin)`, which:
 
 - rate limits **before** checking anything: 8 failures per IP or 25 per portal in
   15 minutes and it stops answering. The client IP comes from
   `x-forwarded-for`, which PostgREST does expose to RPCs.
-- compares against a **bcrypt hash** (`extensions.crypt`), never a stored PIN
+- walks the portal's active users and compares against each **bcrypt hash**
+  (`extensions.crypt`); no PIN is ever stored
 - returns a random 32-byte session, good for 30 days, recorded in
   `cs_portal_sessions` with the IP and user agent that created it
 
@@ -67,7 +100,7 @@ it, and the database resolves it to exactly one `company_id`.
 
 | | Where it lives | What it can do |
 |---|---|---|
-| **PIN → session** | typed by the user, session in `localStorage` | Everything, for one company, 30 days |
+| **PIN → session** | typed by the person, session in `localStorage` | Everything, for one company, 30 days, tagged with their name |
 | **Inspect key** (`scope=submit`) | **in the URL**, `inspect.html?k=…` | Load the blank form, list job names, file one report. Nothing else. |
 
 `cs_portal_cid` accepts a session token for any scope, but a **static** token
@@ -102,12 +135,20 @@ delete from cs_portal_sessions where slug = 'greiner';          -- sign everyone
 update cs_portal_tokens set active = false where slug = 'greiner';  -- kill the portal
 ```
 
-### What this is not
+### What this is and is not
 
-One PIN per company, not per person. It proves *someone at Greiner* is holding
-the code; it does not tell you it was Tony. If you ever need per-person identity
-or a who-opened-what audit trail, that is Supabase Auth with a user per person,
-and the RPCs would take `auth.uid()` instead of a session token.
+Sessions record who signed in, from what IP, on what device:
+
+```sql
+select user_name, ip, left(user_agent,40), created_at, expires_at
+from cs_portal_sessions where slug='greiner' order by created_at desc;
+```
+
+What it does not do is prove the person at the keyboard is the person the PIN
+belongs to — if Tony reads his code out loud, whoever heard it is Tony as far
+as this is concerned. That is true of any PIN. If you ever need identity you can
+defend rather than just attribute, that is Supabase Auth with email and password
+per person, and the RPCs would take `auth.uid()` instead of a session token.
 
 ### Documents
 
