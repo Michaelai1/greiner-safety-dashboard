@@ -232,6 +232,8 @@
   function render() {
     $('#who-name').textContent = C.inspector;
     $('#who-co').textContent = C.contractor;
+    var w = $('#done-where');
+    if (w) w.textContent = 'It is on the ' + C.contractor + ' dashboard now.';
     $('#tpl-name').textContent = state.tpl.name || 'Inspection';
     $('#tpl-date').textContent = new Date().toLocaleDateString('en-US',
       { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });

@@ -9,6 +9,7 @@ window.CONFIG = {
   contractor:  'Greiner Brothers',
   brand:       'Creekside Safety',
   pageTitle:   'Greiner Brothers Safety Dashboard',
+  tagline:     'General contractor · Fishers, IN',   // sidebar subtitle, desk view
 
   /* --- sign-in ----------------------------------------------------------
      `slug` is PUBLIC. It is not a credential. It only names which portal to

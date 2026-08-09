@@ -27,7 +27,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b1120">
 <meta name="robots" content="noindex, nofollow">
-<title>Client Portal · Greiner Brothers Construction</title>
+<!-- overwritten from CONFIG.contractor before paint; this is only the fallback -->
+<title>Client Portal</title>
+<!-- The ONLY per-contractor file. Loaded before everything so the shell can
+     name itself; the <title> above is overwritten from CONFIG.contractor on
+     load, and is only what a search engine or a broken deploy would see. -->
+<script src="config.js"></script>
+<script>
+/* Name the shell from config.js. Runs before paint for the title, and on
+   DOMContentLoaded for the sidebar, so a copied repo needs no HTML edits. */
+(function () {
+  var c = window.CONFIG; if (!c) return;
+  if (c.contractor) document.title = 'Client Portal · ' + c.contractor;
+  document.addEventListener('DOMContentLoaded', function () {
+    var n = document.getElementById('client-name');
+    var s = document.getElementById('client-sub');
+    if (n && c.contractor) n.textContent = c.contractor;
+    if (s) s.textContent = c.tagline || 'General contractor';
+  });
+})();
+</script>
 <style>
   :root {
     --accent:    #1e3a8a;
@@ -545,7 +564,7 @@
       <button type="submit" class="login-btn">Send sign-in link</button>
     </form>
     <div class="login-mock-note">
-      <strong>Sales demo.</strong> Any email proceeds &mdash; you'll land as Greiner Brothers Construction.
+      <strong>Sales demo.</strong> Any email proceeds &mdash; you'll land as the sample client.
     </div>
     <div class="login-fine">
       Access is scoped to your company only. For access questions, contact Marc Carey at 317-339-8075.
@@ -558,8 +577,9 @@
 
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="client-name" id="client-name">Greiner Brothers Construction</div>
-      <div class="client-sub" id="client-sub">General contractor · Fishers, IN</div>
+      <!-- both filled from config.js on load, then from the live bundle -->
+      <div class="client-name" id="client-name">&nbsp;</div>
+      <div class="client-sub" id="client-sub">&nbsp;</div>
     </div>
 
     <nav class="sidebar-nav">
@@ -917,12 +937,20 @@ const CS_LOGO_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAp4AAACgCAIAA
   });
 })();
 
-const CLIENT = {
-  id: 'greiner',
-  name: 'Greiner Brothers Construction',
-  tagline: 'General contractor · Fishers, IN',
-  reportNumber: 'CS-GB-2026-Q3-004',
-};
+/* Seeded from config.js so a copied repo names itself. The live bundle
+   overwrites name/tagline the moment it lands; these are what shows for the
+   half second before that, and what the sales demo uses. */
+const CLIENT = (function () {
+  var c = window.CONFIG || {};
+  var name = c.contractor || 'Client';
+  return {
+    id: c.slug || 'client',
+    name: name,
+    tagline: c.tagline || 'General contractor',
+    reportNumber: 'CS-' + name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() +
+                  '-' + new Date().getFullYear(),
+  };
+})();
 
 const TODAY = new Date('2026-07-16T00:00:00');
 function daysAgo(n) { const d = new Date(TODAY); d.setDate(d.getDate() - n); return d; }
@@ -2696,16 +2724,35 @@ document.addEventListener('keydown', e => {
      ================================================================== -->
 <script>
 (function () {
+  /* Everything contractor-specific comes from config.js, the same file the
+     phone build reads. Nothing below this line names a contractor, so copying
+     this repo for the next one is a config.js edit and nothing else.
+
+     If config.js failed to load we stop rather than fall through to a default
+     tenant - showing one client another client's portal is the worst possible
+     failure here, so it fails loudly instead. */
+  var C = window.CONFIG;
+  if (!C || !C.creekside || !C.slug) {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML =
+        '<div style="padding:3rem;font:16px/1.6 -apple-system,sans-serif">' +
+        '<b>config.js did not load.</b><br>This portal cannot identify itself, ' +
+        'so it will not sign anyone in. Check that config.js sits next to ' +
+        'office.html.</div>';
+    });
+    return;
+  }
+
   var LIVE = {
-    url:     'https://gvfolfzseqwhhimbxgjv.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2Zm9sZnpzZXF3aGhpbWJ4Z2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzQzOTcsImV4cCI6MjA5OTcxMDM5N30.ZpJWG4a0evolcjxr36IDaA4o0pjRjw1cCGOWV9ofDE0',
+    url:     C.creekside.url,
+    anonKey: C.creekside.anonKey,
     // PUBLIC. Names the portal; it is not a credential. The PIN is checked
     // server side. There is deliberately no dashboard token in this file.
-    slug:    'greiner',
+    slug:    C.slug,
     token:   null,           // filled from the session after sign-in
     tg: {
-      url:     'https://tunkyqkgqzkgrbgrtroy.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1bmt5cWtncXprZ3JiZ3J0cm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk3NDMsImV4cCI6MjA5MDQ3NTc0M30.JE6LtWo9FhAvLpXOQnj2YWPatGMJo8ho3z6ghn7sc2w'
+      url:     (C.toolguard || {}).url,
+      anonKey: (C.toolguard || {}).anonKey
     }
   };
 
@@ -2758,8 +2805,8 @@ document.addEventListener('keydown', e => {
     // so "last 30 days" means the last 30 days
     try { TODAY.setTime(Date.now()); TODAY.setHours(0, 0, 0, 0); } catch (e) {}
 
-    CLIENT.id   = 'greiner';
-    CLIENT.name = (b.company && b.company.name) || 'Client';
+    CLIENT.id   = C.slug;
+    CLIENT.name = (b.company && b.company.name) || C.contractor || 'Client';
     CLIENT.tagline = 'Live data - Creekside Safety';
     CLIENT.reportNumber = 'CS-' + String(CLIENT.name).slice(0, 2).toUpperCase() +
       '-' + new Date().getFullYear();
