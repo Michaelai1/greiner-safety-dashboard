@@ -918,7 +918,7 @@ const CS_LOGO_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAp4AAACgCAIAA
 })();
 
 const CLIENT = {
-  id: 'griner',
+  id: 'greiner',
   name: 'Greiner Brothers Construction',
   tagline: 'General contractor · Fishers, IN',
   reportNumber: 'CS-GB-2026-Q3-004',
@@ -1009,23 +1009,23 @@ const UPCOMING = [
 ];
 
 const FINDINGS = [
-  { id:'f-01', reportId:'r-03', site:'s1', date:isoDate(daysAgo(4)),  description:'JHA missing signatures for two crew members on Monday shift.',                          severity:'medium', responsible:'Randy Griner',         due:isoDate(daysAgo(-3)), status:'open',   closed:null,                photos: 0, note:'Reminder issued to superintendent. Verification scheduled for next weekly walk.' },
+  { id:'f-01', reportId:'r-03', site:'s1', date:isoDate(daysAgo(4)),  description:'JHA missing signatures for two crew members on Monday shift.',                          severity:'medium', responsible:'Randy Greiner',         due:isoDate(daysAgo(-3)), status:'open',   closed:null,                photos: 0, note:'Reminder issued to superintendent. Verification scheduled for next weekly walk.' },
   { id:'f-02', reportId:'r-07', site:'s3', date:isoDate(daysAgo(11)), description:'Aerial lift #3 emergency-lower function not tested this month. Test-and-tag required.', severity:'low',    responsible:'Terry Fields',         due:isoDate(daysAgo(-8)), status:'open',   closed:null,                photos: 1, note:'Rental vendor scheduled to send certified technician.' },
   { id:'f-03', reportId:'r-11', site:'s3', date:isoDate(daysAgo(17)), description:'Trench spoil pile placed 24 inches from edge. Must be repositioned to 2-foot minimum.', severity:'high',   responsible:'Kyle Anderson',        due:isoDate(daysAgo(2)),  status:'open',   closed:null,                photos: 2, note:'Escalated. Anderson excavation crew on site tomorrow to correct.' },
   { id:'f-04', reportId:'r-11', site:'s3', date:isoDate(daysAgo(17)), description:'Excavation permit expired three days prior. New permit issued, retroactive.',           severity:'medium', responsible:'Marc Carey',           due:isoDate(daysAgo(15)), status:'closed', closed:isoDate(daysAgo(15)),photos: 0, note:'Closed same day. New permit filed with municipality.' },
-  { id:'f-05', reportId:'r-23', site:'s2', date:isoDate(daysAgo(50)), description:'Confined-space gas monitor calibration overdue by 15 days.',                            severity:'medium', responsible:'Bruce Griner',         due:isoDate(daysAgo(43)), status:'closed', closed:isoDate(daysAgo(41)),photos: 1, note:'Recalibrated and logged. Calibration sticker updated.' },
+  { id:'f-05', reportId:'r-23', site:'s2', date:isoDate(daysAgo(50)), description:'Confined-space gas monitor calibration overdue by 15 days.',                            severity:'medium', responsible:'Bruce Greiner',         due:isoDate(daysAgo(43)), status:'closed', closed:isoDate(daysAgo(41)),photos: 1, note:'Recalibrated and logged. Calibration sticker updated.' },
   { id:'f-06', reportId:'r-11', site:'s3', date:isoDate(daysAgo(17)), description:'GFCI tripping repeatedly on temporary power panel. Panel replacement required.',        severity:'high',   responsible:'Terry Fields',         due:isoDate(daysAgo(14)), status:'closed', closed:isoDate(daysAgo(14)),photos: 1, note:'Panel replaced within three hours. Verified with meter test.' },
-  { id:'f-07', reportId:'r-03', site:'s1', date:isoDate(daysAgo(4)),  description:'Delivery driver observed in active zone without hard hat.',                             severity:'low',    responsible:'Randy Griner',         due:isoDate(daysAgo(-3)), status:'closed', closed:isoDate(daysAgo(2)), photos: 0, note:'Verbal training given. Site signage refreshed at main gate.' },
+  { id:'f-07', reportId:'r-03', site:'s1', date:isoDate(daysAgo(4)),  description:'Delivery driver observed in active zone without hard hat.',                             severity:'low',    responsible:'Randy Greiner',         due:isoDate(daysAgo(-3)), status:'closed', closed:isoDate(daysAgo(2)), photos: 0, note:'Verbal training given. Site signage refreshed at main gate.' },
   { id:'f-08', reportId:'r-11', site:'s3', date:isoDate(daysAgo(17)), description:'Missing hearing protection signage at masonry saw approach.',                           severity:'low',    responsible:'Site Superintendent',  due:isoDate(daysAgo(10)), status:'closed', closed:isoDate(daysAgo(8)), photos: 0, note:'Signage installed. Dispenser mounted at approach.' },
 ];
 
 const WORKERS = [
-  { id:'w-01', name:'Randy Griner',   role:'Owner',                    certs:[
+  { id:'w-01', name:'Randy Greiner',   role:'Owner',                    certs:[
     { name:'OSHA 30',              exp:isoDate(daysAgo(-410)) },
     { name:'First Aid / CPR',      exp:isoDate(daysAgo(-190)) },
     { name:'Fall Protection',      exp:isoDate(daysAgo(-280)) },
   ]},
-  { id:'w-02', name:'Bruce Griner',   role:'Superintendent',           certs:[
+  { id:'w-02', name:'Bruce Greiner',   role:'Superintendent',           certs:[
     { name:'OSHA 30',              exp:isoDate(daysAgo(-70)) },
     { name:'Confined Space Entry', exp:isoDate(daysAgo(-45)) },
     { name:'First Aid / CPR',      exp:isoDate(daysAgo(-18)) },
@@ -1929,15 +1929,15 @@ let _findFiltered = [];
 // Clients get asked for exactly these by GCs and insurers, so they need to be
 // pullable as a PDF pack without asking Marc.
 const OUR_FORMS = [
-  { id:'of-01', date:isoDate(daysAgo(1)),  type:'JHA',              site:'s1', by:'Randy Griner',   status:'submitted', items:12, defects:0 },
+  { id:'of-01', date:isoDate(daysAgo(1)),  type:'JHA',              site:'s1', by:'Randy Greiner',   status:'submitted', items:12, defects:0 },
   { id:'of-02', date:isoDate(daysAgo(1)),  type:'Hot Work Permit',  site:'s3', by:'Terry Fields',   status:'submitted', items:14, defects:0 },
   { id:'of-03', date:isoDate(daysAgo(2)),  type:'Aerial Platform',  site:'s3', by:'Kyle Anderson',  status:'submitted', items:15, defects:1 },
-  { id:'of-04', date:isoDate(daysAgo(3)),  type:'JHA',              site:'s2', by:'Bruce Griner',   status:'submitted', items:12, defects:0 },
-  { id:'of-05', date:isoDate(daysAgo(4)),  type:'Forklift',         site:'s1', by:'Randy Griner',   status:'submitted', items:15, defects:0 },
+  { id:'of-04', date:isoDate(daysAgo(3)),  type:'JHA',              site:'s2', by:'Bruce Greiner',   status:'submitted', items:12, defects:0 },
+  { id:'of-05', date:isoDate(daysAgo(4)),  type:'Forklift',         site:'s1', by:'Randy Greiner',   status:'submitted', items:15, defects:0 },
   { id:'of-06', date:isoDate(daysAgo(6)),  type:'Pre-Trip DOT',     site:'s4', by:'Dale Wickham',   status:'submitted', items:16, defects:1 },
   { id:'of-07', date:isoDate(daysAgo(7)),  type:'Hot Work Permit',  site:'s2', by:'Terry Fields',   status:'submitted', items:14, defects:0 },
   { id:'of-08', date:isoDate(daysAgo(9)),  type:'JHA',              site:'s3', by:'Kyle Anderson',  status:'submitted', items:12, defects:0 },
-  { id:'of-09', date:isoDate(daysAgo(11)), type:'Aerial Platform',  site:'s1', by:'Randy Griner',   status:'submitted', items:15, defects:0 },
+  { id:'of-09', date:isoDate(daysAgo(11)), type:'Aerial Platform',  site:'s1', by:'Randy Greiner',   status:'submitted', items:15, defects:0 },
   { id:'of-10', date:isoDate(daysAgo(13)), type:'JHA',              site:'s4', by:'Dale Wickham',   status:'submitted', items:12, defects:0 },
 ];
 let _formsFiltered = [];
@@ -2275,7 +2275,7 @@ function digestNumbers() {
 // client must never see their own near-miss count framed as a black mark, or
 // the reporting stops and the number becomes worthless.
 let NEAR_MISSES = [
-  { id:'nm-1', date:isoDate(daysAgo(2)),  description:'Load swung over the walkway while two guys were passing underneath. Spotter added.', site:'s1', by:'Randy Griner' },
+  { id:'nm-1', date:isoDate(daysAgo(2)),  description:'Load swung over the walkway while two guys were passing underneath. Spotter added.', site:'s1', by:'Randy Greiner' },
   { id:'nm-2', date:isoDate(daysAgo(9)),  description:'Extension cord run through a doorway, nearly tripped a delivery driver. Rerouted overhead.', site:'s3', by:'' },
   { id:'nm-3', date:isoDate(daysAgo(16)), description:'Ladder set on soft ground started to sink. Moved to plywood pad.', site:'s2', by:'Terry Fields' },
 ];
