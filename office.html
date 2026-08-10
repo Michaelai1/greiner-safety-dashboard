@@ -3112,32 +3112,90 @@ document.addEventListener('keydown', e => {
     if (!host) return;
     host.style.display = '';
 
+    /* What SHOULD be in each folder — the checklist a carrier, GC or auditor
+       works from. A required item with no matching file renders as a red
+       Missing row, so the folder reads as a gap list, not just storage.
+       Files are matched to items by filename keywords; anything unmatched
+       still lists under "Also in this folder", so nothing ever disappears. */
+    var DOC_CHECK = {
+      'OSHA 300 Logs': [
+        { it: 'OSHA 300 Log — injury & illness log', re: /300(?!\s*a)/i, req: true }],
+      'OSHA 300A': [
+        { it: 'OSHA 300A Annual Summary (posted Feb 1 – Apr 30)', re: /300\s*a/i, req: true }],
+      'Insurance': [
+        { it: 'General Liability certificate', re: /\bgl\b|general|liab|coi/i, req: true },
+        { it: 'Workers’ Comp certificate', re: /comp|\bwc\b/i, req: true },
+        { it: 'EMR letter', re: /emr|mod/i, req: true }],
+      'Written Programs': [
+        { it: 'Safety & Health Manual', re: /manual|handbook|health/i, req: true },
+        { it: 'Fall Protection Program', re: /fall/i, req: true },
+        { it: 'Excavation / Trenching Program', re: /excav|trench/i, req: true },
+        { it: 'Hazard Communication', re: /hazcom|hazard/i, req: false },
+        { it: 'Emergency Action Plan', re: /emergency|eap/i, req: false }],
+      'Other': []
+    };
+    function fileRow(d) {
+      return '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;' +
+        'padding:7px 0 7px 14px;font-size:12.5px">' +
+        '<span><b>' + esc(d.filename) + '</b> ' +
+        '<span style="color:#6b7280;font-size:11.5px">' + fmtDate(String(d.created_at).slice(0, 10)) +
+        (d.size_bytes ? ' · ' + Math.max(1, Math.round(d.size_bytes / 1024)) + ' KB' : '') + '</span></span>' +
+        '<span style="flex-shrink:0;display:flex;gap:6px">' +
+          '<button onclick="liveDocDownload(\'' + esc(d.path) + '\')" style="border:1px solid #d1d5db;' +
+          'background:#fff;border-radius:7px;padding:4px 9px;font:inherit;font-size:11.5px;' +
+          'font-weight:700;cursor:pointer">Download</button>' +
+          '<button onclick="liveDocDelete(\'' + d.id + '\',\'' + esc(d.path) + '\')" ' +
+          'style="border:1px solid #d1d5db;background:#fff;color:#991b1b;border-radius:7px;' +
+          'padding:4px 9px;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer">Delete</button>' +
+        '</span></div>';
+    }
+    var reqMissingTotal = 0;
     var cats = DOC_CATS.map(function (cat) {
       var mine = LIVE_DOCS.filter(function (d) { return d.category === cat; });
-      var files = mine.length ? mine.map(function (d) {
-        return '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;' +
-          'padding:8px 0;border-bottom:1px solid #eef0f3;font-size:13px">' +
-          '<span><b>' + esc(d.filename) + '</b><br>' +
-          '<span style="color:#6b7280;font-size:12px">' + fmtDate(String(d.created_at).slice(0, 10)) +
-          (d.size_bytes ? ' · ' + Math.max(1, Math.round(d.size_bytes / 1024)) + ' KB' : '') + '</span></span>' +
-          '<span style="flex-shrink:0;display:flex;gap:6px">' +
-            '<button onclick="liveDocDownload(\'' + esc(d.path) + '\')" style="border:1px solid #d1d5db;' +
-            'background:#fff;border-radius:7px;padding:5px 10px;font:inherit;font-size:12px;' +
-            'font-weight:700;cursor:pointer">Download</button>' +
-            '<button onclick="liveDocDelete(\'' + d.id + '\',\'' + esc(d.path) + '\')" ' +
-            'style="border:1px solid #d1d5db;background:#fff;color:#991b1b;border-radius:7px;' +
-            'padding:5px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer">Delete</button>' +
-          '</span></div>';
-      }).join('') : '<div style="padding:9px 0;color:#9ca3af;font-size:13px">Nothing uploaded</div>';
-
-      return '<div style="margin-bottom:16px">' +
+      var items = DOC_CHECK[cat] || [];
+      var claimed = {};
+      var itemRows = items.map(function (it) {
+        var matches = mine.filter(function (d) {
+          return !claimed[d.id] && it.re.test(d.filename || '');
+        });
+        matches.forEach(function (d) { claimed[d.id] = 1; });
+        var missing = !matches.length;
+        if (missing && it.req) reqMissingTotal++;
+        return '<div style="padding:7px 0;border-bottom:1px solid #eef0f3">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+            '<span style="font-size:13px;font-weight:600">' + esc(it.it) + '</span>' +
+            '<span style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+              (it.req
+                ? '<span style="font-size:10px;font-weight:800;letter-spacing:.04em;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:10px;padding:2px 8px">REQUIRED</span>'
+                : '<span style="font-size:10px;font-weight:700;background:#f3f4f6;color:#6b7280;border-radius:10px;padding:2px 8px">Recommended</span>') +
+              (missing
+                ? (it.req ? '<span style="font-size:12px;font-weight:800;color:#991b1b">Missing</span>'
+                          : '<span style="font-size:12px;color:#9ca3af">—</span>')
+                : '<span style="font-size:12px;font-weight:700;color:#15803d">On file</span>') +
+            '</span></div>' +
+          matches.map(fileRow).join('') +
+        '</div>';
+      }).join('');
+      var extras = mine.filter(function (d) { return !claimed[d.id]; });
+      var extraRows = extras.length
+        ? '<div style="padding-top:7px"><div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;' +
+          'text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Also in this folder</div>' +
+          extras.map(fileRow).join('') + '</div>'
+        : (!items.length && !mine.length
+            ? '<div style="padding:9px 0;color:#9ca3af;font-size:13px">Nothing uploaded</div>' : '');
+      var missCount = items.filter(function (it) {
+        return it.req && !mine.some(function (d) { return it.re.test(d.filename || ''); });
+      }).length;
+      return '<div style="margin-bottom:18px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:2px">' +
           '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;' +
-          'color:#1e3a8a">' + esc(cat) + '</div>' +
+          'color:#1e3a8a">' + esc(cat) +
+          (missCount ? ' <span style="color:#991b1b;text-transform:none;letter-spacing:0">· ' +
+            missCount + ' required missing</span>' : '') + '</div>' +
           '<button onclick="liveDocUpload(\'' + esc(cat) + '\')" style="border:1px solid #d1d5db;' +
           'background:#fff;border-radius:7px;padding:5px 11px;font:inherit;font-size:12px;' +
           'font-weight:700;cursor:pointer">Upload</button>' +
-        '</div>' + files + '</div>';
+        '</div>' + itemRows + extraRows + '</div>';
     }).join('');
 
     var yr = new Date().getFullYear();
@@ -3170,8 +3228,14 @@ document.addEventListener('keydown', e => {
       '</div>' +
       '<div class="card" style="margin-bottom:14px">' +
         '<div class="card-head"><div><div class="card-title">Files on record</div>' +
-        '<div class="card-sub">OSHA 300 and 300A logs, insurance certificates, written programs. ' +
-        'Private to ' + esc(CLIENT.name) + '.</div></div></div>' +
+        '<div class="card-sub">The checklist a carrier, GC or auditor works from. ' +
+        'Private to ' + esc(CLIENT.name) + '.</div></div>' +
+        (reqMissingTotal
+          ? '<span style="font-size:12px;font-weight:800;color:#991b1b;background:#fef2f2;' +
+            'border:1px solid #fecaca;border-radius:10px;padding:4px 11px;flex-shrink:0">' +
+            reqMissingTotal + ' required missing</span>'
+          : '<span style="font-size:12px;font-weight:700;color:#15803d;flex-shrink:0">Complete on required items</span>') +
+        '</div>' +
         '<div class="card-body">' + cats + '</div>' +
       '</div>' +
       '<input type="file" id="live-doc-file" style="position:absolute;width:1px;height:1px;opacity:0">';

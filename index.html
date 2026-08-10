@@ -122,6 +122,27 @@
         <div class="sec-h"><h2>Certifications</h2><span class="small muted" id="n-certs"></span></div>
         <p class="sec-note">Tap a name to see their certifications. Gold means expiring within 60 days.</p>
         <div id="list-certs"></div>
+        <button class="btn btn-out" id="cert-add-toggle">Add certification</button>
+        <div id="cert-form" class="card hide" style="margin-top:.7rem">
+          <div class="f-grid">
+            <div class="full"><label for="c-worker">Worker</label>
+              <input id="c-worker" type="text" list="cert-names" autocomplete="off" placeholder="Name">
+              <datalist id="cert-names"></datalist></div>
+            <div class="full"><label for="c-type">Certification</label>
+              <select id="c-type"></select></div>
+            <div class="full hide" id="c-other-wrap"><label for="c-other">Certification name</label>
+              <input id="c-other" type="text" placeholder="e.g. CDL Medical Card"></div>
+            <div><label for="c-issued">Issued</label>
+              <input id="c-issued" type="date"></div>
+            <div><label for="c-expires">Expires</label>
+              <input id="c-expires" type="date"></div>
+          </div>
+          <p class="err small" id="c-err" style="min-height:1em"></p>
+          <div class="btn-row">
+            <button class="btn btn-gold btn-sm" id="c-save">Save</button>
+            <button class="btn btn-out btn-sm" id="c-cancel">Cancel</button>
+          </div>
+        </div>
       </div>
     </section>
 

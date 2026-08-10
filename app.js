@@ -133,6 +133,26 @@
     return j ? (j.job_number + ' — ' + j.name) : '';
   }
 
+  /* Tie a free-text ToolGuard jobsite ("Purdue c800", "Purdue ASB", "Keith.
+     Purdue 800") back to a real job. Job-number stem is decisive; name words
+     back it up. Below the confidence bar we return null rather than guess —
+     filing a form under the wrong job is worse than leaving it unmatched. */
+  function jobFor(r) {
+    var txt = String(r.jobsite || '').toLowerCase();
+    if (!txt) return null;
+    var best = null, bestScore = 0;
+    ((STATE.bundle && STATE.bundle.jobs) || []).forEach(function (j) {
+      var score = 0;
+      var stem = String(j.job_number || '').toLowerCase().replace(/^c/, '').split('-')[0];
+      if (stem && stem.length >= 3 && txt.indexOf(stem) > -1) score += 5;
+      String(j.name || '').toLowerCase().split(/[^a-z0-9]+/).forEach(function (w) {
+        if (w.length >= 3 && txt.indexOf(w) > -1) score += 2;
+      });
+      if (score > bestScore) { bestScore = score; best = j; }
+    });
+    return bestScore >= 2 ? best : null;
+  }
+
   /* ---------- PDF ------------------------------------------------------
      Built as a real Blob so the iPhone share sheet can attach the file
      itself. Sharing a link instead would hand the portal token to whoever
@@ -461,10 +481,14 @@
     var title = (r.inspection_subtype ? String(r.inspection_subtype).toUpperCase() : 'Inspection') +
       (r.asset_id ? ' · ' + r.asset_id : '');
     left.appendChild(el('div', 'card-t', title));
+    // show the matched JOB, not the free-text site the inspector typed —
+    // "C800-2025 — Purdue Academic Bldg." instead of "Keith. Purdue 800"
+    var mj = jobFor(r);
     left.appendChild(el('div', 'card-s',
       fmtDate(r.inspection_date || r.submitted_at) +
       (r.inspector_name ? ' · ' + r.inspector_name : '') +
-      (r.jobsite ? ' · ' + r.jobsite : '')));
+      (mj ? ' · ' + mj.job_number + ' — ' + mj.name
+          : (r.jobsite ? ' · ' + r.jobsite : ''))));
     row.appendChild(left);
     row.appendChild(el('span', 'pill ' + (r.has_defects ? 'p-bad' : 'p-ok'),
       r.has_defects ? (r.defect_count || 0) + ' defect' : 'Clear'));
@@ -542,6 +566,82 @@
 
   // Builds the segmented control + custom range into a mount point. Ids are
   // namespaced by key so two of them can live on the same screen.
+  /* ---------- add a certification --------------------------------------
+     The common construction certs, each with its usual renewal cycle so
+     Expires prefills from Issued (editable — the card wins over the rule). */
+  var CERT_TYPES = [
+    ['OSHA 10', 5], ['OSHA 30', 5], ['First Aid / CPR', 2], ['Fall Protection', 2],
+    ['Forklift Operator', 3], ['Aerial / Scissor Lift', 3], ['Excavation Competent Person', 2],
+    ['Confined Space', 1], ['Hot Work', 1], ['Rigging & Signal Person', 2], ['Other…', 2]
+  ];
+  function wireCertForm() {
+    var btn = $('#cert-add-toggle'), form = $('#cert-form');
+    if (!btn || !form) return;
+    var typeSel = $('#c-type');
+    if (!typeSel.options.length) {
+      CERT_TYPES.forEach(function (t) {
+        var o = el('option', null, t[0]); o.value = t[0]; typeSel.appendChild(o);
+      });
+    }
+    function prefillExpiry() {
+      var iss = $('#c-issued').value;
+      if (!iss) return;
+      var years = (CERT_TYPES.filter(function (t) { return t[0] === typeSel.value; })[0] || [0, 2])[1];
+      var d = new Date(iss + 'T12:00:00');
+      d.setFullYear(d.getFullYear() + years);
+      $('#c-expires').value = d.toISOString().slice(0, 10);
+    }
+    typeSel.onchange = function () {
+      $('#c-other-wrap').classList.toggle('hide', typeSel.value !== 'Other…');
+      prefillExpiry();
+    };
+    $('#c-issued').onchange = prefillExpiry;
+    btn.onclick = function () {
+      form.classList.toggle('hide');
+      if (!$('#c-issued').value) {
+        $('#c-issued').value = new Date().toISOString().slice(0, 10);
+        prefillExpiry();
+      }
+      // names already on file, so the same worker is never typed two ways
+      var dl = $('#cert-names');
+      dl.innerHTML = '';
+      var seen = {};
+      ((STATE.bundle && STATE.bundle.certs) || []).forEach(function (c2) { seen[c2.worker] = 1; });
+      ((STATE.bundle && STATE.bundle.jobs) || []).forEach(function (j) {
+        if (j.foreman_name) seen[j.foreman_name] = 1;
+      });
+      Object.keys(seen).sort().forEach(function (n) {
+        var o = el('option'); o.value = n; dl.appendChild(o);
+      });
+    };
+    $('#c-cancel').onclick = function () { form.classList.add('hide'); };
+    $('#c-save').onclick = function () {
+      var worker = $('#c-worker').value.trim();
+      var type = typeSel.value === 'Other…' ? $('#c-other').value.trim() : typeSel.value;
+      var err = $('#c-err');
+      if (!worker) { err.textContent = 'Whose certification is it?'; return; }
+      if (!type)   { err.textContent = 'Name the certification.'; return; }
+      if (!$('#c-expires').value) { err.textContent = 'When does it expire?'; return; }
+      err.textContent = '';
+      var save = $('#c-save');
+      save.disabled = true; save.textContent = 'Saving…';
+      rpc('cs_portal_add_cert', {
+        p_worker: worker, p_cert_type: type,
+        p_issued: $('#c-issued').value || null, p_expires: $('#c-expires').value
+      }).then(function (res) {
+        if (res && res.ok === false) throw new Error(res.error || 'save failed');
+        form.classList.add('hide');
+        $('#c-worker').value = ''; $('#c-other').value = '';
+        toast('Certification added');
+        return refresh();
+      }).catch(function (e) {
+        err.textContent = /find the function|does not exist|schema cache|404/i.test(e.message)
+          ? 'Server function missing — run sql/2026-08-10-add-cert.sql in Supabase first.'
+          : e.message;
+      }).then(function () { save.disabled = false; save.textContent = 'Save'; });
+    };
+  }
+
   /* ---------- send the inspection link by text -------------------------
      Name + phone, and the link goes out over SMS: it opens Messages with the
      text already written, so delivery needs no backend. The link carries the
@@ -712,6 +812,15 @@
       sum.appendChild(el('div', null, 'Reports on this job'));
       sum.appendChild(el('div', 'card-s', String(reps.length)));
       body.appendChild(sum);
+      // crew inspections tied to this job via the jobsite matcher
+      var crewOn = (STATE.tg || []).filter(function (r) {
+        var m = jobFor(r); return m && m.id === j.id;
+      });
+      var ci = el('div', 'cert');
+      ci.appendChild(el('div', null, 'Crew inspections on this job'));
+      ci.appendChild(el('div', 'card-s', crewOn.length +
+        (crewOn.length ? ' · last ' + fmtDate(crewOn[0].inspection_date || crewOn[0].submitted_at) : '')));
+      body.appendChild(ci);
       btn.onclick = function () {
         var open = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', String(!open));
@@ -833,6 +942,7 @@
       mountFilter(host, host.dataset.filter, renderHome);
     });
     wireSendForm();
+    wireCertForm();
 
     $('#job-add-toggle').onclick = function () { $('#job-form').classList.toggle('hide'); };
     $('#j-cancel').onclick = function () { $('#job-form').classList.add('hide'); };
