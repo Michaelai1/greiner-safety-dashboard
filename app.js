@@ -883,13 +883,36 @@
       var err = $('#si-err');
       if (!phone) { err.textContent = 'A phone number is required.'; return; }
       err.textContent = '';
+      var link = C.qrUrl || location.origin;
       var msg = (name ? 'Hi ' + name + ', ' : '') + C.contractor +
-        ' site forms — JHA, hot work, equipment checks are all at this link: ' +
-        (C.qrUrl || location.origin);
-      location.href = 'sms:' + phone.replace(/[^+\d]/g, '') +
-        '?&body=' + encodeURIComponent(msg);
+        ' site forms — JHA, hot work, equipment checks are all here: ' + link;
+      var digits = phone.replace(/[^+\d]/g, '');
+
+      // Show the link + message right here first, so it NEVER silently fails:
+      // on a computer sms: does nothing, and some iPhones drop the body. This
+      // way the link is always visible, tappable, and copyable.
+      var res = $('#si-result');
+      res.classList.remove('hide');
+      res.innerHTML =
+        '<a class="btn btn-gold btn-sm" href="' + esc(link) + '" target="_blank" ' +
+          'rel="noopener" style="width:100%;text-decoration:none">Open the forms link</a>' +
+        '<button class="btn btn-out btn-sm" id="si-copy" style="width:100%;margin-top:.4rem">Copy the text message</button>' +
+        '<p class="small muted" style="margin-top:.5rem">Opening Messages to ' + esc(phone) +
+        '… if it does not open, tap <b>Copy</b> and paste it into a text.</p>';
+      $('#si-copy').onclick = function () {
+        var done = function () { toast('Copied — paste into a text'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(msg).then(done).catch(done);
+        } else {
+          var t = el('textarea'); t.value = msg; document.body.appendChild(t);
+          t.select(); try { document.execCommand('copy'); } catch (e) {}
+          t.remove(); done();
+        }
+      };
+      // iOS-correct format: number then &body= (a '?' before body breaks it on
+      // some iOS versions and is what dropped the link before).
+      location.href = 'sms:' + digits + '&body=' + encodeURIComponent(msg);
       toast('Opening Messages…');
-      form.classList.add('hide');
     };
   }
 
