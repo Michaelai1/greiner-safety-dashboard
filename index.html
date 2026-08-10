@@ -47,27 +47,22 @@
 
   <main class="wrap">
 
-    <!-- Shown only on a wide screen: this build is phone-first, the desk view
-         has Findings, Documents and the numbers entry. -->
-    <a class="switch-view hide" id="to-office" href="office.html">
-      On a computer? Open the full desk view &rarr;
-    </a>
-
     <!-- ---------- HOME: reports + inspections ---------- -->
     <section id="p-home" class="panel">
       <div class="sec">
         <a class="btn btn-gold" id="start-inspection" href="#">Start Safety Inspection</a>
-        <button class="btn btn-out" id="send-insp" style="margin-top:.55rem">Send inspection link</button>
+        <button class="btn btn-out" id="send-insp" style="margin-top:.55rem">Send forms to a crew</button>
         <div id="send-form" class="card hide" style="margin-top:.7rem">
           <div class="f-grid">
             <div><label for="si-name">Name</label>
               <input id="si-name" type="text" autocomplete="off" placeholder="Name"></div>
             <div><label for="si-phone">Phone</label>
               <input id="si-phone" type="tel" inputmode="tel" placeholder="317-555-0134"></div>
+            <div class="full"><label>Which forms</label><div id="si-tpls"></div></div>
           </div>
           <p class="err small" id="si-err" style="min-height:1em"></p>
           <div class="btn-row">
-            <button class="btn btn-gold btn-sm" id="si-send">Text the link</button>
+            <button class="btn btn-gold btn-sm" id="si-send">Text it</button>
             <button class="btn btn-out btn-sm" id="si-cancel">Cancel</button>
           </div>
         </div>

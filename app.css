@@ -48,12 +48,14 @@ h1,h2,h3{margin:0;line-height:1.2}
   border-radius:var(--radius);color:var(--paper)}
 .gate .err{color:var(--bad);font-size:.875rem;min-height:1.2rem;margin-top:.6rem}
 
-/* tabs */
-.tabs{display:flex;gap:.4rem;overflow-x:auto;padding:.6rem var(--pad);scrollbar-width:none;
+/* tabs — exactly three, so they share the width evenly instead of huddling
+   left like a scroll strip with nothing to scroll */
+.tabs{display:flex;gap:.4rem;padding:.6rem var(--pad);
   border-bottom:1px solid var(--line);background:var(--navy)}
-.tabs::-webkit-scrollbar{display:none}
-.tab{flex:0 0 auto;min-height:40px;padding:.5rem .9rem;border-radius:99px;border:1px solid var(--navy-3);
-  background:transparent;color:var(--grey);font-size:.875rem;font-weight:600;white-space:nowrap}
+.tab{flex:1 1 0;min-width:0;min-height:40px;padding:.5rem .4rem;border-radius:99px;
+  border:1px solid var(--navy-3);background:transparent;color:var(--grey);
+  font-size:.875rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  text-align:center}
 .tab[aria-selected="true"]{background:var(--gold);border-color:var(--gold);color:var(--navy)}
 
 /* buttons */
@@ -129,6 +131,12 @@ input:-webkit-autofill:focus{
 .doc-cat h3{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);
   margin-bottom:.5rem}
 .file-in{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+/* send-forms checkboxes */
+.check{display:flex;align-items:center;gap:.6rem;min-height:44px;padding:.5rem .7rem;
+  background:var(--navy);border:1px solid var(--navy-3);border-radius:10px;
+  margin-bottom:.45rem;font-size:.875rem;cursor:pointer}
+.check input{accent-color:var(--gold);width:18px;height:18px;flex:0 0 auto}
 
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(1.25rem + env(safe-area-inset-bottom));

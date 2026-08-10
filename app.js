@@ -642,26 +642,39 @@
     };
   }
 
-  /* ---------- send the inspection link by text -------------------------
-     Name + phone, and the link goes out over SMS: it opens Messages with the
-     text already written, so delivery needs no backend. The link carries the
-     submit-scope key only - whoever gets it can file a report and nothing
-     else. */
+  /* ---------- send field forms to a crew --------------------------------
+     Name + phone + tick the forms (JHA, hot work, equipment checks), and
+     Messages opens with the request written and the crew QR-app link. The
+     full Safety Inspection is deliberately NOT here — that is Tony's own
+     walk, started from the gold button, never texted to a crew. */
+  var CREW_FORMS = ['JHA', 'Hot Work Permit', 'Aerial Platform Inspection',
+                    'Forklift Inspection', 'Daily Log', 'Report an Issue'];
   function wireSendForm() {
     var btn = $('#send-insp'), form = $('#send-form');
     if (!btn || !form) return;
+    var host = $('#si-tpls');
+    if (host && !host.children.length) {
+      CREW_FORMS.forEach(function (f) {
+        var lab = el('label', 'check');
+        var cb = el('input'); cb.type = 'checkbox'; cb.value = f;
+        lab.appendChild(cb);
+        lab.appendChild(el('span', null, f));
+        host.appendChild(lab);
+      });
+    }
     btn.onclick = function () { form.classList.toggle('hide'); };
     $('#si-cancel').onclick = function () { form.classList.add('hide'); };
     $('#si-send').onclick = function () {
       var name  = $('#si-name').value.trim();
       var phone = $('#si-phone').value.trim();
+      var picked = Array.prototype.filter.call(form.querySelectorAll('.check input'),
+        function (c2) { return c2.checked; }).map(function (c2) { return c2.value; });
       var err = $('#si-err');
-      if (!phone) { err.textContent = 'A phone number is required.'; return; }
+      if (!phone)         { err.textContent = 'A phone number is required.'; return; }
+      if (!picked.length) { err.textContent = 'Tick at least one form.'; return; }
       err.textContent = '';
-      var link = new URL('inspect.html?k=' + encodeURIComponent(C.inspectKey),
-                         location.href).href;
-      var msg = (name ? 'Hi ' + name + ', ' : '') + 'please complete the ' +
-        C.contractor + ' ' + templateTitle(C.creekside.templateCode) + ': ' + link;
+      var msg = (name ? 'Hi ' + name + ', ' : '') + 'please complete on site: ' +
+        picked.join(', ') + ' — ' + (C.qrUrl || location.origin);
       location.href = 'sms:' + phone.replace(/[^+\d]/g, '') +
         '?&body=' + encodeURIComponent(msg);
       toast('Opening Messages…');
@@ -821,6 +834,53 @@
       ci.appendChild(el('div', 'card-s', crewOn.length +
         (crewOn.length ? ' · last ' + fmtDate(crewOn[0].inspection_date || crewOn[0].submitted_at) : '')));
       body.appendChild(ci);
+
+      // edit the job in place: address, foreman, phone, name, number
+      var editBtn = el('button', 'btn btn-out btn-sm', 'Edit job');
+      editBtn.style.marginTop = '.6rem';
+      var editForm = el('div', 'hide');
+      editForm.style.marginTop = '.6rem';
+      function field(lbl, val, type) {
+        var wrap2 = el('div');
+        var l2 = el('label', null, lbl);
+        l2.style.cssText = 'display:block;font-size:.75rem;color:var(--grey);margin:.5rem 0 .25rem';
+        var inp = el('input');
+        inp.type = type || 'text'; inp.value = val || '';
+        wrap2.appendChild(l2); wrap2.appendChild(inp);
+        return { wrap: wrap2, inp: inp };
+      }
+      var fName = field('Job name', j.name), fNum = field('Job number', j.job_number),
+          fAddr = field('Address', j.address),
+          fFore = field('Foreman', j.foreman_name),
+          fPhone = field('Foreman phone', j.foreman_phone, 'tel');
+      [fName, fNum, fAddr, fFore, fPhone].forEach(function (f) { editForm.appendChild(f.wrap); });
+      var eErr = el('p', 'err small'); eErr.style.minHeight = '1em';
+      editForm.appendChild(eErr);
+      var eRow = el('div', 'btn-row');
+      var eSave = el('button', 'btn btn-gold btn-sm', 'Save');
+      var eCancel = el('button', 'btn btn-out btn-sm', 'Cancel');
+      eRow.appendChild(eSave); eRow.appendChild(eCancel);
+      editForm.appendChild(eRow);
+      editBtn.onclick = function () { editForm.classList.toggle('hide'); };
+      eCancel.onclick = function () { editForm.classList.add('hide'); };
+      eSave.onclick = function () {
+        if (!fName.inp.value.trim()) { eErr.textContent = 'Job name is required.'; return; }
+        eErr.textContent = '';
+        eSave.disabled = true; eSave.textContent = 'Saving…';
+        rpc('cs_portal_update_job', {
+          p_job_id: j.id, p_name: fName.inp.value.trim(),
+          p_job_number: fNum.inp.value.trim(), p_address: fAddr.inp.value.trim(),
+          p_foreman_name: fFore.inp.value.trim(), p_foreman_phone: fPhone.inp.value.trim()
+        }).then(function () {
+          toast('Job updated');
+          return refresh();
+        }).catch(function (e) {
+          eErr.textContent = e.message;
+          eSave.disabled = false; eSave.textContent = 'Save';
+        });
+      };
+      body.appendChild(editBtn);
+      body.appendChild(editForm);
       btn.onclick = function () {
         var open = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', String(!open));
@@ -925,7 +985,6 @@
     };
     document.title = C.pageTitle;
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
-    var sw = $('#to-office'); if (sw) sw.classList.remove('hide');
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; })])
       .then(renderHome)

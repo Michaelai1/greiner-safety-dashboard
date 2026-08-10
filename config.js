@@ -51,6 +51,11 @@ window.CONFIG = {
   inspector:  'Tony Sweet',
   inspectKey: '720abf2f713292291b23cb0ddf0d3304acc20265e8ed768f',
 
+  /* --- Crew QR app -----------------------------------------------------
+     Where the crew field forms live (JHA, hot work, equipment checks).
+     "Send forms to a crew" texts this link with the requested forms named. */
+  qrUrl: 'https://michaelai1.github.io/greiner-QR/',
+
   /* --- Jobs -------------------------------------------------------------
      defaultJobNumber preselects the job picker on inspect.html.          */
   defaultJobNumber: 'C800-2025',
