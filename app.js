@@ -566,6 +566,174 @@
 
   // Builds the segmented control + custom range into a mount point. Ids are
   // namespaced by key so two of them can live on the same screen.
+  /* ---------- findings & corrective actions ----------------------------
+     Same rule as the desk: findings are DERIVED from what was flagged (report
+     lines + crew forms), only the response is stored. Tony can close one out
+     standing on site: what was done, photo, one tap. */
+  var FINDINGS = [];
+  function addDays(d, n) {
+    var x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n);
+    return x.toISOString().slice(0, 10);
+  }
+  function loadFindings() {
+    var reps = ((STATE.bundle && STATE.bundle.reports) || [])
+      .filter(function (r) { return (r.defect_count || 0) > 0; });
+    var savedP = rpc('cs_portal_findings', {}).catch(function () { return {}; });
+    Promise.all([savedP].concat(reps.map(function (r) {
+      return rpc('cs_portal_report', { p_report_id: r.id }).catch(function () { return null; });
+    }))).then(function (all) {
+      var saved = all[0] || {};
+      var rows = [];
+      reps.forEach(function (r, i) {
+        var d = all[i + 1];
+        if (!d) return;
+        var answers = d.items || {};
+        ((d.fields || {}).sections || []).forEach(function (sec) {
+          (sec.items || []).forEach(function (it) {
+            var v = String(answers[it.id] == null ? '' : answers[it.id]).toLowerCase();
+            if (v !== (it.invert ? 'yes' : 'no')) return;
+            rows.push({ id: 'rf|' + r.id + '|' + it.id, description: it.label,
+              job_id: r.job_id, date: r.report_date, due: addDays(r.report_date, 7),
+              from: 'Safety report · ' + (r.inspector_name || ''), status: 'open' });
+          });
+        });
+      });
+      (STATE.tg || []).filter(function (r) { return r.has_defects; }).forEach(function (r) {
+        var mj = jobFor(r);
+        rows.push({ id: 'cf|' + r.id,
+          description: (r.inspection_subtype || r.form_type || 'Inspection') + ' — ' +
+            (r.defect_count || 1) + ' item' + ((r.defect_count || 1) === 1 ? '' : 's') + ' flagged',
+          job_id: mj && mj.id, date: String(r.inspection_date || r.submitted_at).slice(0, 10),
+          due: addDays(String(r.inspection_date || r.submitted_at).slice(0, 10), 7),
+          from: 'Crew form · ' + (r.inspector_name || ''), status: 'open' });
+      });
+      rows.forEach(function (f) {
+        var sv = saved[f.id];
+        if (!sv) return;
+        f.status = sv.status === 'closed' ? 'closed' : 'open';
+        f.action = sv.action; f.photos = sv.photos || [];
+        f.closed = String(sv.updated_at || '').slice(0, 10);
+        f.closed_by = sv.closed_by || '';
+      });
+      rows.sort(function (x, y) {
+        if (x.status !== y.status) return x.status === 'open' ? -1 : 1;
+        return String(y.date).localeCompare(String(x.date));
+      });
+      FINDINGS = rows;
+      renderFindings();
+    });
+  }
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var max = 1200, w = img.width, h2 = img.height;
+        if (w > max || h2 > max) {
+          var k = Math.min(max / w, max / h2);
+          w = Math.round(w * k); h2 = Math.round(h2 * k);
+        }
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h2;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h2);
+        resolve(cv.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  function renderFindings() {
+    var w = $('#list-findings'); if (!w) return;
+    w.innerHTML = '';
+    var open = FINDINGS.filter(function (f) { return f.status === 'open'; }).length;
+    $('#n-findings').textContent = FINDINGS.length
+      ? (open ? open + ' open' : 'all closed') : '';
+    if (!FINDINGS.length) {
+      w.appendChild(el('div', 'empty', 'Nothing flagged. That is the goal.'));
+      return;
+    }
+    FINDINGS.forEach(function (f, i) {
+      var card = el('div', 'card');
+      var btn = el('button', 'acc');
+      btn.setAttribute('aria-expanded', 'false');
+      var row = el('div', 'row');
+      var left = el('div');
+      left.appendChild(el('div', 'card-t', f.description));
+      left.appendChild(el('div', 'card-s',
+        (f.job_id ? jobName(f.job_id) + ' · ' : '') + fmtDate(f.date) + ' · ' + f.from));
+      row.appendChild(left);
+      var right = el('div', 'row');
+      var overdue = f.status === 'open' && new Date(f.due) < new Date();
+      right.appendChild(el('span', 'pill ' + (f.status === 'closed' ? 'p-ok'
+        : overdue ? 'p-bad' : 'p-warn'),
+        f.status === 'closed' ? 'Closed' : overdue ? 'Overdue' : 'Open'));
+      right.appendChild(el('span', 'chev', '›'));
+      row.appendChild(right);
+      btn.appendChild(row);
+
+      var body = el('div', 'acc-body hide');
+      if (f.status === 'closed') {
+        body.appendChild(el('div', 'card-s', '✓ Closed ' + fmtDate(f.closed) +
+          (f.closed_by ? ' by ' + f.closed_by : '')));
+        if (f.action) body.appendChild(el('div', null, f.action));
+        (f.photos || []).forEach(function (p2) {
+          var img = el('img');
+          img.src = p2;
+          img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--navy-3);margin-top:.5rem';
+          body.appendChild(img);
+        });
+      } else {
+        var lab = el('label', null, 'What was done about it');
+        lab.style.cssText = 'display:block;font-size:.75rem;color:var(--grey);margin-bottom:.25rem';
+        var ta = el('textarea');
+        ta.placeholder = 'e.g. Restocked the first-aid kit and mounted it at the gate';
+        var plab = el('label', null, 'Photo of the fix (optional)');
+        plab.style.cssText = 'display:block;font-size:.75rem;color:var(--grey);margin:.6rem 0 .25rem';
+        var pin = el('input');
+        pin.type = 'file'; pin.accept = 'image/*';
+        pin.setAttribute('capture', 'environment');
+        pin.style.fontSize = '.8125rem';
+        var errP = el('p', 'err small'); errP.style.minHeight = '1em';
+        var save = el('button', 'btn btn-gold btn-sm', 'Close it out');
+        save.style.marginTop = '.6rem';
+        save.onclick = function () {
+          var action = ta.value.trim();
+          if (!action) { errP.textContent = 'Say what was done.'; return; }
+          errP.textContent = '';
+          save.disabled = true; save.textContent = 'Saving…';
+          var file = pin.files && pin.files[0];
+          (file ? shrinkPhoto(file) : Promise.resolve(null)).then(function (dataUrl) {
+            return rpc('cs_portal_save_finding', {
+              p_key: f.id, p_action: action,
+              p_photos: dataUrl ? [dataUrl] : [],
+              p_by: sessionUser() || C.inspector
+            });
+          }).then(function (res) {
+            if (res && res.ok === false) throw new Error(res.error || 'save failed');
+            f.status = 'closed'; f.action = action;
+            f.closed = new Date().toISOString().slice(0, 10);
+            f.closed_by = sessionUser() || C.inspector;
+            toast('Finding closed');
+            renderFindings();
+          }).catch(function (e) {
+            errP.textContent = /find the function|does not exist|schema cache/i.test(e.message)
+              ? 'Run sql/2026-08-10-findings.sql in Supabase first.'
+              : e.message;
+            save.disabled = false; save.textContent = 'Close it out';
+          });
+        };
+        body.appendChild(lab); body.appendChild(ta);
+        body.appendChild(plab); body.appendChild(pin);
+        body.appendChild(errP); body.appendChild(save);
+      }
+      btn.onclick = function () {
+        var o = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!o));
+        body.classList.toggle('hide', o);
+      };
+      card.appendChild(btn); card.appendChild(body); w.appendChild(card);
+    });
+  }
+
   /* ---------- add a certification --------------------------------------
      The common construction certs, each with its usual renewal cycle so
      Expires prefills from Issued (editable — the card wins over the rule). */
@@ -936,7 +1104,7 @@
 
   /* ---------- tabs ---------------------------------------------------- */
   function show(tab) {
-    ['home', 'jobs', 'certs'].forEach(function (t) {
+    ['home', 'findings', 'jobs', 'certs'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
@@ -973,6 +1141,7 @@
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; })])
       .then(renderHome)
+      .then(loadFindings)
       .catch(function (e) {
         $('#list-reports').innerHTML = '';
         $('#list-reports').appendChild(el('div', 'empty', 'Could not load: ' + e.message));
