@@ -2005,7 +2005,7 @@ function renderOverviewSplit() {
         <div class="lbl">Findings raised</div><div class="val">${rf.length}</div>
         <div class="lbl">Findings closed</div><div class="val">${closed} of ${rf.length}${rf.length ? ' (' + Math.round(closed / rf.length * 100) + '%)' : ''}</div>
         <div class="lbl">Median time to closure</div><div class="val">${median === null ? '—' : median + ' days'}</div>
-        <div class="lbl">Written programs on file</div><div class="val">${PROGRAMS.length}</div>
+        <div class="lbl">Written programs on file</div><div class="val">${window._writtenPrograms != null ? window._writtenPrograms : PROGRAMS.length}</div>
       </div>`;
   } else {
     // The client's own compliance paperwork.
@@ -3082,6 +3082,8 @@ document.addEventListener('keydown', e => {
   function refreshDocs() {
     return bundle().then(function (b) {
       LIVE_DOCS = b.docs || [];
+      window._writtenPrograms = LIVE_DOCS.filter(function (d2) {
+        return d2.category === 'Written Programs'; }).length;
       swap(SAFETY_STATS, (b.stats || []).map(function (x) {
         return { year: x.year, recordables: x.recordables, dart_cases: x.dart_cases,
                  deaths: x.deaths || 0, total_hours: Number(x.total_hours), emr: x.emr };
@@ -3775,6 +3777,8 @@ document.addEventListener('keydown', e => {
       wireAddJob();
       if (typeof renderJobsites === 'function') renderJobsites();
       LIVE_DOCS = b.docs || [];
+      window._writtenPrograms = LIVE_DOCS.filter(function (d2) {
+        return d2.category === 'Written Programs'; }).length;
       renderLiveDocs();
       showWho();
       loadFindings();
