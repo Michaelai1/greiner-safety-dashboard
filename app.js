@@ -300,6 +300,33 @@
               y += 11;
             }
             y += 2.5;
+
+            // corrective action + fix photo for a flagged item
+            var fx = (rep._fixes || {})[it.id];
+            if (fx && bad) {
+              var box = doc.splitTextToSize('Corrective action: ' + fx.action, W - 60);
+              ensure(box.length * 11 + 16);
+              var boxTop = y - 2;
+              setF(8, true, GREEN);
+              doc.text('CORRECTIVE ACTION', M + 42, y + 6); y += 9;
+              setF(8.5, false, INK);
+              for (var ci = 0; ci < box.length; ci++) {
+                ensure(11); doc.text(box[ci], M + 42, y); y += 10;
+              }
+              if (fx.closed_by) {
+                setF(7.5, false, GREY);
+                doc.text('Closed by ' + fx.closed_by, M + 42, y); y += 9;
+              }
+              (fx.photos || []).forEach(function (p2) {
+                if (!p2 || String(p2).indexOf('data:image') !== 0) return;
+                ensure(96);
+                try { doc.addImage(p2, 'JPEG', M + 42, y, 120, 90); } catch (e) {}
+                y += 96;
+              });
+              doc.setDrawColor('#86efac');
+              doc.line(M + 38, boxTop, M + 38, y - 4);
+              y += 4;
+            }
           });
 
           if (sec.notes) {
@@ -394,7 +421,21 @@
 
   function withReport(id, fn) {
     toast('Preparing…');
-    rpc('cs_portal_report', { p_report_id: id }).then(fn).catch(function (e) { toast(e.message); });
+    // fetch the report AND the saved corrective actions, so the PDF can show
+    // each finding's fix + photo next to the item that was flagged
+    Promise.all([
+      rpc('cs_portal_report', { p_report_id: id }),
+      rpc('cs_portal_findings', {}).catch(function () { return {}; })
+    ]).then(function (res) {
+      var rep = res[0];
+      rep._fixes = {};
+      var saved = res[1] || {};
+      Object.keys(saved).forEach(function (k) {
+        var p = k.split('|');            // rf|reportId|itemId
+        if (p[0] === 'rf' && p[1] === id) rep._fixes[p[2]] = saved[k];
+      });
+      fn(rep);
+    }).catch(function (e) { toast(e.message); });
   }
 
   function downloadReport(id) {
@@ -456,10 +497,13 @@
     var c = el('div', 'card');
     var row = el('div', 'row');
     var left = el('div');
-    left.appendChild(el('div', 'card-t', templateTitle(r.template_code)));
+    // lead the card with the JOB so every report reads distinctly at a glance,
+    // not a wall of identical "Site Safety Inspection" titles
+    left.appendChild(el('div', 'card-t',
+      r.job_id ? jobName(r.job_id) : templateTitle(r.template_code)));
     left.appendChild(el('div', 'card-s',
-      fmtDate(r.report_date) + (r.inspector_name ? ' · ' + r.inspector_name : '') +
-      (r.job_id ? ' · ' + jobName(r.job_id) : '')));
+      templateTitle(r.template_code) + ' · ' + fmtDate(r.report_date) +
+      (r.inspector_name ? ' · ' + r.inspector_name : '')));
     row.appendChild(left);
     var ok = !r.has_defects;
     row.appendChild(el('span', 'pill ' + (ok ? 'p-ok' : 'p-bad'),
