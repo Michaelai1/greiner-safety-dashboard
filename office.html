@@ -2927,7 +2927,7 @@ document.addEventListener('keydown', e => {
 
     // No live source for these yet. Empty beats demo fiction sitting next to
     // real numbers, because nobody can tell which is which.
-    try { swap(FINDINGS, []); }  catch (e) {}
+    try { swap(FINDINGS, []); }  catch (e) {}   // filled async by loadFindings()
     try { swap(UPCOMING, []); }  catch (e) {}
     try { swap(MONTHLIES, []); } catch (e) {}
     try { swap(DIGESTS, []); }   catch (e) {}
@@ -3777,6 +3777,7 @@ document.addEventListener('keydown', e => {
       LIVE_DOCS = b.docs || [];
       renderLiveDocs();
       showWho();
+      loadFindings();
       banner(CLIENT.name + ' - ' + INSPECTIONS.length + ' reports - ' +
              OUR_FORMS.length + ' crew forms - ' + WORKERS.length + ' workers');
     });
@@ -3837,6 +3838,148 @@ document.addEventListener('keydown', e => {
     var form = card.querySelector('form');
     if (form) form.onsubmit = function (ev) { ev.preventDefault(); go(); };
   }
+
+  /* ---- FINDINGS: derived from what was actually flagged -----------------
+     A finding is a flagged line on a Creekside report or a flagged crew QR
+     form. Nothing is stored to CREATE one — only the response is saved
+     (cs_finding_actions): what was done, photos of the fix, closed by whom. */
+  function loadFindings() {
+    var reps = INSPECTIONS.filter(function (r) { return !r._tg && r.defects > 0; });
+    var saved = {};
+    var savedP = rpcWrite('cs_portal_findings', {}).catch(function () { return {}; });
+    Promise.all([savedP].concat(reps.map(function (r) { return fetchReportDetail(r.id); })))
+      .then(function (all) {
+        saved = all[0] || {};
+        var rows = [];
+        reps.forEach(function (r, i) {
+          var d = all[i + 1];
+          if (!d) return;
+          var answers = d.items || {};
+          var secs = (d.fields || {}).sections || [];
+          secs.forEach(function (sec) {
+            (sec.items || []).forEach(function (it) {
+              var v = String(answers[it.id] == null ? '' : answers[it.id]).toLowerCase();
+              if (v !== (it.invert ? 'yes' : 'no')) return;
+              var s2 = siteById(r.site);
+              rows.push({ id: 'rf|' + r.id + '|' + it.id, reportId: r.id,
+                site: r.site, date: r.date, description: it.label,
+                severity: 'medium', responsible: (s2 && s2.foreman) || 'Site crew',
+                due: addDays(r.date, 7), status: 'open', closed: null,
+                photos: 0, note: '' });
+            });
+          });
+        });
+        INSPECTIONS.filter(function (r) { return r._tg && r.defects > 0; })
+          .forEach(function (r) {
+            var s2 = siteById(r.site);
+            rows.push({ id: 'cf|' + String(r.id).slice(3), reportId: r.id,
+              site: r.site, date: r.date,
+              description: r.type + ' — ' + r.defects + ' item' +
+                (r.defects === 1 ? '' : 's') + ' flagged by ' +
+                (inspectorById(r.inspector) || {}).name,
+              severity: 'medium', responsible: (s2 && s2.foreman) || 'Site crew',
+              due: addDays(r.date, 7), status: 'open', closed: null,
+              photos: 0, note: '' });
+          });
+        rows.forEach(function (f) {
+          var sv = saved[f.id];
+          if (!sv) return;
+          f.correctiveAction = sv.action;
+          f.status = sv.status === 'closed' ? 'closed' : 'open';
+          f.closed = sv.status === 'closed' ? String(sv.updated_at || '').slice(0, 10) : null;
+          f._photos = sv.photos || [];
+          f.photos = f._photos.length;
+          f.note = sv.action;
+          f.correctedBy = sv.closed_by || '';
+        });
+        swap(FINDINGS, rows);
+        if (typeof renderFindings === 'function') renderFindings();
+        try { renderOverview(); } catch (e2) {}
+        try { renderJobsites(); } catch (e3) {}
+      });
+  }
+  function addDays(d, n) {
+    var x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n);
+    return x.toISOString().slice(0, 10);
+  }
+
+  /* Saving a corrective action closes the finding — Greiner IS the safety
+     department here, there is no consultant to wait on. Photo is downscaled
+     and stored as a data URL alongside the action. Nothing is claimed saved
+     until the database confirms. */
+  window.submitCorrective = function () {
+    var f = FINDINGS.filter(function (x) { return x.id === _corrFindingId; })[0];
+    var action = (document.getElementById('corr-action').value || '').trim();
+    if (!f) return;
+    if (!action) { toast('Say what was done about it.', 'warn'); return; }
+    var fileEl = document.getElementById('corr-photo');
+    var file = fileEl && fileEl.files && fileEl.files[0];
+    (file ? shrinkPhoto(file) : Promise.resolve(null)).then(function (dataUrl) {
+      return rpcWrite('cs_portal_save_finding', {
+        p_key: f.id, p_action: action,
+        p_photos: dataUrl ? [dataUrl] : [],
+        p_by: (loadSessionUser && loadSessionUser()) || 'Greiner'
+      }).then(function (res) {
+        if (res && res.ok === false) throw new Error(res.error || 'save failed');
+        f.correctiveAction = action;
+        f.status = 'closed';
+        f.closed = new Date().toISOString().slice(0, 10);
+        f._photos = dataUrl ? [dataUrl] : [];
+        f.photos = f._photos.length;
+        f.note = action;
+        closeCorrectiveSheet();
+        renderFindings();
+        try { renderOverview(); } catch (e2) {}
+        toast('Finding closed' + (dataUrl ? ' — photo attached' : ''), 'success');
+      });
+    }).catch(function (e) {
+      toast(/find the function|does not exist|schema cache/i.test(e.message)
+        ? 'Run sql/2026-08-10-findings.sql in Supabase first — nothing saved.'
+        : e.message, 'warn');
+    });
+  };
+  function loadSessionUser() {
+    try { return (JSON.parse(localStorage.getItem(SKEY) || '{}') || {}).user || ''; }
+    catch (e) { return ''; }
+  }
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var max = 1200, w = img.width, h2 = img.height;
+        if (w > max || h2 > max) {
+          var k = Math.min(max / w, max / h2); w = Math.round(w * k); h2 = Math.round(h2 * k);
+        }
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h2;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h2);
+        resolve(cv.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  /* saved photos + Greiner wording in the corrective sheet */
+  var _openCorrSheet = window.openCorrectiveSheet;
+  window.openCorrectiveSheet = function (id) {
+    _openCorrSheet.apply(this, arguments);
+    var f = FINDINGS.filter(function (x) { return x.id === id; })[0];
+    var ex = document.getElementById('corr-existing');
+    if (!f || !ex || ex.style.display === 'none') return;
+    if (f.status === 'closed') {
+      ex.innerHTML = '✓ Closed ' + esc(fmtDate(f.closed)) +
+        (f.correctedBy ? ' by ' + esc(f.correctedBy) : '') +
+        (f.correctiveAction ? '<div style="margin-top:5px;opacity:0.9">' +
+          esc(f.correctiveAction) + '</div>' : '');
+    }
+    (f._photos || []).forEach(function (p2) {
+      var img = document.createElement('img');
+      img.src = p2;
+      img.style.cssText = 'max-width:180px;border-radius:9px;border:1px solid #d8dee7;display:block;margin-top:8px';
+      ex.appendChild(img);
+    });
+  };
 
   // a merged crew row carries a tg- id; its drill is the crew-form viewer
   var _openReportDrill = window.openReportDrill;
