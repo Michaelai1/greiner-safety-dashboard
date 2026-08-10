@@ -686,12 +686,26 @@
         lab.style.cssText = 'display:block;font-size:.75rem;color:var(--grey);margin-bottom:.25rem';
         var ta = el('textarea');
         ta.placeholder = 'e.g. Restocked the first-aid kit and mounted it at the gate';
-        var plab = el('label', null, 'Photo of the fix (optional)');
-        plab.style.cssText = 'display:block;font-size:.75rem;color:var(--grey);margin:.6rem 0 .25rem';
+        /* No capture attribute: on iOS that forces camera-only. Without it,
+           tapping gives the native sheet — Photo Library / Take Photo. The
+           raw file input stays hidden; the button is the whole control. */
         var pin = el('input');
         pin.type = 'file'; pin.accept = 'image/*';
-        pin.setAttribute('capture', 'environment');
-        pin.style.fontSize = '.8125rem';
+        pin.className = 'file-in';
+        var pbtn = el('button', 'btn btn-out btn-sm', '📷 Add a photo of the fix');
+        pbtn.style.cssText = 'margin-top:.6rem;width:100%';
+        var pprev = el('div');
+        pbtn.onclick = function (ev) { ev.preventDefault(); pin.click(); };
+        pin.onchange = function () {
+          pprev.innerHTML = '';
+          var f2 = pin.files && pin.files[0];
+          if (!f2) { pbtn.textContent = '📷 Add a photo of the fix'; return; }
+          var img = el('img');
+          img.src = URL.createObjectURL(f2);
+          img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--navy-3);margin-top:.5rem';
+          pprev.appendChild(img);
+          pbtn.textContent = 'Change photo';
+        };
         var errP = el('p', 'err small'); errP.style.minHeight = '1em';
         var save = el('button', 'btn btn-gold btn-sm', 'Close it out');
         save.style.marginTop = '.6rem';
@@ -722,7 +736,7 @@
           });
         };
         body.appendChild(lab); body.appendChild(ta);
-        body.appendChild(plab); body.appendChild(pin);
+        body.appendChild(pin); body.appendChild(pbtn); body.appendChild(pprev);
         body.appendChild(errP); body.appendChild(save);
       }
       btn.onclick = function () {
