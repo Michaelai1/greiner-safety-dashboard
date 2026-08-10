@@ -3430,6 +3430,124 @@ document.addEventListener('keydown', e => {
     jobModal(JOBSITES.filter(function (j) { return j.id === id; })[0]);
   };
 
+  /* ---- Add certification (desk) ----------------------------------------
+     Mirrors the phone's flow through the same cs_portal_add_cert RPC. Common
+     construction certs preset, Expires prefills from Issued on the usual
+     renewal cycle (editable), plus a free-text Other. */
+  var DESK_CERT_TYPES = [
+    ['OSHA 10', 5], ['OSHA 30', 5], ['First Aid / CPR', 2], ['Fall Protection', 2],
+    ['Forklift Operator', 3], ['Aerial / Scissor Lift', 3], ['Excavation Competent Person', 2],
+    ['Confined Space', 1], ['Hot Work', 1], ['Rigging & Signal Person', 2], ['Other…', 2]
+  ];
+  function openCertModal() {
+    var wrap = document.createElement('div');
+    wrap.id = 'live-cert-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(11,17,32,.45);' +
+      'display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
+    var names = WORKERS.map(function (w) { return w.name; });
+    var fld = 'width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;' +
+      'border-radius:9px;font:inherit;font-size:14px';
+    var lbl = 'display:block;font-size:11px;font-weight:800;text-transform:uppercase;' +
+      'letter-spacing:.05em;color:#6b7280;margin:12px 0 5px';
+    wrap.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;' +
+      'box-shadow:0 18px 50px rgba(0,0,0,.25);overflow:hidden">' +
+        '<div style="padding:17px 22px;border-bottom:1px solid #e5e7eb;display:flex;' +
+        'justify-content:space-between;align-items:center;gap:14px">' +
+          '<div style="font-size:16px;font-weight:800">Add certification</div>' +
+          '<button onclick="document.getElementById(\'live-cert-modal\').remove()" ' +
+          'style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:6px 12px;' +
+          'font:inherit;font-size:13px;font-weight:700;cursor:pointer">Cancel</button></div>' +
+        '<div style="padding:6px 22px 22px">' +
+          '<label style="' + lbl + '">Worker</label>' +
+          '<input id="cm-worker" list="cm-names" autocomplete="off" placeholder="Name" style="' + fld + '">' +
+          '<datalist id="cm-names">' + names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+          '<label style="' + lbl + '">Certification</label>' +
+          '<select id="cm-type" style="' + fld + '">' +
+            DESK_CERT_TYPES.map(function (t) { return '<option value="' + esc(t[0]) + '">' + esc(t[0]) + '</option>'; }).join('') + '</select>' +
+          '<div id="cm-other-wrap" style="display:none"><label style="' + lbl + '">Certification name</label>' +
+            '<input id="cm-other" placeholder="e.g. CDL Medical Card" style="' + fld + '"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">' +
+            '<div><label style="' + lbl + '">Issued</label><input id="cm-issued" type="date" style="' + fld + '"></div>' +
+            '<div><label style="' + lbl + '">Expires</label><input id="cm-expires" type="date" style="' + fld + '"></div>' +
+          '</div>' +
+          '<div id="cm-err" style="display:none;margin:11px 0 0;color:#991b1b;font-size:13px"></div>' +
+          '<button id="cm-save" style="width:100%;margin-top:16px;border:none;border-radius:10px;' +
+          'background:#0f172a;color:#fff;padding:12px;font:inherit;font-size:14px;font-weight:800;cursor:pointer">Save certification</button>' +
+        '</div></div>';
+    document.body.appendChild(wrap);
+
+    var typeSel = document.getElementById('cm-type');
+    var iss = document.getElementById('cm-issued');
+    var exp = document.getElementById('cm-expires');
+    iss.value = new Date().toISOString().slice(0, 10);
+    function prefill() {
+      if (!iss.value) return;
+      var years = (DESK_CERT_TYPES.filter(function (t) { return t[0] === typeSel.value; })[0] || [0, 2])[1];
+      var d = new Date(iss.value + 'T12:00:00'); d.setFullYear(d.getFullYear() + years);
+      exp.value = d.toISOString().slice(0, 10);
+    }
+    typeSel.onchange = function () {
+      document.getElementById('cm-other-wrap').style.display = typeSel.value === 'Other…' ? '' : 'none';
+      prefill();
+    };
+    iss.onchange = prefill; prefill();
+
+    document.getElementById('cm-save').onclick = function () {
+      var v = function (id) { return document.getElementById(id).value.trim(); };
+      var worker = v('cm-worker');
+      var type = typeSel.value === 'Other…' ? v('cm-other') : typeSel.value;
+      var err = document.getElementById('cm-err');
+      if (!worker)     { err.textContent = 'Whose certification is it?'; err.style.display = ''; return; }
+      if (!type)       { err.textContent = 'Name the certification.'; err.style.display = ''; return; }
+      if (!v('cm-expires')) { err.textContent = 'When does it expire?'; err.style.display = ''; return; }
+      err.style.display = 'none';
+      this.disabled = true; this.textContent = 'Saving…';
+      var self = this;
+      rpcWrite('cs_portal_add_cert', { p_worker: worker, p_cert_type: type,
+        p_issued: v('cm-issued') || null, p_expires: v('cm-expires') })
+        .then(function (res) {
+          if (res && res.ok === false) throw new Error(res.error || 'save failed');
+          return bundle();
+        })
+        .then(function (b) {
+          var byWorker = {};
+          (b.certs || []).forEach(function (c) {
+            (byWorker[c.worker] = byWorker[c.worker] || []).push({
+              name: c.cert_type, exp: iso(c.expires), issued: iso(c.issued), note: c.notes || '' });
+          });
+          swap(WORKERS, Object.keys(byWorker).sort().map(function (n, i) {
+            return { id: 'w-' + i, name: n, role: '', certs: byWorker[n] };
+          }));
+          document.getElementById('live-cert-modal').remove();
+          if (typeof renderCerts === 'function') renderCerts();
+          banner('Certification added for ' + worker);
+        })
+        .catch(function (e) {
+          err.textContent = /find the function|does not exist|schema cache/i.test(e.message)
+            ? 'Run sql/RUN-ME-both.sql in Supabase first.' : e.message;
+          err.style.display = ''; self.disabled = false; self.textContent = 'Save certification';
+        });
+    };
+  }
+  function wireAddCert() {
+    if (typeof renderCerts !== 'function') return;
+    var orig = renderCerts;
+    window.renderCerts = function () {
+      orig.apply(this, arguments);
+      var host = document.getElementById('certs-list');
+      if (!host || document.getElementById('live-add-cert')) return;
+      var b = document.createElement('button');
+      b.id = 'live-add-cert';
+      b.textContent = '+  Add certification';
+      b.style.cssText = 'margin:0 18px 14px;border:1px dashed #94a3b8;background:#fff;' +
+        'border-radius:11px;padding:11px 18px;font:inherit;font-size:14px;font-weight:700;' +
+        'color:#1e3a8a;cursor:pointer';
+      b.onclick = openCertModal;
+      host.parentNode.insertBefore(b, host);
+    };
+  }
+
   // "Add job" above the jobsite grid
   function wireAddJob() {
     if (typeof renderJobsites !== 'function') return;
@@ -3775,6 +3893,7 @@ document.addEventListener('keydown', e => {
       }
       wireJobDrill();
       wireAddJob();
+      wireAddCert();
       if (typeof renderJobsites === 'function') renderJobsites();
       LIVE_DOCS = b.docs || [];
       window._writtenPrograms = LIVE_DOCS.filter(function (d2) {
