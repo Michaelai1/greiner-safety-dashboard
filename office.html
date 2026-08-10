@@ -637,7 +637,7 @@
       <!-- OVERVIEW -->
       <section class="view" id="view-overview">
         <div class="row row-4" style="margin-bottom:14px">
-          <div class="stat"><div class="stat-label">Reports · 30 days</div><div class="stat-num" id="kpi-insp">12</div><div class="stat-sub">Site walks by our consultants</div></div>
+          <div class="stat"><div class="stat-label">Inspections · 30 days</div><div class="stat-num" id="kpi-insp">12</div><div class="stat-sub">Site walks + crew forms</div></div>
           <div class="stat"><div class="stat-label">Open findings</div><div class="stat-num" id="kpi-open-findings">3</div><div class="stat-sub">1 high · 1 medium · 1 low</div></div>
           <div class="stat"><div class="stat-label">Certifications · &lt;30 days</div><div class="stat-num" id="kpi-cert-alerts">3</div><div class="stat-sub">Renewal notices issued</div></div>
           <div class="stat"><div class="stat-label">Inspections · 30 days</div><div class="stat-num" id="kpi-hours">—</div><div class="stat-sub">Filed by your own crew</div></div>
@@ -917,7 +917,7 @@
         <p id="drill-report-sub"></p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn secondary sm" onclick="window.print()">
+        <button class="btn secondary sm" onclick="printCurrentReport()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           PDF
         </button>
@@ -1432,6 +1432,7 @@ function renderInspections() {
   const resSel  = document.getElementById('insp-result-filter')?.value;
 
   let rows = INSPECTIONS.slice();
+  rows = rows.filter(r => !r._tg);   // crew forms have their own tab
   if (q) rows = rows.filter(r => (r.type + ' ' + (inspectorById(r.inspector)?.name || '') + ' ' + (siteById(r.site)?.name || '')).toLowerCase().includes(q));
   if (siteSel) rows = rows.filter(r => r.site === siteSel);
   if (typeSel) rows = rows.filter(r => r.type === typeSel);
@@ -1988,7 +1989,7 @@ function renderOverviewSplit() {
 
   if (OVERVIEW_TAB === 'reports') {
     // Creekside's own work on the client's sites.
-    const rs = INSPECTIONS.filter(r => inWindow(r.date));
+    const rs = INSPECTIONS.filter(r => inWindow(r.date) && !r._tg);
     const passed = rs.filter(r => r.overall === 'pass').length;
     const rf = FINDINGS.filter(f => rs.some(r => r.id === f.reportId));
     const closed = rf.filter(f => f.status === 'closed').length;
@@ -2880,9 +2881,12 @@ document.addEventListener('keydown', e => {
         defects: r.defect_count || 0, hours: 0.5
       };
     });
-    // Reports view  = what Creekside's consultants filed  -> INSPECTIONS
-    // Inspections view = what the crew filed from the QR codes -> OUR_FORMS
-    swap(INSPECTIONS, reports.filter(function (r) { return r.date; })
+    // INSPECTIONS carries BOTH (like the demo did): Creekside walks as
+    // 'Site Safety Audit', crew QR forms tagged _tg with their own types.
+    // That is what feeds the overview KPIs, jobsite cards and the drill's
+    // audits/checks split. Views that are reports-only filter out _tg.
+    crewRows.forEach(function (r) { r._tg = true; r.id = 'tg-' + r.id; });
+    swap(INSPECTIONS, reports.concat(crewRows).filter(function (r) { return r.date; })
       .sort(function (a, z) { return z.date.localeCompare(a.date); }));
 
     swap(OUR_FORMS, (tg || []).map(function (r) {
@@ -3584,7 +3588,8 @@ document.addEventListener('keydown', e => {
       LIVE_PRINT_WIN.document.write('<body style="font:14px system-ui;padding:40px;color:#334155">' +
         'Building report PDFs…</body>');
     }
-    Promise.all(INSPECTIONS.slice(0, 40).map(function (r) { return fetchReportDetail(r.id); }))
+    Promise.all(INSPECTIONS.filter(function (r) { return !r._tg; }).slice(0, 40)
+      .map(function (r) { return fetchReportDetail(r.id); }))
       .then(function () { origInspExport.apply(self, args); });
   };
 
@@ -3832,6 +3837,132 @@ document.addEventListener('keydown', e => {
     var form = card.querySelector('form');
     if (form) form.onsubmit = function (ev) { ev.preventDefault(); go(); };
   }
+
+  // a merged crew row carries a tg- id; its drill is the crew-form viewer
+  var _openReportDrill = window.openReportDrill;
+  window.openReportDrill = function (id) {
+    if (/^tg-/.test(String(id))) {
+      var raw = String(id).slice(3);
+      if (typeof openFormDrill === 'function') return openFormDrill(raw);
+      return;
+    }
+    return _openReportDrill.apply(this, arguments);
+  };
+
+  /* The demo drill fabricates its checklist (sampleItemFor) and shows grey
+     photo placeholders. For a real report we fetch the actual submission and
+     replace the fabricated sections with what was really answered — including
+     the real photos, which were previously PDF-only. */
+  var _drillReportId = null;
+  var _liveDrill = window.openReportDrill;
+  window.openReportDrill = function (id) {
+    _drillReportId = id;
+    var out = _liveDrill.apply(this, arguments);
+    if (/^tg-/.test(String(id))) return out;
+    var r = (typeof reportById === 'function') && reportById(id);
+    if (!r || r._tg) return out;
+    var body = document.getElementById('drill-report-body');
+    if (body) body.insertAdjacentHTML('afterbegin',
+      '<div id="drill-live-loading" style="font-size:12px;color:#6b7280;margin-bottom:10px">' +
+      'Loading the full submission…</div>');
+    fetchReportDetail(id).then(function (d) {
+      var host = document.getElementById('drill-report-body');
+      var note = document.getElementById('drill-live-loading');
+      if (note) note.remove();
+      if (!d || !host || _drillReportId !== id) return;
+      host.innerHTML = liveDrillContent(r, d);
+    });
+    return out;
+  };
+
+  function liveDrillContent(r, d) {
+    var s2 = siteById(r.site);
+    var insp = inspectorById(r.inspector);
+    var answers = d.items || {};
+    var secs = (d.fields || {}).sections || [];
+    var flagged = [], total = 0;
+    secs.forEach(function (sec) {
+      (sec.items || []).forEach(function (it) {
+        var v = String(answers[it.id] == null ? '' : answers[it.id]).toLowerCase();
+        if (!v) return;
+        total++;
+        if (v === (it.invert ? 'yes' : 'no')) flagged.push(it.label);
+      });
+    });
+    var html =
+      '<div class="report-banner ' + (flagged.length ? 'flagged' : '') + '">' +
+        '<div class="report-banner-label">How it went</div>' +
+        '<div class="report-banner-result">' + (flagged.length
+          ? flagged.length + ' item' + (flagged.length === 1 ? '' : 's') + ' flagged'
+          : 'All clear — nothing needs fixing') + '</div>' +
+        '<div class="report-banner-sub">' + total + ' items answered on site.</div>' +
+      '</div>';
+    if (flagged.length) {
+      html += '<div class="drill-section" style="margin-top:0"><h3>What needs fixing</h3>' +
+        flagged.map(function (l) {
+          return '<div class="box" style="border-left:3px solid var(--fail)">' +
+            '<div style="font-size:13.5px;font-weight:650;color:var(--ink)">' + esc(l) + '</div></div>';
+        }).join('') + '</div>';
+    }
+    html += '<div class="drill-section"' + (flagged.length ? '' : ' style="margin-top:0"') + '>' +
+      '<h3>The basics</h3><div class="kv">' +
+      '<div><div class="k">Jobsite</div><div class="v">' + esc(s2 ? s2.name : '—') + '</div></div>' +
+      '<div><div class="k">Job number</div><div class="v" style="font-family:var(--mono);font-size:12.5px">' +
+        esc(s2 ? s2.num : '—') + '</div></div>' +
+      '<div><div class="k">Inspector</div><div class="v">' + esc(insp ? insp.name : '—') + '</div></div>' +
+      '<div><div class="k">Date</div><div class="v">' + fmtDate(r.date) + '</div></div>' +
+      '</div></div>';
+    html += '<div class="drill-section"><h3>Everything checked (' + total + ')</h3>' +
+      secs.map(function (sec) {
+        var rows2 = (sec.items || []).filter(function (it) {
+          var v = answers[it.id]; return v != null && String(v) !== '';
+        });
+        if (!rows2.length) return '';
+        return '<div style="font-size:11px;font-weight:800;letter-spacing:.05em;' +
+          'text-transform:uppercase;color:#1e3a8a;margin:12px 0 4px">' + esc(sec.title) + '</div>' +
+          '<table class="tbl" style="font-size:12.5px"><tbody>' +
+          rows2.map(function (it) {
+            return '<tr><td>' + esc(it.label) + '</td>' +
+              '<td style="width:70px;text-align:right">' + pillHtml(answers[it.id], it.invert) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }).join('') + '</div>';
+    var imgs = (d.photos || []).filter(function (ph) {
+      return ph && ph.data && String(ph.data).indexOf('data:image') === 0;
+    });
+    if (imgs.length) {
+      html += '<div class="drill-section"><h3>Photos (' + imgs.length + ')</h3>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+        imgs.map(function (ph) {
+          return '<img src="' + ph.data + '" style="width:150px;height:112px;object-fit:cover;' +
+            'border:1px solid var(--line);border-radius:6px;cursor:pointer" ' +
+            'onclick="window.open().document.write(\'<img src=&quot;\' + this.src + \'&quot; style=&quot;max-width:100%&quot;>\')" alt="Report photo">';
+        }).join('') + '</div></div>';
+    }
+    if (d.notes) {
+      html += '<div class="drill-section"><h3>Notes</h3>' +
+        '<div style="font-size:13px;color:var(--ink-2);line-height:1.6">' + esc(d.notes) + '</div></div>';
+    }
+    html += '<div class="drill-section"><h3>Signed by</h3>' +
+      '<div style="font-size:13px;color:var(--ink-2)">' +
+      '<span style="font-family:\'Snell Roundhand\',\'Apple Chancery\',cursive;font-style:italic;' +
+      'font-size:22px;color:var(--ink);display:block;padding-bottom:6px;border-bottom:1px solid var(--ink-4);' +
+      'width:220px;margin-bottom:6px">' + esc(d.signature_typed || (insp ? insp.name : '')) + '</span>' +
+      esc(d.signature_typed || (insp ? insp.name : '')) + ' · ' + fmtDate(r.date) + '</div></div>';
+    return html;
+  }
+
+  /* The drill PDF button used to window.print() the whole dashboard. Now it
+     exports THIS report through the same path as the list export — synchronous
+     window first, detail fetched, real letterhead page. */
+  window.printCurrentReport = function () {
+    var id = _drillReportId;
+    var r = id && (typeof reportById === 'function') && reportById(id);
+    if (!r || /^tg-/.test(String(id))) { window.print(); return; }
+    LIVE_PRINT_WIN = window.open('', '_blank');
+    fetchReportDetail(id).then(function () {
+      openPrintDoc(r.type + ' — ' + fmtDate(r.date), [inspectionPrintPage(r)]);
+    });
+  };
 
   document.addEventListener('DOMContentLoaded', function () {
     var sess = loadSession();
