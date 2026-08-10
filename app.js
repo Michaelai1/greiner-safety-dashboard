@@ -642,39 +642,24 @@
     };
   }
 
-  /* ---------- send field forms to a crew --------------------------------
-     Name + phone + tick the forms (JHA, hot work, equipment checks), and
-     Messages opens with the request written and the crew QR-app link. The
-     full Safety Inspection is deliberately NOT here — that is Tony's own
-     walk, started from the gold button, never texted to a crew. */
-  var CREW_FORMS = ['JHA', 'Hot Work Permit', 'Aerial Platform Inspection',
-                    'Forklift Inspection', 'Daily Log', 'Report an Issue'];
+  /* ---------- send the crew forms link ---------------------------------
+     Name + phone, nothing else: the QR app carries every form (JHA, hot
+     work, equipment checks), so one link is the whole ask. The full Safety
+     Inspection stays off this path — that is Tony's own walk. */
   function wireSendForm() {
     var btn = $('#send-insp'), form = $('#send-form');
     if (!btn || !form) return;
-    var host = $('#si-tpls');
-    if (host && !host.children.length) {
-      CREW_FORMS.forEach(function (f) {
-        var lab = el('label', 'check');
-        var cb = el('input'); cb.type = 'checkbox'; cb.value = f;
-        lab.appendChild(cb);
-        lab.appendChild(el('span', null, f));
-        host.appendChild(lab);
-      });
-    }
     btn.onclick = function () { form.classList.toggle('hide'); };
     $('#si-cancel').onclick = function () { form.classList.add('hide'); };
     $('#si-send').onclick = function () {
       var name  = $('#si-name').value.trim();
       var phone = $('#si-phone').value.trim();
-      var picked = Array.prototype.filter.call(form.querySelectorAll('.check input'),
-        function (c2) { return c2.checked; }).map(function (c2) { return c2.value; });
       var err = $('#si-err');
-      if (!phone)         { err.textContent = 'A phone number is required.'; return; }
-      if (!picked.length) { err.textContent = 'Tick at least one form.'; return; }
+      if (!phone) { err.textContent = 'A phone number is required.'; return; }
       err.textContent = '';
-      var msg = (name ? 'Hi ' + name + ', ' : '') + 'please complete on site: ' +
-        picked.join(', ') + ' — ' + (C.qrUrl || location.origin);
+      var msg = (name ? 'Hi ' + name + ', ' : '') + C.contractor +
+        ' site forms — JHA, hot work, equipment checks are all at this link: ' +
+        (C.qrUrl || location.origin);
       location.href = 'sms:' + phone.replace(/[^+\d]/g, '') +
         '?&body=' + encodeURIComponent(msg);
       toast('Opening Messages…');
