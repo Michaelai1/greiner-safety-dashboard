@@ -3462,14 +3462,18 @@ document.addEventListener('keydown', e => {
           '<label style="' + lbl + '">Worker</label>' +
           '<input id="cm-worker" list="cm-names" autocomplete="off" placeholder="Name" style="' + fld + '">' +
           '<datalist id="cm-names">' + names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
-          '<label style="' + lbl + '">Certification</label>' +
-          '<select id="cm-type" style="' + fld + '">' +
-            DESK_CERT_TYPES.map(function (t) { return '<option value="' + esc(t[0]) + '">' + esc(t[0]) + '</option>'; }).join('') + '</select>' +
-          '<div id="cm-other-wrap" style="display:none"><label style="' + lbl + '">Certification name</label>' +
+          '<label style="' + lbl + '">Certifications <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9ca3af">— tap all that apply</span></label>' +
+          '<div id="cm-chips" style="display:flex;flex-wrap:wrap;gap:7px">' +
+            DESK_CERT_TYPES.map(function (t) {
+              return '<button type="button" class="cm-chip" data-cert="' + esc(t[0]) + '" ' +
+                'style="border:1px solid #d1d5db;background:#fff;border-radius:16px;padding:7px 13px;' +
+                'font:inherit;font-size:13px;font-weight:600;color:#334155;cursor:pointer">' + esc(t[0]) + '</button>';
+            }).join('') + '</div>' +
+          '<div id="cm-other-wrap" style="display:none"><label style="' + lbl + '">Other certification name</label>' +
             '<input id="cm-other" placeholder="e.g. CDL Medical Card" style="' + fld + '"></div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">' +
             '<div><label style="' + lbl + '">Issued</label><input id="cm-issued" type="date" style="' + fld + '"></div>' +
-            '<div><label style="' + lbl + '">Expires</label><input id="cm-expires" type="date" style="' + fld + '"></div>' +
+            '<div><label style="' + lbl + '">Expires <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9ca3af">— blank = auto per cert</span></label><input id="cm-expires" type="date" style="' + fld + '"></div>' +
           '</div>' +
           '<div id="cm-err" style="display:none;margin:11px 0 0;color:#991b1b;font-size:13px"></div>' +
           '<button id="cm-save" style="width:100%;margin-top:16px;border:none;border-radius:10px;' +
@@ -3477,39 +3481,49 @@ document.addEventListener('keydown', e => {
         '</div></div>';
     document.body.appendChild(wrap);
 
-    var typeSel = document.getElementById('cm-type');
     var iss = document.getElementById('cm-issued');
-    var exp = document.getElementById('cm-expires');
     iss.value = new Date().toISOString().slice(0, 10);
-    function prefill() {
-      if (!iss.value) return;
-      var years = (DESK_CERT_TYPES.filter(function (t) { return t[0] === typeSel.value; })[0] || [0, 2])[1];
-      var d = new Date(iss.value + 'T12:00:00'); d.setFullYear(d.getFullYear() + years);
-      exp.value = d.toISOString().slice(0, 10);
+    var selected = {};   // cert name -> true
+    Array.prototype.forEach.call(document.querySelectorAll('.cm-chip'), function (chip) {
+      chip.onclick = function () {
+        var name = chip.dataset.cert;
+        if (selected[name]) { delete selected[name]; chip.style.background = '#fff';
+          chip.style.borderColor = '#d1d5db'; chip.style.color = '#334155'; }
+        else { selected[name] = true; chip.style.background = '#0f172a';
+          chip.style.borderColor = '#0f172a'; chip.style.color = '#fff'; }
+        document.getElementById('cm-other-wrap').style.display = selected['Other…'] ? '' : 'none';
+      };
+    });
+    // expiry for a cert = the manual override if set, else issued + its cycle
+    function expiryFor(certName) {
+      var man = document.getElementById('cm-expires').value;
+      if (man) return man;
+      var base = iss.value || new Date().toISOString().slice(0, 10);
+      var years = (DESK_CERT_TYPES.filter(function (t) { return t[0] === certName; })[0] || [0, 2])[1];
+      var d = new Date(base + 'T12:00:00'); d.setFullYear(d.getFullYear() + years);
+      return d.toISOString().slice(0, 10);
     }
-    typeSel.onchange = function () {
-      document.getElementById('cm-other-wrap').style.display = typeSel.value === 'Other…' ? '' : 'none';
-      prefill();
-    };
-    iss.onchange = prefill; prefill();
 
     document.getElementById('cm-save').onclick = function () {
       var v = function (id) { return document.getElementById(id).value.trim(); };
       var worker = v('cm-worker');
-      var type = typeSel.value === 'Other…' ? v('cm-other') : typeSel.value;
       var err = document.getElementById('cm-err');
-      if (!worker)     { err.textContent = 'Whose certification is it?'; err.style.display = ''; return; }
-      if (!type)       { err.textContent = 'Name the certification.'; err.style.display = ''; return; }
-      if (!v('cm-expires')) { err.textContent = 'When does it expire?'; err.style.display = ''; return; }
+      // resolve chosen certs; "Other…" contributes the typed name instead
+      var certs = Object.keys(selected).filter(function (c) { return c !== 'Other…'; });
+      if (selected['Other…'] && v('cm-other')) certs.push(v('cm-other'));
+      if (!worker)        { err.textContent = 'Whose certifications are these?'; err.style.display = ''; return; }
+      if (!certs.length)  { err.textContent = 'Tap at least one certification.'; err.style.display = ''; return; }
       err.style.display = 'none';
       this.disabled = true; this.textContent = 'Saving…';
       var self = this;
-      rpcWrite('cs_portal_add_cert', { p_worker: worker, p_cert_type: type,
-        p_issued: v('cm-issued') || null, p_expires: v('cm-expires') })
-        .then(function (res) {
-          if (res && res.ok === false) throw new Error(res.error || 'save failed');
-          return bundle();
-        })
+      var issued = v('cm-issued') || null;
+      // one RPC per selected cert, each with its own expiry
+      Promise.all(certs.map(function (name) {
+        return rpcWrite('cs_portal_add_cert', { p_worker: worker, p_cert_type: name,
+          p_issued: issued, p_expires: expiryFor(name) })
+          .then(function (res) { if (res && res.ok === false) throw new Error(res.error || 'save failed'); });
+      }))
+        .then(function () { return bundle(); })
         .then(function (b) {
           var byWorker = {};
           (b.certs || []).forEach(function (c) {
@@ -3521,7 +3535,7 @@ document.addEventListener('keydown', e => {
           }));
           document.getElementById('live-cert-modal').remove();
           if (typeof renderCerts === 'function') renderCerts();
-          banner('Certification added for ' + worker);
+          banner(certs.length + ' certification' + (certs.length === 1 ? '' : 's') + ' added for ' + worker);
         })
         .catch(function (e) {
           err.textContent = /find the function|does not exist|schema cache/i.test(e.message)
