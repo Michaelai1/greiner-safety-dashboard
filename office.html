@@ -688,6 +688,11 @@
             <div class="card-head"><div><div class="card-title">This week</div><div class="card-sub">Program digests, most recent first</div></div></div>
             <div class="card-body" id="digest-list" style="padding-top:6px"></div>
           </div>
+
+          <div class="card">
+            <div class="card-head"><div><div class="card-title">Monthly reports</div><div class="card-sub">The month in numbers — forward this to your GC or insurer</div></div></div>
+            <div class="card-body" id="monthly-list-ov" style="padding-top:6px"></div>
+          </div>
         </div>
       </section>
 
@@ -723,6 +728,7 @@
               <option value="flag">Flagged</option>
             </select>
           </div>
+          <div id="insp-arch-toggle" style="padding:8px 18px 0"></div>
           <div id="insp-pickbar" style="padding:0 18px"></div>
           <table class="tbl">
             <thead><tr><th style="width:34px"></th><th>Date</th><th>Jobsite</th><th>Type</th><th>Inspector</th><th>Result</th><th></th></tr></thead>
@@ -756,9 +762,10 @@
             <select id="form-type-filter" onchange="renderOurForms()"><option value="">All form types</option></select>
             <select id="form-site-filter" onchange="renderOurForms()"><option value="">All jobsites</option></select>
           </div>
+          <div id="form-arch-toggle" style="padding:8px 18px 0"></div>
           <div id="form-pickbar" style="padding:0 18px"></div>
           <table class="tbl">
-            <thead><tr><th style="width:34px"></th><th>Date</th><th>Form</th><th>Jobsite</th><th>Submitted by</th><th class="r">Status</th></tr></thead>
+            <thead><tr><th style="width:34px"></th><th>Date</th><th>Form</th><th>Jobsite</th><th>Submitted by</th><th class="r">Status</th><th></th></tr></thead>
             <tbody id="forms-tbody"></tbody>
           </table>
         </div>
@@ -907,6 +914,7 @@
         <p id="drill-report-sub"></p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn secondary sm" id="report-archive-btn" onclick="">Archive</button>
         <button class="btn secondary sm" onclick="printCurrentReport()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           PDF
@@ -1245,6 +1253,7 @@ function renderOverview() {
   renderSafetyStats();
   renderCertRunwayCard();
   setOverviewTab(OVERVIEW_TAB);
+  renderMonthlyList('monthly-list-ov');
   var dl = document.getElementById('digest-list');
   if (dl) dl.innerHTML = DIGESTS.map(d => `
     <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
@@ -1420,6 +1429,53 @@ function openJobDrill(siteId) {
   document.getElementById('drill-job').classList.add('open');
 }
 
+/* ---- Manual archive: reports + crew inspections ------------------------
+   Greiner asked to tuck old records out of the way without deleting them.
+   Each tab has an Active / Archived view; clicking into a report (or the
+   Archive link on a crew inspection row) moves it between the two. State is
+   per-browser (localStorage) — a desk-side organizing tool, not shared data,
+   so it never touches the compliance record itself. Keyed by record id.
+   Kinds: 'report' = Creekside reports (INSPECTIONS), 'form' = crew forms. */
+var ARCHIVE_KEYS = { report: 'greiner_archived_reports', form: 'greiner_archived_forms' };
+function archivedSet(kind) {
+  try { return new Set(JSON.parse(localStorage.getItem(ARCHIVE_KEYS[kind]) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function isArchived(kind, id) { return archivedSet(kind).has(String(id)); }
+function setArchived(kind, id, on) {
+  var s = archivedSet(kind);
+  if (on) s.add(String(id)); else s.delete(String(id));
+  try { localStorage.setItem(ARCHIVE_KEYS[kind], JSON.stringify(Array.from(s))); } catch (e) {}
+}
+var INSP_ARCH = false, FORM_ARCH = false;   // false = Active view, true = Archived view
+function setInspArch(on) { INSP_ARCH = on; renderInspections(); }
+function setFormArch(on) { FORM_ARCH = on; renderOurForms(); }
+function toggleReportArchive(id) {
+  var on = !isArchived('report', id);
+  setArchived('report', id, on);
+  if (typeof toast === 'function') toast(on ? 'Report archived' : 'Report restored');
+  closeDrill('drill-report');
+  renderInspections();
+}
+function toggleFormArchive(id) {
+  var on = !isArchived('form', id);
+  setArchived('form', id, on);
+  if (typeof toast === 'function') toast(on ? 'Inspection archived' : 'Inspection restored');
+  renderOurForms();
+}
+/* The Active / Archived segmented switch, rendered into each tab's toggle slot. */
+function archToggle(fnName, isArch, activeN, archN) {
+  function seg(on, label, n) {
+    return '<button onclick="' + fnName + '(' + on + ')" style="border:none;' +
+      (on === isArch ? 'background:#0f172a;color:#fff;' : 'background:#fff;color:#374151;') +
+      (on ? 'border-left:1px solid #d1d5db;' : '') +
+      'padding:6px 14px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer">' +
+      label + ' (' + n + ')</button>';
+  }
+  return '<div style="display:inline-flex;border:1px solid #d1d5db;border-radius:9px;overflow:hidden">' +
+    seg(false, 'Active', activeN) + seg(true, 'Archived', archN) + '</div>';
+}
+
 function renderInspections() {
   const siteF = document.getElementById('insp-site-filter');
   if (siteF && siteF.options.length <= 1) JOBSITES.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; siteF.appendChild(o); });
@@ -1438,13 +1494,19 @@ function renderInspections() {
   if (typeSel) rows = rows.filter(r => r.type === typeSel);
   if (resSel === 'pass') rows = rows.filter(r => r.overall === 'pass');
   if (resSel === 'flag') rows = rows.filter(r => r.overall === 'flagged');
+
+  const archN   = rows.filter(r => isArchived('report', r.id)).length;
+  const activeN = rows.length - archN;
+  rows = rows.filter(r => INSP_ARCH ? isArchived('report', r.id) : !isArchived('report', r.id));
   _inspFiltered = rows;   // what the export sees — matches what's on screen
 
+  const itg = document.getElementById('insp-arch-toggle');
+  if (itg) itg.innerHTML = archToggle('setInspArch', INSP_ARCH, activeN, archN);
   const ipb = document.getElementById('insp-pickbar');
   if (ipb) ipb.innerHTML = pickBar('insp-pick', 'insp-pick-count', 'insp-pick-all', 'exportInspectionsPdf()', 'Export as PDF');
 
   document.getElementById('insp-tbody').innerHTML = rows.length === 0
-    ? '<tr><td colspan="7" class="empty">No inspections match your filter.</td></tr>'
+    ? `<tr><td colspan="7" class="empty">${INSP_ARCH ? 'No archived reports.' : 'No inspections match your filter.'}</td></tr>`
     : rows.map(r => {
         const insp = inspectorById(r.inspector);
         return `<tr class="clickable" onclick="openReportDrill('${r.id}')">
@@ -1454,7 +1516,7 @@ function renderInspections() {
           <td>${esc(r.type)}</td>
           <td>${esc(insp?.name || '')}<small>${esc(insp?.role || '')}</small></td>
           <td>${r.overall === 'pass' ? '<span class="pill green">Pass</span>' : '<span class="pill amber">Flagged · ' + r.defects + '</span>'}</td>
-          <td style="text-align:right"><a href="javascript:void(0)">Open</a></td>
+          <td style="text-align:right;white-space:nowrap"><a href="javascript:void(0)" onclick="event.stopPropagation();toggleReportArchive('${r.id}')" style="color:#6b7280;margin-right:12px">${isArchived('report', r.id) ? 'Restore' : 'Archive'}</a><a href="javascript:void(0)">Open</a></td>
         </tr>`;
       }).join('');
 }
@@ -1463,6 +1525,9 @@ function openReportDrill(reportId) {
   const r = reportById(reportId); if (!r) return;
   const s = siteById(r.site);
   const insp = inspectorById(r.inspector);
+  const ab = document.getElementById('report-archive-btn');
+  if (ab) { ab.textContent = isArchived('report', reportId) ? 'Restore' : 'Archive';
+            ab.onclick = function () { toggleReportArchive(reportId); }; }
   const relatedFindings = FINDINGS.filter(f => f.reportId === reportId);
   document.getElementById('drill-report-title').textContent = r.type + ' — ' + fmtDate(r.date);
   document.getElementById('drill-report-sub').textContent   =
@@ -2165,13 +2230,19 @@ function renderOurForms() {
   if (q)  rows = rows.filter(f => (f.type + ' ' + f.by + ' ' + (siteById(f.site)?.name || '')).toLowerCase().includes(q));
   if (t)  rows = rows.filter(f => f.type === t);
   if (st) rows = rows.filter(f => f.site === st);
+
+  const archN   = rows.filter(f => isArchived('form', f.id)).length;
+  const activeN = rows.length - archN;
+  rows = rows.filter(f => FORM_ARCH ? isArchived('form', f.id) : !isArchived('form', f.id));
   _formsFiltered = rows;
 
+  const ftg = document.getElementById('form-arch-toggle');
+  if (ftg) ftg.innerHTML = archToggle('setFormArch', FORM_ARCH, activeN, archN);
   const pb = document.getElementById('form-pickbar');
   if (pb) pb.innerHTML = pickBar('form-pick', 'form-pick-count', 'form-pick-all', 'exportOurFormsPdf()', 'Export as PDF');
 
   document.getElementById('forms-tbody').innerHTML = rows.length === 0
-    ? '<tr><td colspan="6" class="empty">No forms match your filter.</td></tr>'
+    ? `<tr><td colspan="7" class="empty">${FORM_ARCH ? 'No archived inspections.' : 'No forms match your filter.'}</td></tr>`
     : rows.map(f => `<tr>
         <td style="width:34px"><input type="checkbox" class="form-pick" value="${esc(f.id)}" onchange="syncPickCount('form-pick','form-pick-count','form-pick-all')"></td>
         <td class="primary">${fmtDate(f.date)}</td>
@@ -2179,6 +2250,7 @@ function renderOurForms() {
         <td>${esc(siteById(f.site)?.name || '')}</td>
         <td>${esc(f.by)}</td>
         <td class="r">${f.defects ? '<span class="pill amber">' + f.defects + ' defect' + (f.defects === 1 ? '' : 's') + '</span>' : '<span class="pill green">Clean</span>'}</td>
+        <td style="text-align:right;white-space:nowrap"><a href="javascript:void(0)" onclick="toggleFormArchive('${f.id}')" style="color:#6b7280">${isArchived('form', f.id) ? 'Restore' : 'Archive'}</a></td>
       </tr>`).join('');
   syncPickCount('form-pick', 'form-pick-count', 'form-pick-all');
 }
@@ -2403,9 +2475,10 @@ function renderDigestPreview() {
     </div>` : ''}`;
 }
 
-function renderDocuments() {
-  renderDigestPreview();
-  document.getElementById('monthly-list').innerHTML = MONTHLIES.map(m => `
+function renderMonthlyList(elId) {
+  const host = document.getElementById(elId);
+  if (!host) return;
+  host.innerHTML = MONTHLIES.map(m => `
     <div style="padding:12px 0;border-bottom:1px solid var(--line)">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
         <div style="font-size:14px;font-weight:700;color:var(--ink)">${esc(m.month)}</div>
@@ -2419,6 +2492,11 @@ function renderDocuments() {
       <div style="font-size:11.5px;color:var(--ink-4);line-height:1.45">${esc(m.summary)}</div>
     </div>
   `).join('');
+}
+
+function renderDocuments() {
+  renderDigestPreview();
+  renderMonthlyList('monthly-list');
 
   document.getElementById('programs-list').innerHTML = PROGRAMS.map(p => `
     <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
@@ -3200,14 +3278,11 @@ document.addEventListener('keydown', e => {
         return it.req && !mine.some(function (d) { return it.re.test(d.filename || ''); });
       }).length;
       return '<div style="margin-bottom:18px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:2px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">' +
           '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;' +
           'color:#1e3a8a">' + esc(cat) +
           (missCount ? ' <span style="color:#991b1b;text-transform:none;letter-spacing:0">· ' +
             missCount + ' required missing</span>' : '') + '</div>' +
-          '<button onclick="liveDocUpload(\'' + esc(cat) + '\')" style="border:1px solid #d1d5db;' +
-          'background:#fff;border-radius:7px;padding:5px 11px;font:inherit;font-size:12px;' +
-          'font-weight:700;cursor:pointer">Upload</button>' +
         '</div>' + itemRows + extraRows + '</div>';
     }).join('');
 
