@@ -693,6 +693,7 @@
 
       <!-- INSPECTIONS -->
       <section class="view" id="view-inspections" style="display:none">
+        <div class="card" id="insp-files-panel" style="margin-bottom:14px"></div>
         <div class="card">
           <div class="card-head">
             <div><div class="card-title">Inspections</div><div class="card-sub">Every safety inspection performed on your jobsites</div></div>
@@ -727,6 +728,7 @@
 
       <!-- OUR FORMS — what the CLIENT's own crew submitted -->
       <section class="view" id="view-ourforms" style="display:none">
+        <div class="card" id="ourforms-files-panel" style="margin-bottom:14px"></div>
         <div class="card">
           <div class="card-head">
             <div>
@@ -3078,6 +3080,7 @@ document.addEventListener('keydown', e => {
                  deaths: x.deaths || 0, total_hours: Number(x.total_hours), emr: x.emr };
       }));
       renderLiveDocs();
+      renderDocTabFiles();
       if (typeof renderSafetyStats === 'function') renderSafetyStats();
     });
   }
@@ -3296,6 +3299,52 @@ document.addEventListener('keydown', e => {
       .then(refreshDocs).then(function () { banner('Deleted'); })
       .catch(function (e) { banner(e.message, true); });
   };
+
+  /* ---- loose file lists on the Reports / Inspections tabs ----------------
+     Same Supabase docs store as the Documents folders, but filed under
+     categories that DON'T appear in DOC_CATS, so a scanned inspection or a
+     PDF report drops straight onto its own tab without cluttering the
+     compliance checklist. Reuses liveDocUpload/Download/Delete verbatim. */
+  function renderDocFiles(hostId, category, title, sub) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var mine = LIVE_DOCS.filter(function (d) { return d.category === category; })
+      .sort(function (a, z) { return String(z.created_at).localeCompare(String(a.created_at)); });
+    var rows = mine.length
+      ? mine.map(function (d) {
+          return '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;' +
+            'padding:10px 0;border-top:1px solid #eef0f3;font-size:13px">' +
+            '<span style="min-width:0"><b style="word-break:break-word">' + esc(d.filename) + '</b> ' +
+            '<span style="color:#6b7280;font-size:11.5px">' + fmtDate(String(d.created_at).slice(0, 10)) +
+            (d.size_bytes ? ' · ' + Math.max(1, Math.round(d.size_bytes / 1024)) + ' KB' : '') + '</span></span>' +
+            '<span style="flex-shrink:0;display:flex;gap:6px">' +
+              '<button onclick="liveDocDownload(\'' + esc(d.path) + '\')" style="border:1px solid #d1d5db;' +
+              'background:#fff;border-radius:7px;padding:5px 11px;font:inherit;font-size:12px;' +
+              'font-weight:700;cursor:pointer">Download</button>' +
+              '<button onclick="liveDocDelete(\'' + d.id + '\',\'' + esc(d.path) + '\')" ' +
+              'style="border:1px solid #d1d5db;background:#fff;color:#991b1b;border-radius:7px;' +
+              'padding:5px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer">Delete</button>' +
+            '</span></div>';
+        }).join('')
+      : '<div style="padding:14px 0;color:#9ca3af;font-size:13px">Nothing uploaded yet. ' +
+        'Use Upload to add a PDF, photo or scan.</div>';
+    host.innerHTML =
+      '<div class="card-head">' +
+        '<div><div class="card-title">' + esc(title) + '</div><div class="card-sub">' + esc(sub) + '</div></div>' +
+        '<button class="btn sm" onclick="liveDocUpload(\'' + esc(category) + '\')">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+          'Upload' +
+        '</button>' +
+      '</div>' +
+      '<div class="card-body" style="padding-top:0">' + rows + '</div>';
+  }
+
+  function renderDocTabFiles() {
+    renderDocFiles('insp-files-panel', 'Reports',
+      'Uploaded reports', 'Signed reports and observation write-ups you upload here — one file each, download any time.');
+    renderDocFiles('ourforms-files-panel', 'Inspections',
+      'Uploaded inspections', 'Scanned or exported inspection files kept on record — one file each, download any time.');
+  }
 
   /* ---- close a job -------------------------------------------------------
      Office action, so it lives here rather than on the phone. Confirms first,
@@ -3949,6 +3998,7 @@ document.addEventListener('keydown', e => {
       window._writtenPrograms = LIVE_DOCS.filter(function (d2) {
         return d2.category === 'Written Programs'; }).length;
       renderLiveDocs();
+      renderDocTabFiles();
       showWho();
       loadFindings();
       banner(CLIENT.name + ' - ' + INSPECTIONS.length + ' reports - ' +
