@@ -683,6 +683,11 @@
             <div class="card-head"><div><div class="card-title">Recent activity</div><div class="card-sub">Last 30 days</div></div></div>
             <div class="card-body" id="activity-feed" style="padding-top:6px"></div>
           </div>
+
+          <div class="card">
+            <div class="card-head"><div><div class="card-title">This week</div><div class="card-sub">Program digests, most recent first</div></div></div>
+            <div class="card-body" id="digest-list" style="padding-top:6px"></div>
+          </div>
         </div>
       </section>
 
@@ -851,11 +856,6 @@
           <div class="card">
             <div class="card-head"><div><div class="card-title">Monthly reports</div><div class="card-sub">The month in numbers — forward this to your GC or insurer</div></div></div>
             <div class="card-body" id="monthly-list" style="padding-top:6px"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><div><div class="card-title">Weekly digests</div><div class="card-sub">Program summaries sent Fridays</div></div></div>
-            <div class="card-body" id="digest-list" style="padding-top:6px"></div>
           </div>
 
           <div class="card">
@@ -1157,7 +1157,7 @@ const VIEW_META = {
   ourforms:      { title: 'Inspections',    sub: 'JHAs, permits and equipment checks your own crew completed' },
   findings:      { title: 'Findings',       sub: 'Items flagged for corrective action, open first' },
   certs:         { title: 'Certifications', sub: 'Worker certifications on file, with renewal window' },
-  documents:     { title: 'Documents',      sub: 'Annual compliance report, weekly digests, and written programs' },
+  documents:     { title: 'Documents',      sub: 'Files on record, annual compliance report, and written programs' },
   'annual-report': { title: '2026 Annual Compliance Report', sub: 'Print-ready insurance-renewal document' },
 };
 function switchView(name) {
@@ -1245,6 +1245,16 @@ function renderOverview() {
   renderSafetyStats();
   renderCertRunwayCard();
   setOverviewTab(OVERVIEW_TAB);
+  var dl = document.getElementById('digest-list');
+  if (dl) dl.innerHTML = DIGESTS.map(d => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">${esc(d.title)}</div>
+        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px;line-height:1.45">${esc(d.summary)}</div>
+      </div>
+      <a href="javascript:void(0)" style="flex-shrink:0;font-size:11px;font-weight:600">View</a>
+    </div>
+  `).join('');
   const cutoffMonth = daysAgo(30);
   const monthInsp = INSPECTIONS.filter(r => new Date(r.date + 'T00:00:00') >= cutoffMonth);
   const monthHours = monthInsp.reduce((s, r) => s + r.hours, 0);
@@ -2410,15 +2420,6 @@ function renderDocuments() {
     </div>
   `).join('');
 
-  document.getElementById('digest-list').innerHTML = DIGESTS.map(d => `
-    <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink)">${esc(d.title)}</div>
-        <div style="font-size:11.5px;color:var(--ink-4);margin-top:3px;line-height:1.45">${esc(d.summary)}</div>
-      </div>
-      <a href="javascript:void(0)" style="flex-shrink:0;font-size:11px;font-weight:600">View</a>
-    </div>
-  `).join('');
   document.getElementById('programs-list').innerHTML = PROGRAMS.map(p => `
     <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
       <div>
