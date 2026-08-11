@@ -707,7 +707,9 @@
         <div class="card">
           <div class="card-head">
             <div><div class="card-title">Inspections</div><div class="card-sub">Every safety inspection performed on your jobsites</div></div>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <div id="insp-arch-toggle"></div>
+              <div style="display:flex;gap:8px">
               <button class="btn secondary sm" onclick="exportInspectionsCSV()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 CSV
@@ -716,6 +718,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Download PDF
               </button>
+              </div>
             </div>
           </div>
           <div class="filter-bar">
@@ -745,7 +748,9 @@
               <div class="card-title">Inspections</div>
               <div class="card-sub">JHAs, hot work permits and equipment checks your own crew completed — we keep them on file</div>
             </div>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <div id="form-arch-toggle"></div>
+              <div style="display:flex;gap:8px">
               <button class="btn secondary sm" onclick="exportOurFormsCSV()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 CSV
@@ -754,6 +759,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Download PDF
               </button>
+              </div>
             </div>
           </div>
           <div class="filter-bar">
@@ -1461,17 +1467,21 @@ function toggleFormArchive(id) {
   if (typeof toast === 'function') toast(on ? 'Inspection archived' : 'Inspection restored');
   renderOurForms();
 }
-/* The Active / Archived segmented switch, rendered into each tab's toggle slot. */
+/* The Active / Archived segmented switch — a light iOS-style control (grey
+   track, white active pill) that lives in each tab's card header. */
 function archToggle(fnName, isArch, activeN, archN) {
   function seg(on, label, n) {
+    var active = (on === isArch);
     return '<button onclick="' + fnName + '(' + on + ')" style="border:none;' +
-      (on === isArch ? 'background:#0f172a;color:#fff;' : 'background:#fff;color:#374151;') +
-      (on ? 'border-left:1px solid #d1d5db;' : '') +
-      'padding:6px 14px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer">' +
-      label + ' (' + n + ')</button>';
+      'background:' + (active ? '#fff' : 'transparent') + ';' +
+      'color:' + (active ? '#0f172a' : '#6b7280') + ';' +
+      'box-shadow:' + (active ? '0 1px 2px rgba(15,23,42,.12)' : 'none') + ';' +
+      'border-radius:7px;padding:5px 13px;font:inherit;font-size:12.5px;' +
+      'font-weight:' + (active ? '700' : '600') + ';cursor:pointer;transition:background .12s">' +
+      label + ' <span style="opacity:.55;font-weight:600">' + n + '</span></button>';
   }
-  return '<div style="display:inline-flex;border:1px solid #d1d5db;border-radius:9px;overflow:hidden">' +
-    seg(false, 'Active', activeN) + seg(true, 'Archived', archN) + '</div>';
+  return '<div style="display:inline-flex;gap:3px;background:#f1f5f9;border:1px solid #e5e7eb;' +
+    'border-radius:9px;padding:3px">' + seg(false, 'Active', activeN) + seg(true, 'Archived', archN) + '</div>';
 }
 
 function renderInspections() {
@@ -1498,9 +1508,10 @@ function renderInspections() {
   rows = rows.filter(r => INSP_ARCH ? isArchived('report', r.id) : !isArchived('report', r.id));
   _inspFiltered = rows;   // what the export sees — matches what's on screen
 
+  const itg = document.getElementById('insp-arch-toggle');
+  if (itg) itg.innerHTML = archToggle('setInspArch', INSP_ARCH, activeN, archN);
   const ipb = document.getElementById('insp-pickbar');
-  if (ipb) ipb.innerHTML = pickBar('insp-pick', 'insp-pick-count', 'insp-pick-all', 'exportInspectionsPdf()', 'Export as PDF',
-    archToggle('setInspArch', INSP_ARCH, activeN, archN));
+  if (ipb) ipb.innerHTML = pickBar('insp-pick', 'insp-pick-count', 'insp-pick-all', 'exportInspectionsPdf()', 'Export as PDF');
 
   document.getElementById('insp-tbody').innerHTML = rows.length === 0
     ? `<tr><td colspan="7" class="empty">${INSP_ARCH ? 'No archived reports.' : 'No inspections match your filter.'}</td></tr>`
@@ -2234,9 +2245,10 @@ function renderOurForms() {
   rows = rows.filter(f => FORM_ARCH ? isArchived('form', f.id) : !isArchived('form', f.id));
   _formsFiltered = rows;
 
+  const ftg = document.getElementById('form-arch-toggle');
+  if (ftg) ftg.innerHTML = archToggle('setFormArch', FORM_ARCH, activeN, archN);
   const pb = document.getElementById('form-pickbar');
-  if (pb) pb.innerHTML = pickBar('form-pick', 'form-pick-count', 'form-pick-all', 'exportOurFormsPdf()', 'Export as PDF',
-    archToggle('setFormArch', FORM_ARCH, activeN, archN));
+  if (pb) pb.innerHTML = pickBar('form-pick', 'form-pick-count', 'form-pick-all', 'exportOurFormsPdf()', 'Export as PDF');
 
   document.getElementById('forms-tbody').innerHTML = rows.length === 0
     ? `<tr><td colspan="7" class="empty">${FORM_ARCH ? 'No archived inspections.' : 'No forms match your filter.'}</td></tr>`
@@ -3270,7 +3282,7 @@ document.addEventListener('keydown', e => {
           'text-transform:uppercase;color:#9ca3af;margin-bottom:2px">Also in this folder</div>' +
           extras.map(fileRow).join('') + '</div>'
         : (!items.length && !mine.length
-            ? '<div style="padding:9px 0;color:#9ca3af;font-size:13px">Nothing uploaded</div>' : '');
+            ? '<div style="padding:9px 0;color:#9ca3af;font-size:13px">If you want something else stored, please contact your provider.</div>' : '');
       var missCount = items.filter(function (it) {
         return it.req && !mine.some(function (d) { return it.re.test(d.filename || ''); });
       }).length;
