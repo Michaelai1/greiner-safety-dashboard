@@ -3064,7 +3064,8 @@ document.addEventListener('keydown', e => {
      Everything a carrier or GC asks for at renewal lives on one screen. The
      numbers are typed here rather than on the phone: nobody enters 268,400
      hours standing on a job site. TRIR and DART are derived, never stored. */
-  var DOC_CATS = ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs', 'Other'];
+  var DOC_CATS = ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs',
+                  'Project Safety', 'Inspections', 'Reports', 'Other'];
   var LIVE_DOCS = [];
 
   function docsFn(action, body) {
@@ -3138,6 +3139,17 @@ document.addEventListener('keydown', e => {
         { it: 'Excavation / Trenching Program', re: /excav|trench/i, req: true },
         { it: 'Hazard Communication', re: /hazcom|hazard/i, req: false },
         { it: 'Emergency Action Plan', re: /emergency|eap/i, req: false }],
+      'Project Safety': [
+        { it: 'Site-Specific Safety Plans (SSSP)', re: /sssp|site[-_ ]?specific/i, req: true },
+        { it: 'Job Hazard Analyses (JHA)', re: /\bjha\b|job hazard/i, req: true },
+        { it: 'Pre-Task Plans', re: /pre[-_ ]?task|ptp/i, req: false },
+        { it: 'Toolbox Talks', re: /toolbox|tool box/i, req: false }],
+      'Inspections': [
+        { it: 'Jobsite Safety Inspections', re: /inspection/i, req: true },
+        { it: 'Equipment Inspections', re: /equip|forklift|aerial|crane/i, req: false },
+        { it: 'Excavation Inspections', re: /excav|trench/i, req: false }],
+      'Reports': [
+        { it: 'Safety Observation Reports', re: /observation|obs report|safety report/i, req: true }],
       'Other': []
     };
     function fileRow(d) {

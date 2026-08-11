@@ -61,7 +61,7 @@ window.CONFIG = {
   defaultJobNumber: 'C800-2025',
 
   /* --- Documents ------------------------------------------------------ */
-  docCategories: ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs', 'Other'],
+  docCategories: ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs', 'Project Safety', 'Inspections', 'Reports', 'Other'],
   docsFunction: 'company-docs',
 
   /* --- Safety stats ---------------------------------------------------
