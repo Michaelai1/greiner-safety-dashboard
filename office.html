@@ -728,7 +728,6 @@
               <option value="flag">Flagged</option>
             </select>
           </div>
-          <div id="insp-arch-toggle" style="padding:8px 18px 0"></div>
           <div id="insp-pickbar" style="padding:0 18px"></div>
           <table class="tbl">
             <thead><tr><th style="width:34px"></th><th>Date</th><th>Jobsite</th><th>Type</th><th>Inspector</th><th>Result</th><th></th></tr></thead>
@@ -762,7 +761,6 @@
             <select id="form-type-filter" onchange="renderOurForms()"><option value="">All form types</option></select>
             <select id="form-site-filter" onchange="renderOurForms()"><option value="">All jobsites</option></select>
           </div>
-          <div id="form-arch-toggle" style="padding:8px 18px 0"></div>
           <div id="form-pickbar" style="padding:0 18px"></div>
           <table class="tbl">
             <thead><tr><th style="width:34px"></th><th>Date</th><th>Form</th><th>Jobsite</th><th>Submitted by</th><th class="r">Status</th><th></th></tr></thead>
@@ -1500,10 +1498,9 @@ function renderInspections() {
   rows = rows.filter(r => INSP_ARCH ? isArchived('report', r.id) : !isArchived('report', r.id));
   _inspFiltered = rows;   // what the export sees — matches what's on screen
 
-  const itg = document.getElementById('insp-arch-toggle');
-  if (itg) itg.innerHTML = archToggle('setInspArch', INSP_ARCH, activeN, archN);
   const ipb = document.getElementById('insp-pickbar');
-  if (ipb) ipb.innerHTML = pickBar('insp-pick', 'insp-pick-count', 'insp-pick-all', 'exportInspectionsPdf()', 'Export as PDF');
+  if (ipb) ipb.innerHTML = pickBar('insp-pick', 'insp-pick-count', 'insp-pick-all', 'exportInspectionsPdf()', 'Export as PDF',
+    archToggle('setInspArch', INSP_ARCH, activeN, archN));
 
   document.getElementById('insp-tbody').innerHTML = rows.length === 0
     ? `<tr><td colspan="7" class="empty">${INSP_ARCH ? 'No archived reports.' : 'No inspections match your filter.'}</td></tr>`
@@ -1937,8 +1934,9 @@ function toggleAllPicks(cls, on, countId, allId) {
   document.querySelectorAll('.' + cls).forEach(el => { el.checked = on; });
   syncPickCount(cls, countId, allId);
 }
-function pickBar(cls, countId, allId, fn, label) {
-  return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-6px 0 14px">
+function pickBar(cls, countId, allId, fn, label, lead) {
+  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
+    ${lead || ''}
     <label style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;cursor:pointer">
       <input type="checkbox" id="${allId}" onchange="toggleAllPicks('${cls}', this.checked, '${countId}', '${allId}')">
       Select all
@@ -2236,10 +2234,9 @@ function renderOurForms() {
   rows = rows.filter(f => FORM_ARCH ? isArchived('form', f.id) : !isArchived('form', f.id));
   _formsFiltered = rows;
 
-  const ftg = document.getElementById('form-arch-toggle');
-  if (ftg) ftg.innerHTML = archToggle('setFormArch', FORM_ARCH, activeN, archN);
   const pb = document.getElementById('form-pickbar');
-  if (pb) pb.innerHTML = pickBar('form-pick', 'form-pick-count', 'form-pick-all', 'exportOurFormsPdf()', 'Export as PDF');
+  if (pb) pb.innerHTML = pickBar('form-pick', 'form-pick-count', 'form-pick-all', 'exportOurFormsPdf()', 'Export as PDF',
+    archToggle('setFormArch', FORM_ARCH, activeN, archN));
 
   document.getElementById('forms-tbody').innerHTML = rows.length === 0
     ? `<tr><td colspan="7" class="empty">${FORM_ARCH ? 'No archived inspections.' : 'No forms match your filter.'}</td></tr>`
