@@ -811,14 +811,8 @@
 
       <!-- DOCUMENTS -->
       <section class="view" id="view-documents" style="display:none">
-        <!-- Live: OSHA 300 uploads + the recordable numbers behind TRIR/DART.
-             Injected by the ?live=1 block below; hidden in demo mode. -->
-        <div id="live-docs-panel" style="display:none"></div>
-
-        <!-- The button a client actually wants: their whole safety programme
-             in one file, ready to hand to a GC or an auditor. Composes every
-             inspection, every finding with its corrective action, and the
-             training roster into a single PDF with a contents page. -->
+        <!-- Top of the tab: the two things a client reaches for — the whole
+             programme in one PDF, and the annual compliance report. -->
         <div class="card" style="margin-bottom:14px;border:1.5px solid var(--ink, #0f172a)">
           <div class="card-head">
             <div>
@@ -831,33 +825,27 @@
             </button>
           </div>
         </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head">
+            <div>
+              <div class="card-title">2026 Annual Safety Compliance Report</div>
+              <div class="card-sub">Prepared by Creekside Safety · attested by Marc Carey</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn secondary sm" onclick="switchView('annual-report')">Open</button>
+              <button class="btn sm" onclick="switchView('annual-report');setTimeout(()=>window.print(),300)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live: the folder checklist + the recordable numbers behind TRIR/DART.
+             Injected by the ?live=1 block below; hidden in demo mode. -->
+        <div id="live-docs-panel" style="display:none"></div>
+
         <div class="row row-2">
-          <div class="card" style="grid-column: 1 / -1">
-            <div class="card-head">
-              <div>
-                <div class="card-title">2026 Annual Safety Compliance Report</div>
-                <div class="card-sub">Prepared by Creekside Safety · attested by Marc Carey</div>
-              </div>
-              <div style="display:flex;gap:8px">
-                <button class="btn secondary sm" onclick="switchView('annual-report')">Open</button>
-                <button class="btn sm" onclick="switchView('annual-report');setTimeout(()=>window.print(),300)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  Download PDF
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="card" style="grid-column: 1 / -1">
-            <div class="card-head">
-              <div>
-                <div class="card-title">This week</div>
-                <div class="card-sub">What is open, who owns it, and what is coming due. Sent every Friday.</div>
-              </div>
-            </div>
-            <div class="card-body" id="digest-preview"></div>
-          </div>
-
           <div class="card">
             <div class="card-head"><div><div class="card-title">Monthly reports</div><div class="card-sub">The month in numbers — forward this to your GC or insurer</div></div></div>
             <div class="card-body" id="monthly-list" style="padding-top:6px"></div>
@@ -3065,7 +3053,7 @@ document.addEventListener('keydown', e => {
      numbers are typed here rather than on the phone: nobody enters 268,400
      hours standing on a job site. TRIR and DART are derived, never stored. */
   var DOC_CATS = ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs',
-                  'Project Safety', 'Inspections', 'Reports', 'Other'];
+                  'Project Safety', 'Other'];
   var LIVE_DOCS = [];
 
   function docsFn(action, body) {
@@ -3144,12 +3132,6 @@ document.addEventListener('keydown', e => {
         { it: 'Job Hazard Analyses (JHA)', re: /\bjha\b|job hazard/i, req: true },
         { it: 'Pre-Task Plans', re: /pre[-_ ]?task|ptp/i, req: false },
         { it: 'Toolbox Talks', re: /toolbox|tool box/i, req: false }],
-      'Inspections': [
-        { it: 'Jobsite Safety Inspections', re: /inspection/i, req: true },
-        { it: 'Equipment Inspections', re: /equip|forklift|aerial|crane/i, req: false },
-        { it: 'Excavation Inspections', re: /excav|trench/i, req: false }],
-      'Reports': [
-        { it: 'Safety Observation Reports', re: /observation|obs report|safety report/i, req: true }],
       'Other': []
     };
     function fileRow(d) {
