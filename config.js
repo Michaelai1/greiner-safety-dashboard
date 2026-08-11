@@ -68,3 +68,54 @@ window.CONFIG = {
      TRIR and DART are computed, never stored: rate = n * 200000 / hours. */
   statsYears: 3,
 };
+
+/* ============================================================================
+   MULTI-TENANT BOOT (NextGen OS, Milestone 1)
+   One shared deployment serves every client; the client is the SUBDOMAIN:
+   greiner.creeksidesafety.com -> slug 'greiner'. The values above are the
+   FALLBACK — everything here is additive and never throws, so this file still
+   works standalone and Greiner behaves identically whether or not the portal
+   registry (cs_portals / cs_portal_config) has been provisioned yet.
+   ========================================================================== */
+(function () {
+  var DEFAULT_SLUG = window.CONFIG.slug;                 // 'greiner' — fallback tenant
+  var host = (location.hostname || '').toLowerCase();
+  var m = /^([a-z0-9-]+)\.creeksidesafety\.com$/.exec(host);
+  window.CONFIG.slug = (m && m[1] !== 'www') ? m[1] : DEFAULT_SLUG;
+
+  window.CONFIG.accent  = window.CONFIG.accent || null;  // per-client accent (else CSS default)
+  window.CONFIG.modules = null;                          // null = every module on (fail-safe)
+
+  /* Is a feature module enabled for this client?  Unknown/unloaded -> ON, so a
+     portal never loses features because the registry is missing or unreachable. */
+  window.CONFIG.moduleOn = function (key) {
+    if (key === 'overview') return true;                 // home is always present
+    var mods = window.CONFIG.modules;
+    return !Array.isArray(mods) || mods.indexOf(key) !== -1;
+  };
+
+  /* Fetch this client's registry row and merge branding + enabled modules over
+     the static config. Returns a Promise that NEVER rejects; on any failure the
+     static config above stands unchanged. Apps call this once at boot before
+     building their nav. */
+  window.loadPortalConfig = function () {
+    var cs = window.CONFIG.creekside;
+    return fetch(cs.url + '/rest/v1/rpc/cs_portal_config', {
+      method: 'POST',
+      headers: { apikey: cs.anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_slug: window.CONFIG.slug })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (cfg) {
+        if (cfg && typeof cfg === 'object') {
+          if (cfg.contractor_name) window.CONFIG.contractor = cfg.contractor_name;
+          if (cfg.tagline)         window.CONFIG.tagline    = cfg.tagline;
+          if (cfg.accent)          window.CONFIG.accent     = cfg.accent;
+          if (Array.isArray(cfg.modules)) window.CONFIG.modules = cfg.modules;
+          if (cfg.toolguard_override) window.CONFIG.toolguard =
+            Object.assign({}, window.CONFIG.toolguard, cfg.toolguard_override);
+        }
+        return cfg || null;
+      })
+      .catch(function () { return null; });               // fail-safe: keep static config
+  };
+})();

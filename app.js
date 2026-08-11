@@ -1184,7 +1184,27 @@
 
 
   /* ---------- tabs ---------------------------------------------------- */
+  // Multi-tenant module gating (NextGen OS). Each phone tab maps to a feature
+  // module; fail-safe (moduleOn true when the registry is missing/unloaded), so
+  // Greiner and any un-provisioned portal show all four tabs.
+  var PHONE_MODULE = { home: 'reports', findings: 'findings', jobs: 'jobsites', certs: 'certifications' };
+  function phoneModuleOn(tab) {
+    var k = PHONE_MODULE[tab];
+    return !k || !C.moduleOn || C.moduleOn(k);
+  }
+  function firstEnabledTab() {
+    var order = ['home', 'findings', 'jobs', 'certs'];
+    for (var i = 0; i < order.length; i++) if (phoneModuleOn(order[i])) return order[i];
+    return 'home';
+  }
+  function applyPhoneGating() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+      b.style.display = phoneModuleOn(b.dataset.tab) ? '' : 'none';
+    });
+  }
+
   function show(tab) {
+    if (!phoneModuleOn(tab)) tab = firstEnabledTab();   // never open a disabled module
     ['home', 'findings', 'jobs', 'certs'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
@@ -1231,6 +1251,8 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
       b.onclick = function () { show(b.dataset.tab); };
     });
+    applyPhoneGating();
+    if (!phoneModuleOn('home')) show(firstEnabledTab());
 
     Array.prototype.forEach.call(document.querySelectorAll('.filter-mount'), function (host) {
       mountFilter(host, host.dataset.filter, renderHome);
@@ -1306,4 +1328,14 @@
   $('#gate-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
 
   if (getSession()) openApp(); else showGate();
+
+  // Resolve this client's registry row (branding + enabled modules) in the
+  // background; re-apply branding + tab gating when it lands. Non-blocking and
+  // fail-safe — the static config stands if the registry is missing/unreachable.
+  if (window.loadPortalConfig) window.loadPortalConfig().then(function () {
+    if ($('#gate-co')) $('#gate-co').textContent = C.contractor;
+    if ($('#app-title')) $('#app-title').textContent = C.pageTitle;
+    applyPhoneGating();
+    if (booted && !phoneModuleOn('home')) show(firstEnabledTab());
+  });
 })();

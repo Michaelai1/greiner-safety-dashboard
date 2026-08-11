@@ -1172,7 +1172,40 @@ const VIEW_META = {
   documents:     { title: 'Documents',      sub: 'Files on record, annual compliance report, and written programs' },
   'annual-report': { title: '2026 Annual Compliance Report', sub: 'Print-ready insurance-renewal document' },
 };
+/* ---- Multi-tenant module gating (NextGen OS) --------------------------
+   Each desk view maps to a feature module. When the portal registry says a
+   module is off for this client, its nav item is hidden and the view refuses
+   to open. Fail-safe: CONFIG.moduleOn() returns true whenever the registry is
+   missing/unloaded, so Greiner (and any un-provisioned portal) shows all. */
+var MODULE_OF_VIEW = {
+  overview: 'overview', jobsites: 'jobsites', inspections: 'reports',
+  ourforms: 'inspections', findings: 'findings', certs: 'certifications',
+  documents: 'documents', 'annual-report': 'annual_report'
+};
+function viewEnabled(name) {
+  var mk = MODULE_OF_VIEW[name];
+  return !mk || !window.CONFIG || !window.CONFIG.moduleOn || window.CONFIG.moduleOn(mk);
+}
+function applyModuleGating() {
+  document.querySelectorAll('.nav-item').forEach(function (el) {
+    var v = el.dataset.view;
+    if (v) el.style.display = viewEnabled(v) ? '' : 'none';
+  });
+}
+function applyPortalBranding() {
+  var c = window.CONFIG; if (!c) return;
+  if (c.contractor) document.title = 'Client Portal · ' + c.contractor;
+  var n = document.getElementById('client-name'); if (n && c.contractor) n.textContent = c.contractor;
+  var s = document.getElementById('client-sub');  if (s) s.textContent = c.tagline || 'General contractor';
+  if (c.accent) {
+    var r = document.documentElement.style;
+    r.setProperty('--accent', c.accent);
+    r.setProperty('--accent-2', c.accent);
+  }
+}
+
 function switchView(name) {
+  if (!viewEnabled(name)) name = 'overview';   // never open a disabled module
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const target = document.getElementById('view-' + name);
@@ -3142,8 +3175,11 @@ document.addEventListener('keydown', e => {
      Everything a carrier or GC asks for at renewal lives on one screen. The
      numbers are typed here rather than on the phone: nobody enters 268,400
      hours standing on a job site. TRIR and DART are derived, never stored. */
-  var DOC_CATS = ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs',
-                  'Project Safety', 'Other'];
+  // Per-client document folders come from config (registry override merges in
+  // via loadPortalConfig later); fall back to the standard set when unset.
+  var DOC_CATS = (window.CONFIG && Array.isArray(window.CONFIG.docCategories) && window.CONFIG.docCategories.length)
+    ? window.CONFIG.docCategories.slice()
+    : ['OSHA 300 Logs', 'OSHA 300A', 'Insurance', 'Written Programs', 'Project Safety', 'Other'];
 
   /* What SHOULD be in each folder — the checklist a carrier, GC or auditor
      works from. A required item with no matching file renders as a red
@@ -4455,6 +4491,13 @@ document.addEventListener('keydown', e => {
   };
 
   document.addEventListener('DOMContentLoaded', function () {
+    // Resolve this client's registry row (branding + enabled modules) in the
+    // background and apply it when it lands — NON-blocking, so a slow or missing
+    // registry never delays login. loadPortalConfig never rejects; on any
+    // failure the static config stands (Greiner boots identically either way).
+    if (window.loadPortalConfig) {
+      window.loadPortalConfig().then(function () { applyPortalBranding(); applyModuleGating(); });
+    }
     var sess = loadSession();
     if (!sess) { wireRealLogin(); return; }
     LIVE.token = sess;
