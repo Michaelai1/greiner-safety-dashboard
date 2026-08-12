@@ -665,7 +665,7 @@
           <div class="card">
             <div class="card-head">
               <div>
-                <div class="card-title">Certifications coming due</div>
+                <div class="card-title">Training coming due</div>
                 <div class="card-sub">Anyone whose card expires inside 60 days</div>
               </div>
               <button class="btn secondary sm" onclick="switchView('certs')">See all</button>
@@ -2525,7 +2525,7 @@ function renderDigestPreview() {
       <strong>${aging.buckets[3].items.length} item${aging.buckets[3].items.length === 1 ? '' : 's'} open more than 30 days.</strong> Worth a look at what is blocking them.
     </div>` : ''}
     ${runway.length ? `<div style="border-left:3px solid #eab308;background:#fefce8;padding:10px 13px;border-radius:0 8px 8px 0;font-size:12.5px;line-height:1.5">
-      <strong>Certifications coming due:</strong> ${runway.slice(0, 4).map(r => esc(r.worker)).join(', ')}${runway.length > 4 ? ' +' + (runway.length - 4) : ''}
+      <strong>Training coming due:</strong> ${runway.slice(0, 4).map(r => esc(r.worker)).join(', ')}${runway.length > 4 ? ' +' + (runway.length - 4) : ''}
     </div>` : ''}`;
 }
 
