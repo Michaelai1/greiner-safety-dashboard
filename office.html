@@ -985,9 +985,13 @@ const INSPECTORS = [
 // under their own company, not ours.
 var CREEKSIDE_PEOPLE = ['marc carey', 'john keeling', 'jonathan campbell', 'sam peterson', 'al peterson', 'brad hutson'];
 function inspAffiliation(insp) {
+  // Name-based ONLY. Every report's inspector role is hydrated as the literal
+  // 'Creekside Safety', so it can't be trusted to tell a Creekside consultant
+  // from a client foreman (e.g. Tony Sweet). A known Creekside person signs as
+  // Creekside; anyone else is the client's own crew, so they sign under the
+  // contractor (Greiner Brothers).
   var n = (insp && insp.name || '').toLowerCase().trim();
   if (CREEKSIDE_PEOPLE.indexOf(n) !== -1) return 'Creekside Safety Consulting';
-  if (insp && (insp.role === 'Creekside Safety' || /consult|inspector|owner|specialist/i.test(insp.role || ''))) return 'Creekside Safety Consulting';
   return (window.CONFIG && window.CONFIG.contractor) || (typeof CLIENT !== 'undefined' && CLIENT.name) || 'the contractor';
 }
 
@@ -1631,7 +1635,7 @@ function openReportDrill(reportId) {
       <div class="kv">
         <div><div class="k">Jobsite</div><div class="v">${esc(s.name)}</div></div>
         <div><div class="k">Job number</div><div class="v" style="font-family:var(--mono);font-size:12.5px">${esc(s.num)}</div></div>
-        <div><div class="k">Inspector</div><div class="v">${esc(insp.name)}<br><span style="color:var(--ink-4);font-size:11px;font-weight:500">${esc(insp.role)}</span></div></div>
+        <div><div class="k">Inspector</div><div class="v">${esc(insp.name)}<br><span style="color:var(--ink-4);font-size:11px;font-weight:500">${esc(inspAffiliation(insp))}</span></div></div>
         <div><div class="k">Date</div><div class="v">${fmtDate(r.date)}</div></div>
       </div>
     </div>
@@ -1689,7 +1693,7 @@ function openReportDrill(reportId) {
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
           <span style="font-family:'Snell Roundhand', 'Apple Chancery', cursive;font-style:italic;font-size:22px;color:var(--ink);display:block;padding-bottom:6px;border-bottom:1px solid var(--ink-4);width:220px;margin-bottom:6px">${esc(insp.name)}</span>
           <strong style="display:block;color:var(--ink);font-weight:700;font-size:12.5px">${esc(insp.name)}</strong>
-          <span style="font-size:11px;color:var(--ink-4);font-weight:500">${esc(insp.role)} · ${esc(inspAffiliation(insp))} · ${fmtDate(r.date)}</span>
+          <span style="font-size:11px;color:var(--ink-4);font-weight:500">${esc(inspAffiliation(insp))} · ${fmtDate(r.date)}</span>
         </div>
       </div>
     </div>
