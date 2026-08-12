@@ -1578,7 +1578,7 @@ function renderInspections() {
           <td class="primary">${fmtDate(r.date)}</td>
           <td>${esc(siteById(r.site)?.name || '')}<small>${esc(siteById(r.site)?.num || '')}</small></td>
           <td>${esc(r.type)}</td>
-          <td>${esc(insp?.name || '')}<small>${esc(insp?.role || '')}</small></td>
+          <td>${esc(insp?.name || '')}<small>${esc(insp ? inspAffiliation(insp) : '')}</small></td>
           <td>${r.overall === 'pass' ? '<span class="pill green">Pass</span>' : '<span class="pill amber">Flagged · ' + r.defects + '</span>'}</td>
           <td style="text-align:right;white-space:nowrap"><a href="javascript:void(0)" onclick="event.stopPropagation();toggleReportArchive('${r.id}')" style="color:#6b7280;margin-right:12px">${isArchived('report', r.id) ? 'Restore' : 'Archive'}</a><a href="javascript:void(0)">Open</a></td>
         </tr>`;
