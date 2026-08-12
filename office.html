@@ -4766,7 +4766,8 @@ document.addEventListener('keydown', e => {
       '<div><div class="k">Jobsite</div><div class="v">' + esc(s2 ? s2.name : '—') + '</div></div>' +
       '<div><div class="k">Job number</div><div class="v" style="font-family:var(--mono);font-size:12.5px">' +
         esc(s2 ? s2.num : '—') + '</div></div>' +
-      '<div><div class="k">Inspector</div><div class="v">' + esc(insp ? insp.name : '—') + '</div></div>' +
+      '<div><div class="k">Inspector</div><div class="v">' + esc(insp ? insp.name : '—') +
+        (insp ? '<br><span style="color:var(--ink-4);font-size:11px;font-weight:500">' + esc(inspAffiliation(insp)) + '</span>' : '') + '</div></div>' +
       '<div><div class="k">Date</div><div class="v">' + fmtDate(r.date) + '</div></div>' +
       '</div></div>';
     html += '<div class="drill-section"><h3>Everything checked (' + total + ')</h3>' +
