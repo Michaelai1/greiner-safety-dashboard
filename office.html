@@ -605,6 +605,11 @@
         Findings
         <span class="nav-badge amber" id="nav-badge-findings">3</span>
       </div>
+      <div class="nav-item" data-view="incidents" onclick="switchView('incidents')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2 2 22h20L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="18" r="0.5" fill="currentColor" stroke="none"/></svg>
+        Incidents
+        <span class="nav-badge amber" id="nav-badge-incidents"></span>
+      </div>
       <div class="nav-item" data-view="certs" onclick="switchView('certs')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 15l-2 5 4-2 4 2-2-5"/><circle cx="12" cy="9" r="6"/></svg>
         Certifications
@@ -810,6 +815,11 @@
           </div>
           <div id="find-list"></div>
         </div>
+      </section>
+
+      <!-- INCIDENTS -->
+      <section class="view" id="view-incidents" style="display:none">
+        <div id="incidents-host"></div>
       </section>
 
       <!-- CERTS -->
@@ -1163,6 +1173,7 @@ const VIEW_META = {
   inspections:   { title: 'Reports',        sub: 'Site walks and assessments our consultants performed' },
   ourforms:      { title: 'Inspections',    sub: 'JHAs, permits and equipment checks your own crew completed' },
   findings:      { title: 'Findings',       sub: 'Items flagged for corrective action, open first' },
+  incidents:     { title: 'Incidents',      sub: 'Report, investigate and track incidents and regulatory events' },
   certs:         { title: 'Certifications', sub: 'Worker certifications on file, with renewal window' },
   documents:     { title: 'Documents',      sub: 'Files on record, annual compliance report, and written programs' },
   'annual-report': { title: '2026 Annual Compliance Report', sub: 'Print-ready insurance-renewal document' },
@@ -1174,7 +1185,7 @@ const VIEW_META = {
    missing/unloaded, so Greiner (and any un-provisioned portal) shows all. */
 var MODULE_OF_VIEW = {
   overview: 'overview', jobsites: 'jobsites', inspections: 'reports',
-  ourforms: 'inspections', findings: 'findings', certs: 'certifications',
+  ourforms: 'inspections', findings: 'findings', incidents: 'incidents', certs: 'certifications',
   documents: 'documents', 'annual-report': 'annual_report'
 };
 function viewEnabled(name) {
@@ -1214,6 +1225,7 @@ function switchView(name) {
   if (name === 'inspections')    renderInspections();
   if (name === 'ourforms')       renderOurForms();
   if (name === 'findings')       renderFindings();
+  if (name === 'incidents' && window.incRender) window.incRender();
   if (name === 'certs')          renderCerts();
   if (name === 'documents')      renderDocuments();
   if (name === 'annual-report')  renderAnnualReport();
@@ -3538,6 +3550,227 @@ document.addEventListener('keydown', e => {
       });
     });
   }
+
+  /* ===== Incidents ======================================================
+     Report → investigate → corrective actions → close, through portal RPCs
+     (cs_portal_incidents / _save / _delete). Documents attach through the same
+     company-docs path the Documents tab uses. */
+  var INCIDENTS = [];
+  var INC_OPEN = null;
+  var INC_TYPES = [['injury_illness','Injury / Illness'],['near_miss','Near miss'],['property_damage','Property damage'],['vehicle','Vehicle incident'],['environmental','Environmental'],['first_aid','First-aid case'],['osha_visit','OSHA / regulatory visit'],['osha_citation','OSHA citation / notice / fine'],['other','Other']];
+  var INC_TYPE_LBL = {}; INC_TYPES.forEach(function (t) { INC_TYPE_LBL[t[0]] = t[1]; });
+  var INC_SEV = ['low','medium','high','critical'];
+  var INC_STATUS = [['open','Open'],['investigating','Under investigation'],['corrective','Corrective action'],['closed','Closed']];
+  var INC_STATUS_LBL = {}; INC_STATUS.forEach(function (s) { INC_STATUS_LBL[s[0]] = s[1]; });
+  function incUid() { return 'c' + Math.random().toString(36).slice(2, 8); }
+  function incById(id) { return INCIDENTS.filter(function (x) { return x.id === id; })[0]; }
+  function incTypeLabel(t) { return INC_TYPE_LBL[t] || t || 'Other'; }
+  function incSevPill(s) { var c = (s === 'high' || s === 'critical') ? 'red' : (s === 'medium' ? 'amber' : ''); return '<span class="pill ' + c + '">' + esc((s || '').toUpperCase()) + '</span>'; }
+  function incStatusPill(s) { return '<span class="pill ' + (s === 'closed' ? 'green' : 'amber') + '">' + esc(INC_STATUS_LBL[s] || s) + '</span>'; }
+  function incJobName(x) { var j = x.job_id && siteById(x.job_id); return j ? (j.name + (j.num ? ' · ' + j.num : '')) : ''; }
+  function incShortDate(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (e) { return '—'; } }
+  function incFileInput() { var el = document.getElementById('inc-file-input'); if (!el) { el = document.createElement('input'); el.type = 'file'; el.id = 'inc-file-input'; el.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0'; document.body.appendChild(el); } return el; }
+  function loadIncidents() {
+    return rpcWrite('cs_portal_incidents', {}).then(function (rows) { INCIDENTS = Array.isArray(rows) ? rows : []; })
+      .catch(function () { INCIDENTS = []; });
+  }
+  function saveIncidentObj(obj) { return rpcWrite('cs_portal_incident_save', { p_incident: obj }); }
+
+  window.incRender = function () {
+    var host = document.getElementById('incidents-host'); if (!host) return;
+    var jobOpts = (JOBSITES || []).map(function (j) { return '<option value="' + esc(j.id) + '">' + esc(j.name) + (j.num ? ' · ' + esc(j.num) : '') + '</option>'; }).join('');
+    host.innerHTML =
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn" onclick="openIncidentModal()">Report incident</button></div>' +
+      '<div class="row row-4" style="margin-bottom:14px">' +
+        '<div class="stat"><div class="stat-label">Open incidents</div><div class="stat-num" id="inc-k-open">0</div><div class="stat-sub" id="inc-k-open-sub"></div></div>' +
+        '<div class="stat"><div class="stat-label">Under investigation</div><div class="stat-num" id="inc-k-inv">0</div><div class="stat-sub">active</div></div>' +
+        '<div class="stat"><div class="stat-label">Overdue corrective actions</div><div class="stat-num" id="inc-k-ca">0</div><div class="stat-sub" id="inc-k-ca-sub"></div></div>' +
+        '<div class="stat"><div class="stat-label">OSHA recordable · YTD</div><div class="stat-num" id="inc-k-osha">0</div><div class="stat-sub">this year</div></div>' +
+      '</div>' +
+      '<div class="card"><div class="filter-bar">' +
+        '<input type="search" placeholder="Search incidents..." id="inc-search" oninput="incRows()">' +
+        '<select id="inc-job" onchange="incRows()"><option value="">All jobsites</option>' + jobOpts + '</select>' +
+        '<select id="inc-type" onchange="incRows()"><option value="">All types</option>' + INC_TYPES.map(function (t) { return '<option value="' + t[0] + '">' + esc(t[1]) + '</option>'; }).join('') + '</select>' +
+        '<select id="inc-sev" onchange="incRows()"><option value="">All severity</option>' + INC_SEV.map(function (s) { return '<option value="' + s + '">' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>'; }).join('') + '</select>' +
+        '<select id="inc-status" onchange="incRows()"><option value="">All status</option>' + INC_STATUS.map(function (s) { return '<option value="' + s[0] + '">' + esc(s[1]) + '</option>'; }).join('') + '</select>' +
+      '</div>' +
+      '<table class="tbl"><thead><tr><th>ID</th><th>Date</th><th>Type / title</th><th>Jobsite</th><th>Severity</th><th>Status</th><th>Assigned</th><th>Corrective</th></tr></thead>' +
+      '<tbody id="inc-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody></table></div>';
+    loadIncidents().then(window.incRows);
+  };
+  window.incRows = function () {
+    var g = function (id) { return document.getElementById(id); };
+    if (!g('inc-tbody')) return;
+    var q = (g('inc-search') && g('inc-search').value || '').toLowerCase();
+    var job = g('inc-job') ? g('inc-job').value : '', type = g('inc-type') ? g('inc-type').value : '';
+    var sev = g('inc-sev') ? g('inc-sev').value : '', st = g('inc-status') ? g('inc-status').value : '';
+    var rows = INCIDENTS.filter(function (x) {
+      if (job && x.job_id !== job) return false;
+      if (type && x.type !== type) return false;
+      if (sev && x.severity !== sev) return false;
+      if (st && x.status !== st) return false;
+      if (q) { var hay = ((x.incident_no || '') + ' ' + (x.title || '') + ' ' + incTypeLabel(x.type) + ' ' + (x.assigned_to || '') + ' ' + (x.description || '') + ' ' + incJobName(x)).toLowerCase(); if (hay.indexOf(q) === -1) return false; }
+      return true;
+    }).slice().sort(function (a, b) { return String(b.occurred_on || '').localeCompare(String(a.occurred_on || '')); });
+    var today = new Date().toISOString().slice(0, 10), yr = String(new Date().getFullYear());
+    var overdue = 0; INCIDENTS.forEach(function (x) { (x.corrective_actions || []).forEach(function (c) { if (!c.done && c.due && c.due < today) overdue++; }); });
+    var openN = INCIDENTS.filter(function (x) { return x.status !== 'closed'; }).length;
+    g('inc-k-open').textContent = openN; g('inc-k-open-sub').textContent = INCIDENTS.length + ' total';
+    g('inc-k-inv').textContent = INCIDENTS.filter(function (x) { return x.status === 'investigating'; }).length;
+    g('inc-k-ca').textContent = overdue; g('inc-k-ca-sub').textContent = overdue ? 'need attention' : 'all on time';
+    g('inc-k-osha').textContent = INCIDENTS.filter(function (x) { return x.osha_recordable && String(x.occurred_on || '').slice(0, 4) === yr; }).length;
+    var badge = document.getElementById('nav-badge-incidents'); if (badge) badge.textContent = openN || '';
+    g('inc-tbody').innerHTML = rows.length ? rows.map(function (x) {
+      var ca = x.corrective_actions || [], caDone = ca.filter(function (c) { return c.done; }).length;
+      return '<tr class="clickable" onclick="openIncidentDetail(\'' + x.id + '\')">' +
+        '<td class="primary">' + esc(x.incident_no || '—') + '</td>' +
+        '<td>' + esc(String(x.occurred_on || '').slice(0, 10) || '—') + '</td>' +
+        '<td class="primary">' + esc(x.title || incTypeLabel(x.type)) + '<small>' + esc(incTypeLabel(x.type)) + '</small></td>' +
+        '<td>' + esc(incJobName(x) || '—') + '</td>' +
+        '<td>' + incSevPill(x.severity) + '</td><td>' + incStatusPill(x.status) + '</td>' +
+        '<td>' + esc(x.assigned_to || '—') + '</td>' +
+        '<td>' + (ca.length ? caDone + '/' + ca.length : '—') + '</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty">No incidents match your filters.</td></tr>';
+  };
+  function incOverlay(id, inner) {
+    var w = document.createElement('div'); w.id = id;
+    w.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(11,17,32,.45);display:flex;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto';
+    w.onclick = function (e) { if (e.target === w) w.remove(); };
+    w.innerHTML = '<div style="max-width:600px;width:100%;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.28)">' + inner + '</div>';
+    document.body.appendChild(w); return w;
+  }
+  window.openIncidentModal = function (id) {
+    var x = id ? incById(id) || {} : {};
+    var jobOpts = '<option value="">— none —</option>' + (JOBSITES || []).map(function (j) { return '<option value="' + esc(j.id) + '"' + (x.job_id === j.id ? ' selected' : '') + '>' + esc(j.name) + (j.num ? ' · ' + esc(j.num) : '') + '</option>'; }).join('');
+    var fld = function (lb, inner) { return '<div style="margin-bottom:11px"><label style="display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;margin-bottom:4px">' + lb + '</label>' + inner + '</div>'; };
+    var inp = 'width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;font-size:14px';
+    incOverlay('incident-modal',
+      '<div style="padding:15px 18px;border-bottom:1px solid #eef0f3;display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800">' + (id ? 'Edit incident' : 'Report incident') + '</div>' +
+        '<button onclick="document.getElementById(\'incident-modal\').remove()" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer">Cancel</button></div>' +
+      '<div style="padding:16px 18px">' +
+        '<div style="display:flex;gap:10px">' +
+          '<div style="flex:1">' + fld('Type', '<select id="in-type" style="' + inp + '">' + INC_TYPES.map(function (t) { return '<option value="' + t[0] + '"' + (x.type === t[0] ? ' selected' : '') + '>' + esc(t[1]) + '</option>'; }).join('') + '</select>') + '</div>' +
+          '<div style="flex:1">' + fld('Severity', '<select id="in-sev" style="' + inp + '">' + INC_SEV.map(function (s) { return '<option value="' + s + '"' + ((x.severity || 'medium') === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>'; }).join('') + '</select>') + '</div>' +
+        '</div>' +
+        fld('Title', '<input id="in-title" style="' + inp + '" value="' + esc(x.title || '') + '" placeholder="Short description of what happened">') +
+        fld('Jobsite', '<select id="in-job" style="' + inp + '">' + jobOpts + '</select>') +
+        '<div style="display:flex;gap:10px">' +
+          '<div style="flex:1">' + fld('Date', '<input id="in-date" type="date" style="' + inp + '" value="' + esc(String(x.occurred_on || '').slice(0, 10)) + '">') + '</div>' +
+          '<div style="flex:1">' + fld('Time', '<input id="in-time" type="time" style="' + inp + '" value="' + esc(String(x.occurred_at || '').slice(0, 5)) + '">') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<div style="flex:1">' + fld('Assigned to', '<input id="in-assigned" style="' + inp + '" value="' + esc(x.assigned_to || '') + '">') + '</div>' +
+          '<div style="flex:1">' + fld('Reported by', '<input id="in-reporter" style="' + inp + '" value="' + esc(x.reported_by || '') + '">') + '</div>' +
+        '</div>' +
+        fld('What happened', '<textarea id="in-desc" rows="3" style="' + inp + ';resize:vertical">' + esc(x.description || '') + '</textarea>') +
+        fld('Immediate action taken', '<textarea id="in-immediate" rows="2" style="' + inp + ';resize:vertical">' + esc(x.immediate_action || '') + '</textarea>') +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px"><input type="checkbox" id="in-osha"' + (x.osha_recordable ? ' checked' : '') + '> OSHA recordable</label>' +
+        '<button class="btn" style="width:100%;margin-top:16px" onclick="saveIncident(' + (id ? '\'' + esc(id) + '\'' : 'null') + ')">' + (id ? 'Save changes' : 'Report incident') + '</button>' +
+      '</div>');
+  };
+  window.saveIncident = function (id) {
+    var g = function (x) { return document.getElementById(x); };
+    var base = id ? Object.assign({}, incById(id)) : {};
+    var obj = Object.assign(base, {
+      type: g('in-type').value, title: g('in-title').value.trim() || null, job_id: g('in-job').value || null,
+      occurred_on: g('in-date').value || null, occurred_at: g('in-time').value || null,
+      severity: g('in-sev').value, assigned_to: g('in-assigned').value.trim() || null,
+      reported_by: g('in-reporter').value.trim() || null, description: g('in-desc').value.trim() || null,
+      immediate_action: g('in-immediate').value.trim() || null, osha_recordable: g('in-osha').checked,
+    });
+    saveIncidentObj(obj).then(function () { var m = document.getElementById('incident-modal'); if (m) m.remove(); banner('Incident saved'); return loadIncidents(); })
+      .then(function () { window.incRows(); if (id && INC_OPEN === id) window.openIncidentDetail(id); })
+      .catch(function (e) { banner(e.message, true); });
+  };
+  function incMutate(id, patch) {
+    var obj = Object.assign({}, incById(id), patch);
+    saveIncidentObj(obj).then(loadIncidents).then(function () { window.incRows(); if (INC_OPEN === id) window.openIncidentDetail(id); }).catch(function (e) { banner(e.message, true); });
+  }
+  window.openIncidentDetail = function (id) {
+    var x = incById(id); if (!x) return; INC_OPEN = id;
+    var ca = x.corrective_actions || [], at = x.attachments || [], today = new Date().toISOString().slice(0, 10);
+    var inp = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;font-size:13px';
+    var caRows = ca.length ? ca.map(function (c) {
+      return '<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #eef0f3">' +
+        '<input type="checkbox"' + (c.done ? ' checked' : '') + ' style="margin-top:3px" onchange="incToggleCA(\'' + id + '\',\'' + c.id + '\',this.checked)">' +
+        '<div style="flex:1"><div style="font-size:13px' + (c.done ? ';text-decoration:line-through;color:#9ca3af' : '') + '">' + esc(c.action) + '</div>' +
+        '<div style="font-size:11.5px;color:#6b7280">' + (c.owner ? esc(c.owner) : 'Unassigned') + (c.due ? ' · due ' + esc(c.due) + (!c.done && c.due < today ? ' <span style="color:#b91c1c;font-weight:700">overdue</span>' : '') : '') + '</div></div>' +
+        '<button onclick="incDelCA(\'' + id + '\',\'' + c.id + '\')" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px">×</button></div>';
+    }).join('') : '<div style="font-size:12.5px;color:#6b7280">No corrective actions yet.</div>';
+    var atRows = at.length ? at.map(function (a, i) {
+      return '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eef0f3"><span style="flex:1;font-size:12.5px">' + esc(a.name) + '</span>' +
+        '<button class="btn secondary sm" onclick="incDownload(\'' + esc(a.path) + '\')">Open</button>' +
+        '<button onclick="incRemoveAttach(\'' + id + '\',' + i + ')" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px">×</button></div>';
+    }).join('') : '<div style="font-size:12.5px;color:#6b7280">No documents attached.</div>';
+    var sel = 'padding:7px 9px;border:1px solid #d1d5db;border-radius:8px;font:inherit;font-size:13px';
+    incOverlay('incident-detail',
+      '<div style="padding:15px 18px;border-bottom:1px solid #eef0f3;display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+        '<div><div style="font-weight:800;font-size:16px">' + esc(x.title || incTypeLabel(x.type)) + '</div>' +
+        '<div style="font-size:12px;color:#6b7280">' + esc(x.incident_no || '') + ' · ' + esc(incTypeLabel(x.type)) + ' · ' + esc(incJobName(x) || 'No jobsite') + '</div></div>' +
+        '<div style="display:flex;gap:6px"><button class="btn secondary sm" onclick="openIncidentModal(\'' + id + '\')">Edit</button>' +
+          '<button onclick="document.getElementById(\'incident-detail\').remove()" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer">Close</button></div></div>' +
+      '<div style="padding:16px 18px">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+          '<label style="font-size:11px;color:#6b7280">Status <select style="' + sel + ';margin-left:4px" onchange="incFieldSet(\'' + id + '\',\'status\',this.value)">' + INC_STATUS.map(function (s) { return '<option value="' + s[0] + '"' + (x.status === s[0] ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('') + '</select></label>' +
+          '<label style="font-size:11px;color:#6b7280">Severity <select style="' + sel + ';margin-left:4px" onchange="incFieldSet(\'' + id + '\',\'severity\',this.value)">' + INC_SEV.map(function (s) { return '<option value="' + s + '"' + (x.severity === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>'; }).join('') + '</select></label>' +
+        '</div>' +
+        '<div style="font-size:12.5px;color:#6b7280;margin-bottom:12px">Occurred <b style="color:#0b1120">' + esc(String(x.occurred_on || '—').slice(0, 10)) + (x.occurred_at ? ' ' + esc(String(x.occurred_at).slice(0, 5)) : '') + '</b> · Assigned <b style="color:#0b1120">' + esc(x.assigned_to || '—') + '</b> · Reported by <b style="color:#0b1120">' + esc(x.reported_by || '—') + '</b>' + (x.osha_recordable ? ' · <b style="color:#b91c1c">OSHA recordable</b>' : '') + '</div>' +
+        '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px">What happened</div><textarea id="ind-desc" rows="3" style="' + inp + ';resize:vertical">' + esc(x.description || '') + '</textarea>' +
+        '<div style="display:flex;gap:10px;margin-top:10px"><div style="flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px">Immediate action</div><textarea id="ind-immediate" rows="2" style="' + inp + ';resize:vertical">' + esc(x.immediate_action || '') + '</textarea></div>' +
+          '<div style="flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px">Root cause</div><textarea id="ind-root" rows="2" style="' + inp + ';resize:vertical">' + esc(x.root_cause || '') + '</textarea></div></div>' +
+        '<button class="btn secondary sm" style="margin-top:8px" onclick="incSaveInvestigation(\'' + id + '\')">Save investigation notes</button>' +
+        '<div style="font-weight:800;font-size:13px;margin:18px 0 6px">Corrective actions</div>' + caRows +
+        '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="ca-new-action" placeholder="Action" style="' + inp + ';flex:2;min-width:130px"><input id="ca-new-owner" placeholder="Owner" style="' + inp + ';flex:1;min-width:80px"><input id="ca-new-due" type="date" style="' + inp + ';width:auto"><button class="btn secondary sm" onclick="incAddCA(\'' + id + '\')">Add</button></div>' +
+        '<div style="font-weight:800;font-size:13px;margin:18px 0 6px">Documents</div>' + atRows +
+        '<button class="btn secondary sm" style="margin-top:8px" onclick="incUpload(\'' + id + '\')">Attach document</button>' +
+        '<div style="margin-top:18px;border-top:1px solid #eef0f3;padding-top:12px"><button class="btn secondary sm" style="color:#b91c1c" onclick="deleteIncident(\'' + id + '\')">Delete incident</button></div>' +
+      '</div>');
+  };
+  window.incFieldSet = function (id, f, v) { var p = {}; p[f] = v; incMutate(id, p); };
+  window.incSaveInvestigation = function (id) {
+    var g = function (x) { return document.getElementById(x); };
+    incMutate(id, { description: g('ind-desc').value.trim() || null, immediate_action: g('ind-immediate').value.trim() || null, root_cause: g('ind-root').value.trim() || null });
+    banner('Saved');
+  };
+  window.incAddCA = function (id) {
+    var o = incById(id), a = (document.getElementById('ca-new-action').value || '').trim();
+    if (!a) { banner('Enter an action', true); return; }
+    var ca = (o.corrective_actions || []).slice();
+    ca.push({ id: incUid(), action: a, owner: (document.getElementById('ca-new-owner').value || '').trim() || null, due: document.getElementById('ca-new-due').value || null, done: false });
+    incMutate(id, { corrective_actions: ca });
+  };
+  window.incToggleCA = function (id, caId, done) { var o = incById(id); incMutate(id, { corrective_actions: (o.corrective_actions || []).map(function (c) { return c.id === caId ? Object.assign({}, c, { done: !!done }) : c; }) }); };
+  window.incDelCA = function (id, caId) { var o = incById(id); incMutate(id, { corrective_actions: (o.corrective_actions || []).filter(function (c) { return c.id !== caId; }) }); };
+  window.incUpload = function (id) {
+    var o = incById(id); if (!o) return;
+    var fi = incFileInput(); fi.value = '';
+    fi.onchange = function () {
+      var f = fi.files && fi.files[0]; if (!f) return;
+      banner('Uploading ' + f.name + '...');
+      docsFn('upload', { category: 'incident ' + (o.incident_no || o.id), filename: f.name }).then(function (r) {
+        return fetch(r.signedUrl, { method: 'PUT', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f }).then(function (res) {
+          if (!res.ok) throw new Error('upload failed');
+          var at = (o.attachments || []).slice(); at.push({ name: f.name, path: r.path, size: f.size, uploaded_at: new Date().toISOString() });
+          return saveIncidentObj(Object.assign({}, incById(id), { attachments: at }));
+        });
+      }).then(loadIncidents).then(function () { window.incRows(); window.openIncidentDetail(id); banner('Attached ' + f.name); })
+        .catch(function (e) { banner(e.message, true); });
+    };
+    fi.click();
+  };
+  window.incDownload = function (path) { docsFn('download', { path: path }).then(function (r) { window.open(r.signedUrl, '_blank'); }).catch(function (e) { banner(e.message, true); }); };
+  window.incRemoveAttach = function (id, idx) {
+    var o = incById(id), at = (o.attachments || []).slice(), rec = at[idx];
+    if (!window.confirm('Remove ' + (rec ? rec.name : 'this file') + '?')) return;
+    at.splice(idx, 1);
+    if (rec && rec.path) docsFn('delete', { path: rec.path }).catch(function () {});
+    incMutate(id, { attachments: at });
+  };
+  window.deleteIncident = function (id) {
+    if (!window.confirm('Delete this incident? This cannot be undone.')) return;
+    rpcWrite('cs_portal_incident_delete', { p_id: id }).then(function () { var d = document.getElementById('incident-detail'); if (d) d.remove(); INC_OPEN = null; banner('Incident deleted'); return loadIncidents(); })
+      .then(window.incRows).catch(function (e) { banner(e.message, true); });
+  };
 
   window.closeJobFlow = function (jobId) {
     var job = JOBSITES.filter(function (j) { return j.id === jobId; })[0];
