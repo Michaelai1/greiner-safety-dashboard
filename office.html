@@ -865,11 +865,6 @@
 
         <div class="row row-2">
           <div class="card">
-            <div class="card-head"><div><div class="card-title">Monthly reports</div><div class="card-sub">The month in numbers — forward this to your GC or insurer</div></div></div>
-            <div class="card-body" id="monthly-list" style="padding-top:6px"></div>
-          </div>
-
-          <div class="card">
             <div class="card-head"><div><div class="card-title">Written safety programs</div><div class="card-sub">Maintained on file by Creekside</div></div></div>
             <div class="card-body" id="programs-list" style="padding-top:6px"></div>
           </div>
@@ -2538,7 +2533,6 @@ function renderMonthlyList(elId) {
 
 function renderDocuments() {
   renderDigestPreview();
-  renderMonthlyList('monthly-list');
 
   document.getElementById('programs-list').innerHTML = PROGRAMS.map(p => `
     <div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline">
