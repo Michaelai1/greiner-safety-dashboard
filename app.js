@@ -42,6 +42,20 @@
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   }
 
+  /* Usage telemetry — fire-and-forget, never throws/blocks, no-ops without a
+     session or the cs_portal_log RPC. Feeds the NextGen console's Usage view. */
+  function logEvent(ev, meta) {
+    try {
+      var tok = getSession(); if (!tok) return;
+      fetch(C.creekside.url + '/rest/v1/rpc/cs_portal_log', {
+        method: 'POST',
+        headers: { apikey: C.creekside.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_token: tok, p_event: ev, p_meta: meta || {} }),
+        keepalive: true
+      }).catch(function () {});
+    } catch (e) { /* telemetry must never affect the app */ }
+  }
+
   function post(fn, body) {
     return fetch(C.creekside.url + '/rest/v1/rpc/' + fn, {
       method: 'POST',
@@ -1205,6 +1219,7 @@
 
   function show(tab) {
     if (!phoneModuleOn(tab)) tab = firstEnabledTab();   // never open a disabled module
+    logEvent('view', { view: tab });
     ['home', 'findings', 'jobs', 'certs'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
@@ -1224,6 +1239,7 @@
   }
 
   function boot() {
+    logEvent('open');
     $('#app-title').textContent = C.pageTitle;
     var who = sessionUser();
     $('#app-by').textContent = who
@@ -1316,6 +1332,7 @@
           return;
         }
         setSession(res);
+        logEvent('login');
         openApp();
       })
       .catch(function (e) { err.textContent = e.message; })

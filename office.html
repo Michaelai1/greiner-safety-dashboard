@@ -1201,6 +1201,7 @@ function applyPortalBranding() {
 
 function switchView(name) {
   if (!viewEnabled(name)) name = 'overview';   // never open a disabled module
+  if (window.logPortal) window.logPortal('view', { view: name });
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const target = document.getElementById('view-' + name);
@@ -2862,6 +2863,23 @@ document.addEventListener('keydown', e => {
     }
   };
 
+  /* Usage telemetry — fire-and-forget. Reports what this portal is used for so
+     the NextGen console can show real adoption. NEVER throws, never blocks, and
+     silently no-ops if there's no session or the cs_portal_log RPC isn't there.
+     Exposed as window.logPortal so the top-level switchView can call it too. */
+  function logEvent(ev, meta) {
+    try {
+      if (!LIVE.token) return;
+      fetch(LIVE.url + '/rest/v1/rpc/cs_portal_log', {
+        method: 'POST',
+        headers: { apikey: LIVE.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_token: LIVE.token, p_event: ev, p_meta: meta || {} }),
+        keepalive: true
+      }).catch(function () {});
+    } catch (e) { /* telemetry must never affect the app */ }
+  }
+  window.logPortal = logEvent;
+
 
   /* ---- session ---------------------------------------------------------
      Same model as the phone: no secret in source. The PIN goes to the server,
@@ -4127,6 +4145,7 @@ document.addEventListener('keydown', e => {
   }
 
   function startApp() {
+    logEvent('open');
     return Promise.all([bundle(), crew()]).then(function (res) {
       var b = res[0];
       if (!b || b.message) throw new Error((b && b.message) || 'no data');
@@ -4201,6 +4220,7 @@ document.addEventListener('keydown', e => {
           }
           saveSession(res);
           LIVE.token = res.session;
+          logEvent('login');
           return startApp();
         })
         .catch(function (e2) { err.textContent = e2.message; err.style.display = ''; });
