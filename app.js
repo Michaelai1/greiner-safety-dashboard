@@ -785,6 +785,7 @@
             f.closed = new Date().toISOString().slice(0, 10);
             f.closed_by = sessionUser() || C.inspector;
             toast('Finding closed');
+            logEvent('finding_action', { photo: !!file });
             renderFindings();
           }).catch(function (e) {
             errP.textContent = /find the function|does not exist|schema cache/i.test(e.message)
@@ -873,6 +874,7 @@
         form.classList.add('hide');
         $('#c-worker').value = ''; $('#c-other').value = '';
         toast('Certification added');
+        logEvent('cert_add');
         return refresh();
       }).catch(function (e) {
         err.textContent = /find the function|does not exist|schema cache|404/i.test(e.message)
@@ -927,6 +929,7 @@
       // some iOS versions and is what dropped the link before).
       location.href = 'sms:' + digits + '&body=' + encodeURIComponent(msg);
       toast('Opening Messages…');
+      logEvent('send_form');
     };
   }
 
@@ -1255,6 +1258,7 @@
     };
     document.title = C.pageTitle;
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
+    $('#start-inspection').addEventListener('click', function () { logEvent('inspection_start'); });
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; })])
       .then(renderHome)

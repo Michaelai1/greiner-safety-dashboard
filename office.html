@@ -1560,6 +1560,7 @@ function renderInspections() {
 
 function openReportDrill(reportId) {
   const r = reportById(reportId); if (!r) return;
+  if (window.logPortal) window.logPortal('report_open');
   const s = siteById(r.site);
   const insp = inspectorById(r.inspector);
   const ab = document.getElementById('report-archive-btn');
@@ -3422,7 +3423,7 @@ document.addEventListener('keydown', e => {
           return rpcWrite('cs_portal_doc_add', {
             p_category: cat, p_filename: f.name, p_path: r.path, p_size: f.size });
         });
-      }).then(refreshDocs).then(function () { banner('Uploaded ' + f.name); })
+      }).then(refreshDocs).then(function () { banner('Uploaded ' + f.name); logEvent('doc_upload', { category: cat }); })
         .catch(function (e) { banner(e.message, true); });
     };
     input.click();
@@ -3452,7 +3453,7 @@ document.addEventListener('keydown', e => {
           return rpcWrite('cs_portal_doc_add', {
             p_category: cat, p_filename: name, p_path: r.path, p_size: f.size });
         });
-      }).then(refreshDocs).then(function () { banner('Uploaded ' + name); })
+      }).then(refreshDocs).then(function () { banner('Uploaded ' + name); logEvent('doc_upload', { category: cat }); })
         .catch(function (e) { banner(e.message, true); });
     };
     input.click();
@@ -3460,7 +3461,7 @@ document.addEventListener('keydown', e => {
 
   window.liveDocDownload = function (path) {
     docsFn('download', { path: path })
-      .then(function (r) { window.open(r.signedUrl, '_blank'); })
+      .then(function (r) { window.open(r.signedUrl, '_blank'); logEvent('doc_download'); })
       .catch(function (e) { banner(e.message, true); });
   };
 
@@ -3793,6 +3794,7 @@ document.addEventListener('keydown', e => {
           document.getElementById('live-cert-modal').remove();
           if (typeof renderCerts === 'function') renderCerts();
           banner(certs.length + ' certification' + (certs.length === 1 ? '' : 's') + ' added for ' + worker);
+          logEvent('cert_add', { count: certs.length });
         })
         .catch(function (e) {
           err.textContent = /find the function|does not exist|schema cache/i.test(e.message)
@@ -4328,6 +4330,7 @@ document.addEventListener('keydown', e => {
         renderFindings();
         try { renderOverview(); } catch (e2) {}
         toast('Finding closed' + (dataUrl ? ' — photo attached' : ''), 'success');
+        if (window.logPortal) window.logPortal('finding_action', { photo: !!dataUrl });
       });
     }).catch(function (e) {
       toast(/find the function|does not exist|schema cache/i.test(e.message)
