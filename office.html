@@ -594,7 +594,7 @@
       </div>
       <div class="nav-item" data-view="inspections" onclick="switchView('inspections')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Reports
+        Safety Reports
       </div>
       <div class="nav-item" data-view="ourforms" onclick="switchView('ourforms')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -612,7 +612,7 @@
       </div>
       <div class="nav-item" data-view="certs" onclick="switchView('certs')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 15l-2 5 4-2 4 2-2-5"/><circle cx="12" cy="9" r="6"/></svg>
-        Certifications
+        Training
         <span class="nav-badge amber" id="nav-badge-certs">3</span>
       </div>
       <div class="nav-item" data-view="documents" onclick="switchView('documents')">
@@ -826,7 +826,7 @@
       <section class="view" id="view-certs" style="display:none">
         <div class="card">
           <div class="card-head">
-            <div><div class="card-title">Certifications</div><div class="card-sub">Renewals flagged 30 days out</div></div>
+            <div><div class="card-title">Training</div><div class="card-sub">Renewals flagged 30 days out</div></div>
             <div style="display:flex;gap:8px">
               <button class="btn secondary sm" onclick="exportCertsCSV()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV</button>
               <button class="btn sm" onclick="exportCertsPdf()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Download PDF</button>
@@ -1170,11 +1170,11 @@ function openFindings() { return FINDINGS.filter(f => f.status === 'open'); }
 const VIEW_META = {
   overview:      { title: 'Overview',       sub: 'Safety program summary' },
   jobsites:      { title: 'Jobsites',       sub: 'Active jobsites, most recent activity first' },
-  inspections:   { title: 'Reports',        sub: 'Site walks and assessments our consultants performed' },
+  inspections:   { title: 'Safety Reports',  sub: 'Site walks and assessments our consultants performed' },
   ourforms:      { title: 'Inspections',    sub: 'JHAs, permits and equipment checks your own crew completed' },
   findings:      { title: 'Findings',       sub: 'Items flagged for corrective action, open first' },
   incidents:     { title: 'Incidents',      sub: 'Report, investigate and track incidents and regulatory events' },
-  certs:         { title: 'Certifications', sub: 'Worker certifications on file, with renewal window' },
+  certs:         { title: 'Training',       sub: 'Worker training and certifications on file, with renewal window' },
   documents:     { title: 'Documents',      sub: 'Files on record, annual compliance report, and written programs' },
   'annual-report': { title: '2026 Annual Compliance Report', sub: 'Print-ready insurance-renewal document' },
 };
@@ -2797,7 +2797,7 @@ document.addEventListener('keydown', e => {
       <div style="font-size:12px;color:#64748b;line-height:1.5;margin-top:14px">
         Creekside verifies this on the next site visit. The finding stays open until they do.
       </div>
-      <button onclick="submitCorrective()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:11px;background:#0f172a;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer">Send to Creekside</button>
+      <button onclick="submitCorrective()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:11px;background:#0f172a;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer">Submit</button>
     </div>
   </div>
 </div>
@@ -2826,7 +2826,7 @@ document.addEventListener('keydown', e => {
 
     <div id="nm-error" style="display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 13px;font-size:13px;line-height:1.5"></div>
 
-    <button onclick="submitNearMiss()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:11px;background:#0f172a;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer">Send to Creekside</button>
+    <button onclick="submitNearMiss()" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:11px;background:#0f172a;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer">Submit</button>
   </div>
 </div>
 
@@ -3958,7 +3958,7 @@ document.addEventListener('keydown', e => {
       'box-shadow:0 18px 50px rgba(0,0,0,.25);overflow:hidden">' +
         '<div style="padding:17px 22px;border-bottom:1px solid #e5e7eb;display:flex;' +
         'justify-content:space-between;align-items:center;gap:14px">' +
-          '<div style="font-size:16px;font-weight:800">Add certification</div>' +
+          '<div style="font-size:16px;font-weight:800">Add training</div>' +
           '<button onclick="document.getElementById(\'live-cert-modal\').remove()" ' +
           'style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:6px 12px;' +
           'font:inherit;font-size:13px;font-weight:700;cursor:pointer">Cancel</button></div>' +
@@ -3966,7 +3966,7 @@ document.addEventListener('keydown', e => {
           '<label style="' + lbl + '">Worker</label>' +
           '<input id="cm-worker" list="cm-names" autocomplete="off" placeholder="Name" style="' + fld + '">' +
           '<datalist id="cm-names">' + names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
-          '<label style="' + lbl + '">Certifications <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9ca3af">— tap to add, each gets its own dates</span></label>' +
+          '<label style="' + lbl + '">Training <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9ca3af">— tap to add, each gets its own dates</span></label>' +
           '<div id="cm-chips" style="display:flex;flex-wrap:wrap;gap:7px">' +
             DESK_CERT_TYPES.map(function (t) {
               return '<button type="button" class="cm-chip" data-cert="' + esc(t[0]) + '" ' +
@@ -3976,7 +3976,7 @@ document.addEventListener('keydown', e => {
           '<div id="cm-rows" style="margin-top:4px"></div>' +
           '<div id="cm-err" style="display:none;margin:11px 0 0;color:#991b1b;font-size:13px"></div>' +
           '<button id="cm-save" style="width:100%;margin-top:16px;border:none;border-radius:10px;' +
-          'background:#0f172a;color:#fff;padding:12px;font:inherit;font-size:14px;font-weight:800;cursor:pointer">Save certification</button>' +
+          'background:#0f172a;color:#fff;padding:12px;font:inherit;font-size:14px;font-weight:800;cursor:pointer">Submit training</button>' +
         '</div></div>';
     document.body.appendChild(wrap);
 
@@ -4100,7 +4100,7 @@ document.addEventListener('keydown', e => {
       if (!host || document.getElementById('live-add-cert')) return;
       var b = document.createElement('button');
       b.id = 'live-add-cert';
-      b.textContent = '+  Add certification';
+      b.textContent = '+  Add training';
       b.style.cssText = 'margin:0 18px 14px;border:1px dashed #94a3b8;background:#fff;' +
         'border-radius:11px;padding:11px 18px;font:inherit;font-size:14px;font-weight:700;' +
         'color:#1e3a8a;cursor:pointer';
