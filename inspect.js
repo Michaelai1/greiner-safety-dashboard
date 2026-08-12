@@ -17,7 +17,7 @@
   if (KEY !== C.inspectKey) { $('#deny').classList.remove('hide'); return; }
 
   var OUTBOX = 'cs_outbox_' + C.creekside.templateCode;
-  var state = { tpl: null, jobs: [], answers: {}, notes: {}, photos: {} };
+  var state = { tpl: null, jobs: [], answers: {}, notes: {}, itemNotes: {}, photos: {} };
 
   // Always the submit-scoped key — the only static token left in the system.
   // Its URL ends up in history, texts and screenshots, so server side it can
@@ -202,10 +202,8 @@
     // `invert` items are the ones where Yes is the finding ("are there other
     // site conditions to address?"), so the buttons flip and the photo prompt
     // follows the bad answer, not the literal "no".
-    var bad = it.invert ? 'yes' : 'no';
     box.appendChild(el('p', null, it.label));
     var yn = el('div', 'yn');
-    var ph = null;
     var order = it.invert ? [['no', 'No'], ['yes', 'Yes'], ['na', 'N/A']]
                           : [['yes', 'Yes'], ['no', 'No'], ['na', 'N/A']];
     order.forEach(function (o) {
@@ -218,14 +216,21 @@
         Array.prototype.forEach.call(yn.children, function (x) {
           x.setAttribute('aria-pressed', String(x.dataset.v === o[0]));
         });
-        // photo prompt only on the answer that is actually a problem
-        if (o[0] === bad && !ph) { ph = photoBlock(it.id); box.appendChild(ph); }
-        if (o[0] !== bad && ph) { ph.remove(); ph = null; delete state.photos[it.id]; }
         updateProgress();
       };
       yn.appendChild(b);
     });
     box.appendChild(yn);
+    // Notes + photo are available on EVERY item, not just a failed one — the
+    // crew can document anything, even a pass (matches the Creekside phone).
+    var nta = el('textarea');
+    nta.placeholder = 'Notes (optional)';
+    nta.oninput = function () {
+      var v = nta.value.trim();
+      if (v) state.itemNotes[it.id] = v; else delete state.itemNotes[it.id];
+    };
+    box.appendChild(nta);
+    box.appendChild(photoBlock(it.id));
     return box;
   }
 
@@ -305,6 +310,7 @@
       p_fields: {
         items: state.answers,
         notes: state.notes,
+        item_notes: state.itemNotes,
         header: {
           h_title: state.tpl.name,
           h_inspector: C.inspector,
