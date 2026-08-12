@@ -1811,6 +1811,7 @@ function findingPrintPage(f) {
 }
 
 function exportInspectionsPdf() {
+  if (window.logPortal) window.logPortal('export', { kind: 'inspections' });
   const picked = pickedIds('insp-pick');
   const base = _inspFiltered.length ? _inspFiltered : INSPECTIONS;
   const rows = picked.length ? base.filter(r => picked.includes(String(r.id))) : base;
@@ -1896,6 +1897,7 @@ function exportMonthly(id) {
 }
 
 function exportPrequalPdf() {
+  if (window.logPortal) window.logPortal('export_prequal');
   const workers = WORKERS.length;
   const allCerts = WORKERS.flatMap(w => w.certs);
   const current = allCerts.filter(c => certStatus(c.exp).days >= 0).length;
@@ -1929,6 +1931,7 @@ function exportPrequalPdf() {
 }
 
 function exportEverything() {
+  if (window.logPortal) window.logPortal('export_all');
   const openF = FINDINGS.filter(f => f.status === 'open');
   const cover = lh('Complete safety documentation') + `
     <h1>${esc(CLIENT.name)}</h1>

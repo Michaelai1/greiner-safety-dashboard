@@ -1297,6 +1297,7 @@
         $('#j-name').value = $('#j-num').value = $('#j-addr').value = '';
         $('#j-fore').value = $('#j-phone').value = '';
         $('#job-form').classList.add('hide'); toast('Job added');
+        logEvent('job_add');
       }).catch(function (e) { toast(e.message); })
         .then(function () { $('#j-save').disabled = false; });
     };
