@@ -3557,6 +3557,7 @@ document.addEventListener('keydown', e => {
      company-docs path the Documents tab uses. */
   var INCIDENTS = [];
   var INC_OPEN = null;
+  var INC_NEW_FILES = [];   // files staged in the Report-incident form, uploaded on save
   var INC_TYPES = [['injury_illness','Injury / Illness'],['near_miss','Near miss'],['property_damage','Property damage'],['vehicle','Vehicle incident'],['environmental','Environmental'],['first_aid','First-aid case'],['osha_visit','OSHA / regulatory visit'],['osha_citation','OSHA citation / notice / fine'],['other','Other']];
   var INC_TYPE_LBL = {}; INC_TYPES.forEach(function (t) { INC_TYPE_LBL[t[0]] = t[1]; });
   var INC_SEV = ['low','medium','high','critical'];
@@ -3641,6 +3642,7 @@ document.addEventListener('keydown', e => {
   }
   window.openIncidentModal = function (id) {
     var x = id ? incById(id) || {} : {};
+    if (!id) INC_NEW_FILES = [];   // fresh report → clear any previously staged files
     var jobOpts = '<option value="">— none —</option>' + (JOBSITES || []).map(function (j) { return '<option value="' + esc(j.id) + '"' + (x.job_id === j.id ? ' selected' : '') + '>' + esc(j.name) + (j.num ? ' · ' + esc(j.num) : '') + '</option>'; }).join('');
     var fld = function (lb, inner) { return '<div style="margin-bottom:11px"><label style="display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;margin-bottom:4px">' + lb + '</label>' + inner + '</div>'; };
     var inp = 'width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;font-size:14px';
@@ -3665,9 +3667,48 @@ document.addEventListener('keydown', e => {
         fld('What happened', '<textarea id="in-desc" rows="3" style="' + inp + ';resize:vertical">' + esc(x.description || '') + '</textarea>') +
         fld('Immediate action taken', '<textarea id="in-immediate" rows="2" style="' + inp + ';resize:vertical">' + esc(x.immediate_action || '') + '</textarea>') +
         '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px"><input type="checkbox" id="in-osha"' + (x.osha_recordable ? ' checked' : '') + '> OSHA recordable</label>' +
+        (id ? '' :
+          '<div style="font-weight:800;font-size:13px;margin:16px 0 6px">Documents</div>' +
+          '<div id="in-files"></div>' +
+          '<button class="btn secondary sm" type="button" style="margin-top:6px" onclick="incNewAttach()">Attach document</button>') +
         '<button class="btn" style="width:100%;margin-top:16px" onclick="saveIncident(' + (id ? '\'' + esc(id) + '\'' : 'null') + ')">' + (id ? 'Save changes' : 'Report incident') + '</button>' +
       '</div>');
+    if (!id) incRenderNewFiles();
   };
+  function incRenderNewFiles() {
+    var host = document.getElementById('in-files'); if (!host) return;
+    host.innerHTML = INC_NEW_FILES.length ? INC_NEW_FILES.map(function (f, i) {
+      return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #eef0f3"><span style="flex:1;font-size:12.5px">' + esc(f.name) + '</span>' +
+        '<span style="font-size:11px;color:#6b7280">will attach on save</span>' +
+        '<button type="button" onclick="incNewRemove(' + i + ')" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:16px">×</button></div>';
+    }).join('') : '<div style="font-size:12.5px;color:#6b7280">No documents staged. Attach OSHA / incident / citation PDFs or photos.</div>';
+  }
+  window.incNewAttach = function () {
+    var fi = incFileInput(); fi.value = '';
+    fi.onchange = function () { var f = fi.files && fi.files[0]; if (f) { INC_NEW_FILES.push(f); incRenderNewFiles(); } };
+    fi.click();
+  };
+  window.incNewRemove = function (i) { INC_NEW_FILES.splice(i, 1); incRenderNewFiles(); };
+  // Upload each staged file into the saved incident's folder, then persist the
+  // attachment refs. Returns a promise resolving when done (or immediately if none).
+  function incUploadStaged(saved) {
+    var files = INC_NEW_FILES.slice();
+    if (!saved || !saved.id || !files.length) return Promise.resolve();
+    var cat = 'incident ' + (saved.incident_no || saved.id);
+    return files.reduce(function (chain, f) {
+      return chain.then(function (atts) {
+        return docsFn('upload', { category: cat, filename: f.name }).then(function (r) {
+          return fetch(r.signedUrl, { method: 'PUT', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f }).then(function (res) {
+            if (!res.ok) throw new Error('upload failed: ' + f.name);
+            atts.push({ name: f.name, path: r.path, size: f.size, uploaded_at: new Date().toISOString() });
+            return atts;
+          });
+        });
+      });
+    }, Promise.resolve((saved.attachments || []).slice())).then(function (atts) {
+      return saveIncidentObj(Object.assign({}, saved, { attachments: atts }));
+    });
+  }
   window.saveIncident = function (id) {
     var g = function (x) { return document.getElementById(x); };
     var base = id ? Object.assign({}, incById(id)) : {};
@@ -3678,7 +3719,18 @@ document.addEventListener('keydown', e => {
       reported_by: g('in-reporter').value.trim() || null, description: g('in-desc').value.trim() || null,
       immediate_action: g('in-immediate').value.trim() || null, osha_recordable: g('in-osha').checked,
     });
-    saveIncidentObj(obj).then(function () { var m = document.getElementById('incident-modal'); if (m) m.remove(); banner('Incident saved'); return loadIncidents(); })
+    var staged = id ? 0 : INC_NEW_FILES.length;
+    if (staged) banner('Saving incident + ' + staged + ' document' + (staged > 1 ? 's' : '') + '…');
+    saveIncidentObj(obj).then(function (saved) {
+      var m = document.getElementById('incident-modal'); if (m) m.remove();
+      if (id) { banner('Incident saved'); return; }
+      // Newly created: upload staged docs into its folder. Tolerate a doc
+      // failure without losing the incident — it can still be attached later.
+      return incUploadStaged(saved).then(
+        function () { banner(staged ? 'Incident + document' + (staged > 1 ? 's' : '') + ' saved' : 'Incident saved'); },
+        function (e) { banner('Incident saved, but a document failed: ' + e.message + ' — add it from the incident.', true); }
+      ).then(function () { INC_NEW_FILES = []; });
+    }).then(function () { return loadIncidents(); })
       .then(function () { window.incRows(); if (id && INC_OPEN === id) window.openIncidentDetail(id); })
       .catch(function (e) { banner(e.message, true); });
   };
