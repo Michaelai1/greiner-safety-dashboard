@@ -547,12 +547,19 @@
     row.appendChild(el('span', 'pill ' + (r.has_defects ? 'p-bad' : 'p-ok'),
       r.has_defects ? (r.defect_count || 0) + ' defect' : 'Clear'));
     c.appendChild(row);
+    var acts = el('div');
+    acts.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.55rem';
+    var fname = 'Greiner-Purdue-' + String(r.form_type || 'form') +
+      (r.asset_id ? '-' + String(r.asset_id).replace(/[^A-Za-z0-9]+/g, '') : '') +
+      '-' + String(r.submitted_at || '').slice(0, 10) + '.pdf';
+    function mkBtn(label, cls, fn) { var b = el('button', 'btn ' + cls + ' btn-sm', label); b.onclick = fn; acts.appendChild(b); }
+    mkBtn('View Details', 'btn-gold', function () { openFieldDetail(r); });
     if (r.pdf_path) {
-      var pb = el('button', 'btn btn-out btn-sm', 'View PDF');
-      pb.style.marginTop = '.55rem';
-      pb.onclick = function () { openFieldPdf(r.id, pb); };
-      c.appendChild(pb);
+      mkBtn('View PDF', 'btn-out', function () { recordView(r); });
+      mkBtn('Download', 'btn-out', function () { recordDownload(r, fname); });
+      mkBtn('Share', 'btn-out', function () { recordShare(r, fname, (r.form_title || r.form_type) + ' — ' + (r.job_name || 'Purdue')); });
     }
+    c.appendChild(acts);
     return c;
   }
 
@@ -1478,6 +1485,63 @@
     }).catch(function () { toast('Share failed — try Download'); });
   }
   var FIELD_RECENT = {};
+
+  // In-app structured detail (View Details) from the canonical fields.doc.
+  function docRespLabel(v) {
+    var s = String(v == null ? '' : v).trim(), l = s.toLowerCase();
+    var m = { yes: 'Yes', no: 'No', pass: 'Pass', fail: 'Fail', safe: 'Safe', defect: 'DEFECT', unsafe: 'UNSAFE', na: 'N/A', 'n/a': 'N/A', complete: 'Complete', incomplete: 'Incomplete' };
+    return m[l] || s;
+  }
+  function docDetailHtml(doc) {
+    if (!doc || !doc.sections || !doc.sections.length) return '<div class="empty">The full record is available in the PDF.</div>';
+    var h = '';
+    doc.sections.forEach(function (sec) {
+      h += '<div style="font-weight:700;margin:1rem 0 .4rem">' + esc(sec.title) + '</div>';
+      (sec.items || []).forEach(function (it) {
+        var resp = it.response == null ? '' : String(it.response);
+        var col = it.flagged ? 'var(--bad,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(docRespLabel(resp)) ? 'var(--ok,#1e7d34)' : 'inherit');
+        h += '<div class="card" style="padding:.6rem .8rem;margin-bottom:.4rem">' +
+          '<div style="display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start">' +
+            '<div style="font-weight:600">' + esc(it.label) + '</div>' +
+            (resp ? '<div style="font-weight:700;color:' + col + ';white-space:nowrap">' + esc(docRespLabel(resp)) + (it.flagged ? ' — FLAGGED' : '') + '</div>' : '') +
+          '</div>' +
+          (it.notes ? '<div class="muted small" style="margin-top:.3rem"><em>Notes: ' + esc(it.notes) + '</em></div>' : '') +
+          (it.photos || []).map(function (p) { return '<div style="margin-top:.4rem"><img src="' + esc(p) + '" style="max-width:100%;border-radius:8px;border:1px solid var(--line,#334)"></div>'; }).join('') +
+          '</div>';
+      });
+    });
+    return h;
+  }
+  function openFieldDetail(item) {
+    var host = $('#fielddetail');
+    if (!host) { host = el('div'); host.id = 'fielddetail'; host.style.cssText = 'position:fixed;inset:0;background:var(--navy,#0f172a);z-index:1000;overflow:auto;-webkit-overflow-scrolling:touch'; document.body.appendChild(host); }
+    host.style.display = 'block'; window.scrollTo(0, 0);
+    var stat = item.has_defects ? '<span style="color:var(--bad,#c0392b);font-weight:700">' + item.defect_count + ' defect' + (item.defect_count === 1 ? '' : 's') + '</span>' : '<span style="color:var(--ok,#1e7d34);font-weight:700">No defects</span>';
+    host.innerHTML = '<div style="padding:1rem;max-width:640px;margin:0 auto">' +
+      '<button class="btn btn-out btn-sm" id="fd-back" style="margin-bottom:.8rem">‹ Back</button>' +
+      '<h1 style="font-size:1.2rem;margin:.2rem 0">' + esc(item.form_title || item.form_type) + (item.asset_id ? ' — ' + esc(item.asset_id) : '') + '</h1>' +
+      '<div class="muted small">Purdue Academic Bldg.' + (item.inspector_name ? ' · ' + esc(item.inspector_name) : '') + (item.submitted_at ? ' · ' + new Date(item.submitted_at).toLocaleString() : '') + '</div>' +
+      '<div style="margin:.5rem 0 .2rem">' + stat + '</div>' +
+      '<div id="fd-body" class="muted small" style="margin-top:.6rem">Loading inspection…</div></div>';
+    $('#fd-back').onclick = function () { host.style.display = 'none'; };
+    rpc('cs_portal_field_doc', { p_id: item.id }).then(function (d) {
+      var b = $('#fd-body'); if (b) b.innerHTML = docDetailHtml(d && d.doc);
+    }).catch(function () { var b = $('#fd-body'); if (b) b.innerHTML = '<div class="empty">The full record is available in the PDF.</div>'; });
+  }
+
+  // Live feed: re-pull submissions when the page becomes active again (e.g.
+  // returning from the greiner-QR form after a submit) — no manual refresh.
+  function refreshFeeds() {
+    if (document.hidden) return;
+    if (sessionInfo().role === 'field') {
+      var host = $('#fieldapp');
+      if (host && !host.classList.contains('hide')) rpc('cs_portal_field_home').then(renderFieldHome).catch(function () {});
+    } else if (STATE.bundle) {
+      rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; renderHome(); }).catch(function () {});
+    }
+  }
+  window.addEventListener('pageshow', refreshFeeds);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshFeeds(); });
   var FIELD_FORMS = [
     { key: 'jha',      label: 'Start JHA' },
     { key: 'hotwork',  label: 'Hot Work Permit' },
@@ -1548,15 +1612,17 @@
         '<div class="muted small">Purdue · ' + esc(when) + ' · ' + stat + '</div>' +
         (r.inspector_name ? '<div class="muted small" style="margin-bottom:.55rem">Completed by ' + esc(r.inspector_name) + '</div>' : '<div style="height:.55rem"></div>') +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
-          '<button class="btn btn-gold btn-sm" style="' + btn + '" data-act="view" data-id="' + esc(r.id) + '">View PDF</button>' +
+          '<button class="btn btn-gold btn-sm" style="' + btn + '" data-act="details" data-id="' + esc(r.id) + '">View Details</button>' +
+          '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="view" data-id="' + esc(r.id) + '">View PDF</button>' +
           '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="download" data-id="' + esc(r.id) + '">Download</button>' +
-          '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="share" data-id="' + esc(r.id) + '">Share / Send</button>' +
+          '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="share" data-id="' + esc(r.id) + '">Share</button>' +
         '</div></div>';
     });
     box.innerHTML = h;
     Array.prototype.forEach.call(box.querySelectorAll('[data-act]'), function (b) {
       b.onclick = function () {
         var item = FIELD_RECENT[b.dataset.id]; if (!item) return;
+        if (b.dataset.act === 'details') { openFieldDetail(item); return; }
         var name = 'Greiner-Purdue-' + String(item.form_type || 'form') +
           (item.asset_id ? '-' + String(item.asset_id).replace(/[^A-Za-z0-9]+/g, '') : '') +
           '-' + String(item.submitted_at || '').slice(0, 10) + '.pdf';

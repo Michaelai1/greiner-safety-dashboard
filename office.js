@@ -4155,6 +4155,32 @@
     }
   }
 
+  // Render the canonical structured record (fields.doc) — every section, item,
+  // response, note and photo, in order. Shared by the crew-inspection drawer.
+  function docRespLabel(v) {
+    var s = String(v == null ? '' : v).trim(), l = s.toLowerCase();
+    var m = { yes: 'Yes', no: 'No', pass: 'Pass', fail: 'Fail', safe: 'Safe', defect: 'DEFECT', unsafe: 'UNSAFE', na: 'N/A', 'n/a': 'N/A', complete: 'Complete', incomplete: 'Incomplete' };
+    return m[l] || s;
+  }
+  function docDetailHtml(doc) {
+    if (!doc || !doc.sections || !doc.sections.length) return '<div class="small muted">The full record is available in the PDF.</div>';
+    var h = '';
+    doc.sections.forEach(function (sec) {
+      h += '<div class="sec-h">' + esc(sec.title) + '</div>';
+      (sec.items || []).forEach(function (it) {
+        var resp = it.response == null ? '' : String(it.response);
+        var col = it.flagged ? 'var(--fail,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(docRespLabel(resp)) ? 'var(--ok,#1e7d34)' : 'inherit');
+        var rv = resp ? '<span style="font-weight:700;color:' + col + '">' + esc(docRespLabel(resp)) + (it.flagged ? ' — FLAGGED' : '') + '</span>' : '';
+        h += '<div class="kv" style="align-items:flex-start"><span class="k">' + esc(it.label) + '</span><span class="v">' + rv + '</span></div>';
+        if (it.notes) h += '<div class="small muted" style="margin:-6px 0 8px;padding-left:2px"><em>Notes: ' + esc(it.notes) + '</em></div>';
+        (it.photos || []).forEach(function (p) {
+          h += '<div style="margin:2px 0 10px"><img src="' + esc(p) + '" style="max-width:100%;max-height:240px;border-radius:8px;border:1px solid var(--line,#ddd)"></div>';
+        });
+      });
+    });
+    return h;
+  }
+
   function openCrewInsp(id) {
     var r = CREW.filter(function (x) { return x.id === id; })[0];
     if (!r) return;
@@ -4187,24 +4213,14 @@
         kv('Submitted', r.submitted_at ? fmtWhen(r.submitted_at) : 'Not yet') +
         '<div class="kv"><span class="k">Status</span><span class="v">' + dStatus + '</span></div>';
     }
-    if (r.defects && r.defects.length) {
-      h += '<div class="sec-h">Defects & corrective action</div>';
-      r.defects.forEach(function (dft, ix) {
-        h += '<div class="alert" style="margin-bottom:8px"><strong>' + esc(dft.label) + '</strong></div>' +
-          '<div class="fixbox"><div>' + esc(dft.action || 'No corrective action recorded yet.') + '</div>' +
-          '<div class="who">' + (dft.status === 'open'
-            ? '<span style="color:var(--warn);font-weight:700">Open</span>' : 'Closed') +
-          ((dft.photos || []).length ? ' · 📷 ' + dft.photos.length : '') +
-          ' &nbsp;<button class="linklike" data-editca="crew|' + esc(r.id) + '|' + ix +
-          '">Edit</button></div></div>';
-      });
-    } else {
-      h += '<div class="sec-h">Items</div><div class="small muted">Every item on this ' +
-        'form passed. The full checklist ships with the submission in the live build.</div>';
-    }
+    // The real inspection — every item, response, note and photo — from the
+    // canonical record. Fetched lazily so the drawer opens instantly.
+    h += '<div class="sec-h">Inspection Items</div><div id="crew-doc" class="small muted">Loading inspection…</div>';
     drawer(title, fmtDate(r.inspection_date) + ' · ' + r.jobsite, h);
-    $$('.drawer [data-editca]').forEach(function (b) {
-      b.onclick = function () { openCA(b.dataset.editca); };
+    post('cs_portal_field_doc', { p_id: r.id }).then(function (d) {
+      var box = $('#crew-doc'); if (box) box.innerHTML = docDetailHtml(d && d.doc);
+    }).catch(function () {
+      var box = $('#crew-doc'); if (box) box.innerHTML = '<div class="small muted">The full record is available in the PDF.</div>';
     });
     $('#dl-crewi').onclick = function () {
       if (r.pdf_path) { openFieldPdf(r.id); return; }   // real stored field-submission PDF
