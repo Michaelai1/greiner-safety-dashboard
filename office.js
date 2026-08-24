@@ -4168,13 +4168,15 @@
     doc.sections.forEach(function (sec) {
       h += '<div class="sec-h">' + esc(sec.title) + '</div>';
       (sec.items || []).forEach(function (it) {
-        var resp = it.response == null ? '' : String(it.response);
-        var col = it.flagged ? 'var(--fail,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(docRespLabel(resp)) ? 'var(--ok,#1e7d34)' : 'inherit');
-        var rv = resp ? '<span style="font-weight:700;color:' + col + '">' + esc(docRespLabel(resp)) + (it.flagged ? ' — FLAGGED' : '') + '</span>' : '';
-        h += '<div class="kv" style="align-items:flex-start"><span class="k">' + esc(it.label) + '</span><span class="v">' + rv + '</span></div>';
-        if (it.notes) h += '<div class="small muted" style="margin:-6px 0 8px;padding-left:2px"><em>Notes: ' + esc(it.notes) + '</em></div>';
+        var raw = it.response == null ? '' : String(it.response);
+        if (/^[a-z]:\\fakepath\\/i.test(raw)) raw = '';   // hide browser file-picker noise
+        var resp = docRespLabel(raw);
+        var col = it.flagged ? 'var(--fail,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(resp) ? 'var(--ok,#1e7d34)' : 'inherit');
+        var rv = resp ? '<span style="font-weight:700;color:' + col + ';overflow-wrap:anywhere">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</span>' : '';
+        h += '<div class="kv" style="align-items:flex-start"><span class="k" style="overflow-wrap:anywhere">' + esc(it.label) + '</span><span class="v">' + rv + '</span></div>';
+        if (it.notes) h += '<div class="small muted" style="margin:-6px 0 8px;padding-left:2px;overflow-wrap:anywhere"><em>' + (it.flagged ? 'Notes / what went wrong: ' : 'Notes: ') + esc(it.notes) + '</em></div>';
         (it.photos || []).forEach(function (p) {
-          h += '<div style="margin:2px 0 10px"><img src="' + esc(p) + '" style="max-width:100%;max-height:240px;border-radius:8px;border:1px solid var(--line,#ddd)"></div>';
+          h += '<div style="margin:2px 0 10px"><img src="' + esc(p) + '" style="max-width:100%;height:auto;max-height:240px;border-radius:8px;border:1px solid var(--line,#ddd)"></div>';
         });
       });
     });

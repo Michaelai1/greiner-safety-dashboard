@@ -1496,17 +1496,27 @@
     if (!doc || !doc.sections || !doc.sections.length) return '<div class="empty">The full record is available in the PDF.</div>';
     var h = '';
     doc.sections.forEach(function (sec) {
-      h += '<div style="font-weight:700;margin:1rem 0 .4rem">' + esc(sec.title) + '</div>';
+      h += '<div style="font-weight:700;margin:1rem 0 .4rem;overflow-wrap:anywhere">' + esc(sec.title) + '</div>';
       (sec.items || []).forEach(function (it) {
-        var resp = it.response == null ? '' : String(it.response);
-        var col = it.flagged ? 'var(--bad,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(docRespLabel(resp)) ? 'var(--ok,#1e7d34)' : 'inherit');
-        h += '<div class="card" style="padding:.6rem .8rem;margin-bottom:.4rem">' +
-          '<div style="display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start">' +
-            '<div style="font-weight:600">' + esc(it.label) + '</div>' +
-            (resp ? '<div style="font-weight:700;color:' + col + ';white-space:nowrap">' + esc(docRespLabel(resp)) + (it.flagged ? ' — FLAGGED' : '') + '</div>' : '') +
-          '</div>' +
-          (it.notes ? '<div class="muted small" style="margin-top:.3rem"><em>Notes: ' + esc(it.notes) + '</em></div>' : '') +
-          (it.photos || []).map(function (p) { return '<div style="margin-top:.4rem"><img src="' + esc(p) + '" style="max-width:100%;border-radius:8px;border:1px solid var(--line,#334)"></div>'; }).join('') +
+        var raw = it.response == null ? '' : String(it.response);
+        if (/^[a-z]:\\fakepath\\/i.test(raw)) raw = '';   // hide browser file-picker noise
+        var resp = docRespLabel(raw);
+        var col = it.flagged ? 'var(--bad,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(resp) ? 'var(--ok,#1e7d34)' : 'inherit');
+        // A short pass/fail choice sits to the right; anything longer (JHA task /
+        // hazard / control text) stacks on its own line and wraps so nothing
+        // ever runs outside the card on a phone.
+        var shortChoice = resp && it.type === 'choice' && resp.length <= 14;
+        var head = shortChoice
+          ? '<div style="display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start">' +
+              '<div style="font-weight:600;min-width:0;overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
+              '<div style="font-weight:700;color:' + col + ';flex:0 0 auto;white-space:nowrap">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</div>' +
+            '</div>'
+          : '<div style="font-weight:600;overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
+            (resp ? '<div style="font-weight:700;color:' + col + ';margin-top:.15rem;overflow-wrap:anywhere">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</div>' : '');
+        h += '<div class="card" style="padding:.6rem .8rem;margin-bottom:.4rem;overflow-wrap:anywhere;word-break:break-word">' +
+          head +
+          (it.notes ? '<div class="muted small" style="margin-top:.3rem;overflow-wrap:anywhere"><em>' + (it.flagged ? 'Notes / what went wrong: ' : 'Notes: ') + esc(it.notes) + '</em></div>' : '') +
+          (it.photos || []).map(function (p) { return '<div style="margin-top:.4rem"><img src="' + esc(p) + '" style="max-width:100%;height:auto;border-radius:8px;border:1px solid var(--line,#334)"></div>'; }).join('') +
           '</div>';
       });
     });
