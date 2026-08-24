@@ -1399,15 +1399,40 @@
       body: JSON.stringify(body)
     }).then(function (r) { return r.json().then(function (j) { if (!r.ok || (j && j.error)) throw new Error((j && j.error) || 'request failed'); return j; }); });
   }
-  function openFieldPdf(id, btn) {
-    var tok = getSession(); if (!tok) { showGate(); return; }
-    if (btn) btn.disabled = true;
-    fieldEdge({ action: 'url', token: tok, id: id }).then(function (res) {
-      if (res && res.url) window.open(res.url, '_blank', 'noopener');
-      else toast('Could not open PDF');
-    }).catch(function (e) { toast(e.message || 'Could not open PDF'); })
-      .then(function () { if (btn) btn.disabled = false; });
+  // Mobile-safe PDF access for field users. ngView opens the tab synchronously
+  // in the tap (survives the async signed-URL fetch → not popup-blocked); Download
+  // uses a blob object URL; Share uses the Web Share API with the actual PDF file.
+  function ngSignedUrl(id) {
+    var tok = getSession(); if (!tok) { showGate(); return Promise.reject(new Error('signed out')); }
+    return fieldEdge({ action: 'url', token: tok, id: id }).then(function (r) {
+      if (!r || !r.url) throw new Error('no url'); return r.url;
+    });
   }
+  function ngBlob(id) { return ngSignedUrl(id).then(function (u) { return fetch(u).then(function (r) { return r.blob(); }); }); }
+  function ngView(id) {
+    var w = window.open('', '_blank');
+    ngSignedUrl(id).then(function (u) { if (w && !w.closed) w.location = u; else window.location.href = u; })
+      .catch(function (e) { if (w && !w.closed) w.close(); toast(e.message || 'Could not open PDF'); });
+  }
+  function ngDownload(id, name) {
+    ngBlob(id).then(function (b) {
+      var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf';
+      document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
+    }).catch(function () { toast('Download failed'); });
+  }
+  function ngShare(id, name, title) {
+    ngBlob(id).then(function (b) {
+      var f = new File([b], name || 'record.pdf', { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) {
+        return navigator.share({ files: [f], title: title || 'Safety record', text: title || '' })
+          .catch(function (e) { if (e && e.name === 'AbortError') return; throw e; });
+      }
+      var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf';
+      document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
+      toast('PDF saved — attach it to a text or email');
+    }).catch(function () { toast('Share failed — try Download'); });
+  }
+  function openFieldPdf(id) { ngView(id); }   // back-compat
   var FIELD_FORMS = [
     { key: 'jha',      label: 'Start JHA' },
     { key: 'hotwork',  label: 'Hot Work Permit' },
@@ -1470,17 +1495,27 @@
       var stat = r.has_defects
         ? '<span style="color:var(--bad,#c0392b)">' + r.defect_count + ' issue' + (r.defect_count === 1 ? '' : 's') + '</span>'
         : '<span style="color:var(--ok,#1e7d34)">Pass</span>';
-      h += '<div class="card" style="padding:.7rem 1rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem">' +
-        '<div style="min-width:0"><div style="font-weight:600">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' · ' + esc(r.asset_id) : '') + '</div>' +
-        '<div class="muted small">' + esc(when) + ' · ' + stat + '</div></div>' +
+      var fname = 'Greiner-Purdue-' + String(r.form_type || 'form') + '-' + String(r.submitted_at || '').slice(0, 10) + '.pdf';
+      h += '<div class="card" style="padding:.7rem 1rem;margin-bottom:.6rem">' +
+        '<div style="font-weight:600">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' · ' + esc(r.asset_id) : '') + '</div>' +
+        '<div class="muted small" style="margin-bottom:.45rem">' + esc(when) + ' · ' + stat + '</div>' +
         (r.pdf_path
-          ? '<button class="btn btn-out btn-sm" data-pdf="' + esc(r.id) + '">View PDF</button>'
+          ? '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
+              '<button class="btn btn-out btn-sm" data-act="view" data-id="' + esc(r.id) + '">View</button>' +
+              '<button class="btn btn-out btn-sm" data-act="download" data-id="' + esc(r.id) + '" data-name="' + esc(fname) + '">Download</button>' +
+              '<button class="btn btn-out btn-sm" data-act="share" data-id="' + esc(r.id) + '" data-name="' + esc(fname) + '" data-title="' + esc((r.form_title || r.form_type) + ' — Purdue') + '">Share</button>' +
+            '</div>'
           : '<span class="muted small">PDF pending</span>') +
         '</div>';
     });
     box.innerHTML = h;
-    Array.prototype.forEach.call(box.querySelectorAll('[data-pdf]'), function (b) {
-      b.onclick = function () { openFieldPdf(b.dataset.pdf, b); };
+    Array.prototype.forEach.call(box.querySelectorAll('[data-act]'), function (b) {
+      b.onclick = function () {
+        var id = b.dataset.id;
+        if (b.dataset.act === 'view') ngView(id);
+        else if (b.dataset.act === 'download') ngDownload(id, b.dataset.name);
+        else ngShare(id, b.dataset.name, b.dataset.title);
+      };
     });
   }
   function openFieldForm(formKey, btn) {
