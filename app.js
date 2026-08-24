@@ -532,6 +532,30 @@
     return c;
   }
 
+  // NextGen field submissions (Keith's crew forms) — same card language as the
+  // legacy crew inspections, plus a View PDF button (signed URL via edge fn).
+  function fieldInspCard(r) {
+    var c = el('div', 'card');
+    var row = el('div', 'row');
+    var left = el('div');
+    left.appendChild(el('div', 'card-t', (r.form_title || 'Field form') + (r.asset_id ? ' · ' + r.asset_id : '')));
+    left.appendChild(el('div', 'card-s',
+      fmtDate(r.submitted_at) +
+      (r.inspector_name ? ' · ' + r.inspector_name : '') +
+      (r.job_number ? ' · ' + r.job_number + ' — ' + (r.job_name || '') : '')));
+    row.appendChild(left);
+    row.appendChild(el('span', 'pill ' + (r.has_defects ? 'p-bad' : 'p-ok'),
+      r.has_defects ? (r.defect_count || 0) + ' defect' : 'Clear'));
+    c.appendChild(row);
+    if (r.pdf_path) {
+      var pb = el('button', 'btn btn-out btn-sm', 'View PDF');
+      pb.style.marginTop = '.55rem';
+      pb.onclick = function () { openFieldPdf(r.id, pb); };
+      c.appendChild(pb);
+    }
+    return c;
+  }
+
   function inspCard(r) {
     var c = el('div', 'card');
     var row = el('div', 'row');
@@ -1025,15 +1049,21 @@
 
     var all = STATE.tg || [];
     var shown = all.filter(function (r) { return inRange(inspDate(r), STATE.filters.insp); });
+    var fieldSubs = (STATE.fieldInsp || []).filter(function (r) {
+      return inRange(String(r.submitted_at || '').slice(0, 10), STATE.filters.insp);
+    });
     var li = $('#list-insp'); li.innerHTML = '';
-    $('#n-insp').textContent = countLabel('insp', shown.length, all.length);
-    if (!shown.length) {
-      li.appendChild(el('div', 'empty', all.length
+    var totalShown = shown.length + fieldSubs.length;
+    var totalAll = all.length + (STATE.fieldInsp || []).length;
+    $('#n-insp').textContent = countLabel('insp', totalShown, totalAll);
+    if (!totalShown) {
+      li.appendChild(el('div', 'empty', totalAll
         ? 'No crew inspections in this date range.'
         : 'No crew inspections yet.'));
     }
+    fieldSubs.forEach(function (r) { li.appendChild(fieldInspCard(r)); });
     shown.forEach(function (r) { li.appendChild(inspCard(r)); });
-    if (hostInsp) paintNote(hostInsp, 'insp', shown.length);
+    if (hostInsp) paintNote(hostInsp, 'insp', totalShown);
   }
 
   function renderJobs() {
@@ -1260,7 +1290,9 @@
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
     $('#start-inspection').addEventListener('click', function () { logEvent('inspection_start'); });
 
-    Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; })])
+    Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; }),
+      rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
+        .catch(function () { STATE.fieldInsp = []; })])
       .then(renderHome)
       .then(loadFindings)
       .catch(function (e) {
@@ -1338,10 +1370,131 @@
         }
         setSession(res);
         logEvent('login');
-        openApp();
+        enterApp();
       })
       .catch(function (e) { err.textContent = e.message; })
       .then(function () { btn.disabled = false; btn.textContent = 'Sign in'; });
+  }
+
+  /* ---------- field user (e.g. Keith @ Purdue) ------------------------
+     A role='field' login never enters the full dashboard (its session is
+     scope='field' and the company-wide RPCs reject it server-side). It gets
+     a simple, job-scoped landing: its job, the four crew forms, and its own
+     recent submissions with the stored PDF. Forms open in greiner-QR carrying
+     a short-lived field ticket; authorization stays server-side. */
+  function sessionInfo() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function enterApp() {
+    if (sessionInfo().role === 'field') showFieldLanding();
+    else openApp();
+  }
+  // The field-PDF bucket is private; retrieval goes through the field-pdf edge
+  // function, which authorizes the session (full -> any company sub; field ->
+  // own job) and returns a short-lived signed URL.
+  function fieldEdge(body) {
+    return fetch(C.creekside.url + '/functions/v1/field-pdf', {
+      method: 'POST', headers: { apikey: C.creekside.anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok || (j && j.error)) throw new Error((j && j.error) || 'request failed'); return j; }); });
+  }
+  function openFieldPdf(id, btn) {
+    var tok = getSession(); if (!tok) { showGate(); return; }
+    if (btn) btn.disabled = true;
+    fieldEdge({ action: 'url', token: tok, id: id }).then(function (res) {
+      if (res && res.url) window.open(res.url, '_blank', 'noopener');
+      else toast('Could not open PDF');
+    }).catch(function (e) { toast(e.message || 'Could not open PDF'); })
+      .then(function () { if (btn) btn.disabled = false; });
+  }
+  var FIELD_FORMS = [
+    { key: 'jha',      label: 'Start JHA' },
+    { key: 'hotwork',  label: 'Hot Work Permit' },
+    { key: 'aerial',   label: 'Aerial Platform Inspection' },
+    { key: 'forklift', label: 'Forklift Inspection' }
+  ];
+  function showFieldLanding() {
+    $('#gate').classList.add('hide');
+    $('#app').classList.add('hide');
+    var host = $('#fieldapp');
+    if (!host) { host = el('div'); host.id = 'fieldapp'; document.body.appendChild(host); }
+    host.classList.remove('hide');
+    document.title = C.pageTitle;
+    logEvent('open');
+    rpc('cs_portal_field_home').then(renderFieldHome).catch(function (e) {
+      host.innerHTML = '<div style="padding:2rem;text-align:center" class="muted">Could not load: ' + esc(e.message) + '</div>';
+    });
+  }
+  function renderFieldHome(d) {
+    var host = $('#fieldapp');
+    var job = (d.jobs && d.jobs[0]) || {};
+    var today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    var h = '';
+    h += '<header class="hdr"><div class="hdr-in"><div class="mark">CS</div>' +
+      '<div style="flex:1;min-width:0"><h1 style="font-size:1.05rem;margin:0">' + esc(d.company || C.contractor) + '</h1>' +
+      '<div class="by">Signed in as ' + esc(d.user || '') + ' · Powered by ' + esc(C.poweredBy || 'NextGen Safety') + '</div></div>' +
+      '<button class="signout" id="f-signout" type="button">Sign out</button></div></header>';
+    h += '<main class="wrap">';
+    h += '<div class="sec"><div class="card" style="padding:1rem">' +
+      '<div style="font-weight:700;font-size:1.15rem">' + esc(job.name || '—') + '</div>' +
+      '<div class="muted small">' + esc(job.job_number || '') + (job.address ? ' · ' + esc(job.address) : '') + '</div>' +
+      '<div class="muted small" style="margin-top:.25rem">' + esc(today) + '</div></div></div>';
+    h += '<div class="sec"><div class="sec-h"><h2>Start a form</h2></div><div id="f-forms">';
+    FIELD_FORMS.forEach(function (f) {
+      h += '<button class="btn btn-gold" style="width:100%;margin-bottom:.5rem" data-ngform="' + f.key + '">' + esc(f.label) + '</button>';
+    });
+    h += '</div></div>';
+    h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
+    h += '</main><div style="height:2rem"></div>';
+    host.innerHTML = h;
+
+    $('#f-signout').onclick = function () {
+      if (!confirm('Sign out?')) return;
+      var s = getSession(); clearSession();
+      if (s) post('cs_portal_logout', { p_token: s }).catch(function () {});
+      location.reload();
+    };
+    Array.prototype.forEach.call(host.querySelectorAll('[data-ngform]'), function (b) {
+      b.onclick = function () { openFieldForm(b.dataset.ngform, b); };
+    });
+    renderFieldRecent(d.recent || []);
+  }
+  function renderFieldRecent(recent) {
+    var box = $('#f-recent'); if (!box) return;
+    if (!recent.length) { box.innerHTML = '<div class="empty">No submissions yet.</div>'; return; }
+    var h = '';
+    recent.forEach(function (r) {
+      var when = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-US',
+        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      var stat = r.has_defects
+        ? '<span style="color:var(--bad,#c0392b)">' + r.defect_count + ' issue' + (r.defect_count === 1 ? '' : 's') + '</span>'
+        : '<span style="color:var(--ok,#1e7d34)">Pass</span>';
+      h += '<div class="card" style="padding:.7rem 1rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem">' +
+        '<div style="min-width:0"><div style="font-weight:600">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' · ' + esc(r.asset_id) : '') + '</div>' +
+        '<div class="muted small">' + esc(when) + ' · ' + stat + '</div></div>' +
+        (r.pdf_path
+          ? '<button class="btn btn-out btn-sm" data-pdf="' + esc(r.id) + '">View PDF</button>'
+          : '<span class="muted small">PDF pending</span>') +
+        '</div>';
+    });
+    box.innerHTML = h;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pdf]'), function (b) {
+      b.onclick = function () { openFieldPdf(b.dataset.pdf, b); };
+    });
+  }
+  function openFieldForm(formKey, btn) {
+    if (btn) btn.disabled = true;
+    rpc('cs_portal_field_ticket').then(function (res) {
+      var t = res && res.ticket;
+      if (!t) { toast('Could not start form'); return; }
+      var base = C.qrUrl || location.origin;
+      var url = base + (base.indexOf('?') >= 0 ? '&' : '?') +
+        'ngform=' + encodeURIComponent(formKey) + '&ticket=' + encodeURIComponent(t);
+      logEvent('field_form_open', { form: formKey });
+      window.location.href = url;
+    }).catch(function (e) { toast(e.message || 'Could not start form'); })
+      .then(function () { if (btn) btn.disabled = false; });
   }
 
   $('#gate-co').textContent = C.contractor;
@@ -1349,7 +1502,7 @@
   $('#gate-go').onclick = signIn;
   $('#gate-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
 
-  if (getSession()) openApp(); else showGate();
+  if (getSession()) enterApp(); else showGate();
 
   // Resolve this client's registry row (branding + enabled modules) in the
   // background; re-apply branding + tab gating when it lands. Non-blocking and
