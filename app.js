@@ -1433,6 +1433,51 @@
     }).catch(function () { toast('Share failed — try Download'); });
   }
   function openFieldPdf(id) { ngView(id); }   // back-compat
+
+  // Every completed record is openable: the stored detailed PDF when present,
+  // else a basic record generated on the phone for legacy rows (no dead states).
+  function basicRecordPdf(item) {
+    var JS = window.jspdf && window.jspdf.jsPDF;
+    if (!JS) return new Blob([], { type: 'application/pdf' });
+    var doc = new JS({ unit: 'pt', format: 'letter' }), W = doc.internal.pageSize.getWidth();
+    doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 66, 'F');
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.text('GREINER BROTHERS', 46, 30);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(205, 205, 205); doc.text('Safety Record', 46, 48);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(255); doc.text(item.form_title || item.form_type || 'Inspection', W - 46, 42, { align: 'right' });
+    var y = 100, rows = [
+      ['Project / Job', 'Purdue Academic Bldg. · C800-2025'],
+      ['Completed by', item.inspector_name || '—'],
+      ['Equipment / Asset', item.asset_id || ''],
+      ['Date', item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : '—'],
+      ['Time', item.submitted_at ? new Date(item.submitted_at).toLocaleTimeString() : ''],
+      ['Status', item.has_defects ? (item.defect_count + ' flagged') : 'Clear']
+    ];
+    doc.setFontSize(10);
+    rows.forEach(function (r) { if (!r[1]) return; doc.setTextColor(110, 110, 110); doc.setFont('helvetica', 'bold'); doc.text(r[0] + ':', 46, y); doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'normal'); doc.text(String(r[1]), 178, y); y += 20; });
+    y += 10; doc.setTextColor(120, 120, 120); doc.setFont('helvetica', 'italic'); doc.setFontSize(9.5);
+    doc.text('Imported field record. Line-item detail is retained in the original submission.', 46, y);
+    return doc.output('blob');
+  }
+  function recordBlob(item) { return item.pdf_path ? ngBlob(item.id) : Promise.resolve(basicRecordPdf(item)); }
+  function saveBlob(b, name) { var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100); }
+  function recordView(item) {
+    var w = window.open('', '_blank');   // opened in the tap gesture -> survives the async fetch
+    var p = item.pdf_path ? ngSignedUrl(item.id) : Promise.resolve(URL.createObjectURL(basicRecordPdf(item)));
+    p.then(function (u) { if (w && !w.closed) w.location = u; else window.location.href = u; })
+      .catch(function () { if (w && !w.closed) w.close(); toast('Could not open PDF'); });
+  }
+  function recordDownload(item, name) { recordBlob(item).then(function (b) { saveBlob(b, name); }).catch(function () { toast('Download failed'); }); }
+  function recordShare(item, name, title) {
+    recordBlob(item).then(function (b) {
+      var f = new File([b], name || 'record.pdf', { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) {
+        return navigator.share({ files: [f], title: title || 'Safety record', text: title || '' })
+          .catch(function (e) { if (e && e.name === 'AbortError') return; throw e; });
+      }
+      saveBlob(b, name); toast('PDF saved — attach it to a text or email');
+    }).catch(function () { toast('Share failed — try Download'); });
+  }
+  var FIELD_RECENT = {};
   var FIELD_FORMS = [
     { key: 'jha',      label: 'Start JHA' },
     { key: 'hotwork',  label: 'Hot Work Permit' },
@@ -1487,34 +1532,37 @@
   }
   function renderFieldRecent(recent) {
     var box = $('#f-recent'); if (!box) return;
+    FIELD_RECENT = {};
     if (!recent.length) { box.innerHTML = '<div class="empty">No submissions yet.</div>'; return; }
     var h = '';
     recent.forEach(function (r) {
+      FIELD_RECENT[r.id] = r;
       var when = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-US',
         { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
       var stat = r.has_defects
-        ? '<span style="color:var(--bad,#c0392b)">' + r.defect_count + ' issue' + (r.defect_count === 1 ? '' : 's') + '</span>'
-        : '<span style="color:var(--ok,#1e7d34)">Pass</span>';
-      var fname = 'Greiner-Purdue-' + String(r.form_type || 'form') + '-' + String(r.submitted_at || '').slice(0, 10) + '.pdf';
-      h += '<div class="card" style="padding:.7rem 1rem;margin-bottom:.6rem">' +
-        '<div style="font-weight:600">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' · ' + esc(r.asset_id) : '') + '</div>' +
-        '<div class="muted small" style="margin-bottom:.45rem">' + esc(when) + ' · ' + stat + '</div>' +
-        (r.pdf_path
-          ? '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
-              '<button class="btn btn-out btn-sm" data-act="view" data-id="' + esc(r.id) + '">View</button>' +
-              '<button class="btn btn-out btn-sm" data-act="download" data-id="' + esc(r.id) + '" data-name="' + esc(fname) + '">Download</button>' +
-              '<button class="btn btn-out btn-sm" data-act="share" data-id="' + esc(r.id) + '" data-name="' + esc(fname) + '" data-title="' + esc((r.form_title || r.form_type) + ' — Purdue') + '">Share</button>' +
-            '</div>'
-          : '<span class="muted small">PDF pending</span>') +
-        '</div>';
+        ? '<span style="color:var(--bad,#c0392b)">' + r.defect_count + ' flagged</span>'
+        : '<span style="color:var(--ok,#1e7d34)">Clear</span>';
+      var btn = 'flex:1 1 96px;min-height:44px';
+      h += '<div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem">' +
+        '<div style="font-weight:700">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' — ' + esc(r.asset_id) : '') + '</div>' +
+        '<div class="muted small">Purdue · ' + esc(when) + ' · ' + stat + '</div>' +
+        (r.inspector_name ? '<div class="muted small" style="margin-bottom:.55rem">Completed by ' + esc(r.inspector_name) + '</div>' : '<div style="height:.55rem"></div>') +
+        '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+          '<button class="btn btn-gold btn-sm" style="' + btn + '" data-act="view" data-id="' + esc(r.id) + '">View PDF</button>' +
+          '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="download" data-id="' + esc(r.id) + '">Download</button>' +
+          '<button class="btn btn-out btn-sm" style="' + btn + '" data-act="share" data-id="' + esc(r.id) + '">Share / Send</button>' +
+        '</div></div>';
     });
     box.innerHTML = h;
     Array.prototype.forEach.call(box.querySelectorAll('[data-act]'), function (b) {
       b.onclick = function () {
-        var id = b.dataset.id;
-        if (b.dataset.act === 'view') ngView(id);
-        else if (b.dataset.act === 'download') ngDownload(id, b.dataset.name);
-        else ngShare(id, b.dataset.name, b.dataset.title);
+        var item = FIELD_RECENT[b.dataset.id]; if (!item) return;
+        var name = 'Greiner-Purdue-' + String(item.form_type || 'form') +
+          (item.asset_id ? '-' + String(item.asset_id).replace(/[^A-Za-z0-9]+/g, '') : '') +
+          '-' + String(item.submitted_at || '').slice(0, 10) + '.pdf';
+        if (b.dataset.act === 'view') recordView(item);
+        else if (b.dataset.act === 'download') recordDownload(item, name);
+        else recordShare(item, name, (item.form_title || item.form_type) + ' — Purdue');
       };
     });
   }
