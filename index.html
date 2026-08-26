@@ -76,11 +76,6 @@
 
     <!-- ---------- INSPECTIONS: safety-manager control center ---------- -->
     <section id="p-insp" class="panel hide">
-      <div class="sec" id="insp-summary"></div>
-      <div class="sec">
-        <div class="sec-h"><h2>Needs Attention — Purdue</h2></div>
-        <div id="insp-attn"><div class="empty">Loading…</div></div>
-      </div>
       <div class="sec">
         <div class="sec-h"><h2>Field Forms</h2></div>
         <div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem">
@@ -124,6 +119,12 @@
         <div class="sec-h"><h2>Findings</h2><span class="small muted" id="n-findings"></span></div>
         <p class="sec-note">Everything flagged on a report or a crew form. Tap one, say what
           was done, add a photo — closing it out happens right here.</p>
+        <div class="f-grid" style="margin-bottom:.6rem">
+          <div><label for="find-f-job">Job</label><select id="find-f-job" style="width:100%;min-height:44px"></select></div>
+          <div><label for="find-f-status">Status</label><select id="find-f-status" style="width:100%;min-height:44px">
+            <option value="">All</option><option value="open">Open</option><option value="closed">Closed</option>
+          </select></div>
+        </div>
         <div id="list-findings"><div class="empty">Loading…</div></div>
       </div>
     </section>

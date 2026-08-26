@@ -730,19 +730,48 @@
     return x.toISOString().slice(0, 10);
   }
   function loadFindings() {
+    /* Findings are DERIVED from what was actually flagged, from the same
+       authoritative rows the desktop uses:
+       - imported Safety 101 reports: FAIL line items (fields.s101)
+       - portal-submitted reports: "no"/inverted answers (fields.sections+items)
+       - field submissions (cs_field_submissions): flagged crew inspections
+       - legacy ToolGuard crew rows, when any exist
+       cs_finding_actions (via cs_portal_findings) overlays saved closeouts. */
     var reps = ((STATE.bundle && STATE.bundle.reports) || [])
       .filter(function (r) { return (r.defect_count || 0) > 0; });
-    var savedP = rpc('cs_portal_findings', {}).catch(function () { return {}; });
-    Promise.all([savedP].concat(reps.map(function (r) {
-      return rpc('cs_portal_report', { p_report_id: r.id }).catch(function () { return null; });
-    }))).then(function (all) {
-      var saved = all[0] || {};
+    rpc('cs_portal_findings', {}).catch(function () { return {}; }).then(function (saved) {
+      saved = saved || {};
       var rows = [];
-      reps.forEach(function (r, i) {
-        var d = all[i + 1];
-        if (!d) return;
-        var answers = d.items || {};
-        ((d.fields || {}).sections || []).forEach(function (sec) {
+      reps.forEach(function (r) {
+        var srcPdf = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+        if (r.s101 && r.s101.length) {
+          // Imported record WITH line items: every FAIL line is an open finding.
+          r.s101.forEach(function (sec, si) {
+            (sec.items || []).forEach(function (it, ii) {
+              if (it.result !== 'FAIL') return;
+              rows.push({ id: 'rf|' + r.id + '|s101|' + si + '-' + ii,
+                description: sec.title + ': ' + it.q,
+                job_id: r.job_id, date: r.report_date, due: addDays(r.report_date, 7),
+                from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
+                srcPdf: srcPdf, status: 'open' });
+            });
+          });
+          return;
+        }
+        if (r.imported) {
+          // Imported record with aggregate counts only — the per-item detail
+          // lives in the source PDF. One finding per report; never invented items.
+          var failN = ((r.counts || {}).fail) || r.defect_count || 0;
+          rows.push({ id: 'rf|' + r.id + '|imported',
+            description: (r.report_type || 'Safety 101 inspection') + ' — ' +
+              failN + ' failed item' + (failN === 1 ? '' : 's') + ' (detail in source PDF)',
+            job_id: r.job_id, date: r.report_date, due: addDays(r.report_date, 7),
+            from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
+            srcPdf: srcPdf, status: 'open' });
+          return;
+        }
+        var answers = r.items || {};
+        ((r.fields && r.fields.sections) || r.sections || []).forEach(function (sec) {
           (sec.items || []).forEach(function (it) {
             var v = String(answers[it.id] == null ? '' : answers[it.id]).toLowerCase();
             if (v !== (it.invert ? 'yes' : 'no')) return;
@@ -751,6 +780,17 @@
               from: 'Safety report · ' + (r.inspector_name || ''), status: 'open' });
           });
         });
+      });
+      // Flagged field inspections (aerial / forklift / JHA / hot work).
+      (STATE.fieldInsp || []).filter(function (r) { return r.has_defects; }).forEach(function (r) {
+        var d = r.submitted_at ? tzDayStr(r.submitted_at) : '';
+        rows.push({ id: 'cf|' + r.id,
+          description: (r.form_title || r.form_type || 'Field inspection') +
+            (r.asset_id ? ' · ' + r.asset_id : '') + ' — ' +
+            (r.defect_count || 1) + ' item' + ((r.defect_count || 1) === 1 ? '' : 's') + ' flagged',
+          job_id: r.job_id, date: d, due: addDays(d, 7),
+          from: 'Field inspection · ' + (r.inspector_name || ''),
+          src: r, status: 'open' });
       });
       (STATE.tg || []).filter(function (r) { return r.has_defects; }).forEach(function (r) {
         var mj = jobFor(r);
@@ -769,8 +809,13 @@
         f.closed = String(sv.updated_at || '').slice(0, 10);
         f.closed_by = sv.closed_by || '';
       });
+      var today = tzDayStr(new Date());
       rows.sort(function (x, y) {
         if (x.status !== y.status) return x.status === 'open' ? -1 : 1;
+        if (x.status === 'open') {
+          var xo = x.due && x.due < today, yo = y.due && y.due < today;
+          if (xo !== yo) return xo ? -1 : 1;
+        }
         return String(y.date).localeCompare(String(x.date));
       });
       FINDINGS = rows;
@@ -795,17 +840,39 @@
       img.src = URL.createObjectURL(file);
     });
   }
+  var FINDF = { job: '', status: '' };
   function renderFindings() {
     var w = $('#list-findings'); if (!w) return;
     w.innerHTML = '';
     var open = FINDINGS.filter(function (f) { return f.status === 'open'; }).length;
     $('#n-findings').textContent = FINDINGS.length
       ? (open ? open + ' open' : 'all closed') : '';
+    var fj = $('#find-f-job');
+    if (fj) {
+      var jset = {};
+      FINDINGS.forEach(function (f) { if (f.job_id) jset[f.job_id] = 1; });
+      fj.innerHTML = '<option value="">All Jobs</option>' + Object.keys(jset).map(function (id) {
+        return '<option value="' + esc(id) + '"' + (FINDF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
+      fj.value = FINDF.job;
+      fj.onchange = function () { FINDF.job = fj.value; renderFindings(); };
+    }
+    var fs = $('#find-f-status');
+    if (fs) { fs.value = FINDF.status; fs.onchange = function () { FINDF.status = fs.value; renderFindings(); }; }
     if (!FINDINGS.length) {
       w.appendChild(el('div', 'empty', 'Nothing flagged. That is the goal.'));
       return;
     }
-    FINDINGS.forEach(function (f, i) {
+    var SHOWN = FINDINGS.filter(function (f) {
+      if (FINDF.job && f.job_id !== FINDF.job) return false;
+      if (FINDF.status === 'open' && f.status !== 'open') return false;
+      if (FINDF.status === 'closed' && f.status !== 'closed') return false;
+      return true;
+    });
+    if (!SHOWN.length) {
+      w.appendChild(el('div', 'empty', 'No findings match these filters.'));
+      return;
+    }
+    SHOWN.forEach(function (f, i) {
       var card = el('div', 'card');
       var btn = el('button', 'acc');
       btn.setAttribute('aria-expanded', 'false');
@@ -825,6 +892,17 @@
       btn.appendChild(row);
 
       var body = el('div', 'acc-body hide');
+      if (f.src) {
+        var sb = el('button', 'btn btn-out btn-sm', 'View source inspection');
+        sb.style.cssText = 'margin-bottom:.6rem;width:100%';
+        sb.onclick = function (ev) { ev.stopPropagation(); openFieldDetail(f.src); };
+        body.appendChild(sb);
+      } else if (f.srcPdf) {
+        var sp = el('button', 'btn btn-out btn-sm', 'View source Safety 101 PDF');
+        sp.style.cssText = 'margin-bottom:.6rem;width:100%';
+        sp.onclick = function (ev) { ev.stopPropagation(); window.open(f.srcPdf, '_blank', 'noopener'); };
+        body.appendChild(sp);
+      }
       if (f.status === 'closed') {
         body.appendChild(el('div', 'card-s', '✓ Closed ' + fmtDate(f.closed) +
           (f.closed_by ? ' by ' + f.closed_by : '')));
@@ -1351,80 +1429,13 @@
   var FORM_TYPE_OF = { jha: 'jha', hotwork: 'hot_work_permit', aerial: 'aerial_platform', forklift: 'forklift' };
   var FORM_TITLE_OF = { jha: 'JHA', hot_work_permit: 'Hot Work Permit', aerial_platform: 'Aerial Platform Inspection', forklift: 'Forklift Inspection' };
 
-  function loadExpected() {
-    return rpc('cs_portal_expected_today').then(function (r) { STATE.expected = r || null; })
-      .catch(function () { STATE.expected = null; });
-  }
   function purdueJob() {
     return ((STATE.bundle || {}).jobs || []).filter(function (j) { return /purdue/i.test(j.name || ''); })[0] || null;
-  }
-  function fmtDue(t) {   // "07:00:00" -> "7:00 AM"
-    if (!t) return '';
-    var hm = String(t).split(':'), h = +hm[0], m = hm[1] || '00';
-    var ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
-    return h + ':' + m + ' ' + ap;
-  }
-  function indyNowHMS() {
-    return new Date().toLocaleTimeString('en-GB', { timeZone: TZ, hour12: false });
   }
 
   function renderInspTab() {
     var host = $('#p-insp'); if (!host) return;
     var pj = purdueJob();
-    var exp = STATE.expected;   // {day, configured, items} | null
-    var todayStr = tzDayStr(new Date());
-    var subsToday = (STATE.fieldInsp || []).filter(function (r) {
-      return pj && r.job_id === pj.id && r.submitted_at && tzDayStr(r.submitted_at) === todayStr;
-    });
-    var flaggedToday = subsToday.filter(function (r) { return r.has_defects; });
-
-    // ----- summary -----
-    var sum = $('#insp-summary');
-    var configured = !!(exp && exp.configured);
-    var pItems = (exp && exp.items || []).filter(function (it) { return !pj || it.job_id === pj.id; });
-    var missing = pItems.filter(function (it) { return !it.submission_id; });
-    var h = '<div class="card" style="padding:.9rem 1rem">' +
-      '<div style="font-weight:700;font-size:1.05rem">Purdue Today</div>' +
-      '<div class="small" style="margin-top:.35rem;display:flex;gap:1rem;flex-wrap:wrap">' +
-        '<span>Submitted: <b>' + subsToday.length + '</b></span>' +
-        (configured ? '<span>Still expected: <b style="color:' + (missing.length ? 'var(--bad,#c0392b)' : 'inherit') + '">' + missing.length + '</b></span>' : '') +
-        '<span>Flagged: <b style="color:' + (flaggedToday.length ? 'var(--bad,#c0392b)' : 'inherit') + '">' + flaggedToday.length + '</b></span>' +
-      '</div>' +
-      (!configured ? '<div class="muted small" style="margin-top:.35rem">Submission expectations not configured yet.</div>' : '') +
-      '</div>';
-    sum.innerHTML = h;
-
-    // ----- needs attention -----
-    var attn = $('#insp-attn'); attn.innerHTML = '';
-    if (!exp) {
-      attn.appendChild(el('div', 'empty', 'Could not load expectations — pull refresh to retry.'));
-    } else if (!configured) {
-      attn.appendChild(el('div', 'empty', 'Purdue inspection expectations have not been configured yet. Once each expected person + form is specified, missing submissions will appear here.'));
-    } else if (!missing.length) {
-      attn.appendChild(el('div', 'empty', 'Purdue is caught up — every expected inspection today has been submitted.'));
-    }
-    if (exp && configured) {
-      var nowHMS = indyNowHMS();
-      pItems.forEach(function (it) {
-        var c = el('div', 'card'); c.style.cssText = 'padding:.8rem 1rem;margin-bottom:.55rem';
-        var done = !!it.submission_id;
-        var overdue = !done && it.due_time && nowHMS > String(it.due_time);
-        var pillCls = done ? 'p-ok' : (overdue ? 'p-bad' : 'p-warn');
-        var pillTxt = done ? (it.has_defects ? 'Submitted · ' + (it.defect_count || 0) + ' defect' + ((it.defect_count || 0) === 1 ? '' : 's') : 'Submitted')
-                           : (overdue ? 'Overdue' : 'Not submitted');
-        var row = el('div', 'row');
-        var left = el('div');
-        left.appendChild(el('div', 'card-t', it.user_name || '—'));
-        left.appendChild(el('div', 'card-s',
-          (FORM_TITLE_OF[it.form_type] || it.form_type) + ' · ' + (it.job_name || '') +
-          (it.due_time ? ' · due ' + fmtDue(it.due_time) : '') +
-          (done && it.submitted_at ? ' · ' + tzTime(it.submitted_at) : '')));
-        row.appendChild(left);
-        row.appendChild(el('span', 'pill ' + pillCls, pillTxt));
-        c.appendChild(row);
-        attn.appendChild(c);
-      });
-    }
 
     // ----- job picker for opening forms -----
     var pick = $('#insp-job-pick');
@@ -1458,14 +1469,7 @@
         }).catch(function (e) { toast(e.message || 'Could not start form'); })
           .then(function () { open.disabled = false; });
       };
-      var viewBtn = el('button', 'btn btn-out btn-sm', 'View Submissions');
-      viewBtn.style.cssText = 'flex:1 1 140px;min-height:44px';
-      viewBtn.onclick = function () {
-        INSPF.form = FORM_TYPE_OF[f.key]; INSPF.job = ''; INSPF.status = '';
-        renderInspTab();
-        var t = $('#list-allinsp'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
-      acts.appendChild(open); acts.appendChild(viewBtn);
+      acts.appendChild(open);
       c.appendChild(acts);
       ff.appendChild(c);
     });
@@ -1533,7 +1537,6 @@
       rb.disabled = true; rb.textContent = 'Refreshing…';
       Promise.all([refresh(),
         toolguard().then(function (r) { STATE.tg = r; }).catch(function () {}),
-        loadExpected(),
         rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
           .catch(function () {})])
         .then(function () { renderHome(); loadFindings(); toast('Up to date'); })
@@ -1545,7 +1548,6 @@
     $('#start-inspection').addEventListener('click', function () { logEvent('inspection_start'); });
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; }),
-      loadExpected(),
       rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
         .catch(function () { STATE.fieldInsp = []; })])
       .then(renderHome)
@@ -1807,10 +1809,8 @@
       var host = $('#fieldapp');
       if (host && !host.classList.contains('hide')) rpc('cs_portal_field_home').then(renderFieldHome).catch(function () {});
     } else if (STATE.bundle) {
-      Promise.all([
-        rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; }),
-        loadExpected()
-      ]).then(renderHome).catch(function () {});
+      rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
+        .then(function () { renderHome(); loadFindings(); }).catch(function () {});
     }
   }
   window.addEventListener('pageshow', refreshFeeds);
