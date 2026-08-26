@@ -1789,16 +1789,28 @@
   }
   function openFieldDetail(item) {
     var host = $('#fielddetail');
-    if (!host) { host = el('div'); host.id = 'fielddetail'; host.style.cssText = 'position:fixed;inset:0;background:var(--navy,#0f172a);z-index:1000;overflow:auto;-webkit-overflow-scrolling:touch'; document.body.appendChild(host); }
-    host.style.display = 'block'; window.scrollTo(0, 0);
+    if (!host) { host = el('div'); host.id = 'fielddetail'; document.body.appendChild(host); }
+    /* One predictable scroll owner: this overlay. overscroll-behavior:contain
+       stops iOS standalone from chaining the scroll to the body underneath
+       (the "frozen scroll" trap found on a physical iPhone). The body's own
+       scroll position is deliberately left alone so Back lands the user right
+       where they were in the list. */
+    host.style.cssText = 'position:fixed;inset:0;background:var(--navy,#0f172a);z-index:1000;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain';
+    host.style.display = 'block';
     var stat = item.has_defects ? '<span style="color:var(--bad,#c0392b);font-weight:700">' + item.defect_count + ' defect' + (item.defect_count === 1 ? '' : 's') + '</span>' : '<span style="color:var(--ok,#1e7d34);font-weight:700">No defects</span>';
-    host.innerHTML = '<div style="padding:1rem;max-width:640px;margin:0 auto">' +
-      '<button class="btn btn-out btn-sm" id="fd-back" style="margin-bottom:.8rem">‹ Back</button>' +
+    host.innerHTML =
+      /* Sticky Back bar: always visible however far the record scrolls, and
+         padded below the notch / Dynamic Island in Home Screen mode. */
+      '<div style="position:sticky;top:0;z-index:10;background:rgba(15,23,42,.97);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--navy-3,#334155);padding:.5rem 1rem;padding-top:calc(.5rem + env(safe-area-inset-top))">' +
+        '<button class="btn btn-out btn-sm" id="fd-back" style="min-height:44px;min-width:88px">&#8249; Back</button>' +
+      '</div>' +
+      '<div style="padding:1rem;padding-bottom:calc(2rem + env(safe-area-inset-bottom));max-width:640px;margin:0 auto">' +
       '<h1 style="font-size:1.2rem;margin:.2rem 0">' + esc(item.form_title || item.form_type) + (item.asset_id ? ' — ' + esc(item.asset_id) : '') + '</h1>' +
       '<div class="muted small">' + esc(jobLabelOf(item)) + (item.inspector_name ? ' · ' + esc(item.inspector_name) : '') + '</div>' +
       (item.submitted_at ? '<div class="muted small">Submitted: ' + esc(tzDateTime(item.submitted_at)) + '</div>' : '') +
       '<div style="margin:.5rem 0 .2rem">' + stat + '</div>' +
       '<div id="fd-body" class="muted small" style="margin-top:.6rem">Loading inspection…</div></div>';
+    host.scrollTop = 0;   // reset the OVERLAY, not the page behind it
     $('#fd-back').onclick = function () { host.style.display = 'none'; };
     rpc('cs_portal_field_doc', { p_id: item.id }).then(function (d) {
       var b = $('#fd-body'); if (b) b.innerHTML = docDetailHtml(d && d.doc);
