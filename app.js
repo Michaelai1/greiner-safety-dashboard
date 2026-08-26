@@ -1720,7 +1720,8 @@
         navigator.share({ files: [f], title: name || 'Safety record' }).catch(function () {});
         return;
       }
-      window.open(URL.createObjectURL(b), '_blank');
+      var w = window.open(URL.createObjectURL(b), '_blank');
+      if (!w) toast('Tap Share to save this PDF');
       return;
     }
     var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
