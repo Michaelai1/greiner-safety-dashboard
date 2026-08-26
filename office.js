@@ -100,7 +100,7 @@
         jobsite: r.job_name || r.job_number || '',
         inspection_subtype: r.form_type,
         form_type: r.form_title || r.form_type,
-        inspection_date: String(r.submitted_at || '').slice(0, 10),
+        inspection_date: r.submitted_at ? tzDayStr(r.submitted_at) : '',
         submitted_at: r.submitted_at,
         has_defects: !!r.has_defects,
         defect_count: r.defect_count || 0,
@@ -126,25 +126,47 @@
     }).catch(function () { toast('Could not open PDF'); });
   }
 
+  /* All activity timestamps display in Indiana time regardless of the viewer's
+     device or server timezone. Storage stays UTC; this is display-layer only.
+     Date-only strings ("2026-08-25") are calendar dates — never TZ-shifted. */
+  var TZ = 'America/Indiana/Indianapolis';
+  function tzDate(t) {
+    return new Date(t).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function tzTime(t) {
+    return new Date(t).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  }
+  function tzDateTime(t) { return tzDate(t) + ' · ' + tzTime(t); }
+  function tzDayStr(t) {   // YYYY-MM-DD as it reads in Indiana, for filters/sorts
+    return new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
+  }
+  /* Safety reports: submitted_at (UTC timestamptz) is authoritative; the stored
+     report_date is the UTC calendar day at insert and reads one day ahead during
+     Indiana evenings. Rows without submitted_at fall back to report_date. */
+  function repDay(r) { return r.submitted_at ? tzDayStr(r.submitted_at) : (r.report_date || ''); }
+  function repDateDisp(r) { return r.submitted_at ? tzDate(r.submitted_at) : repDateDisp(r); }
   function fmtDate(d) {
     if (!d) return '—';
-    var x = new Date(String(d).length <= 10 ? d + 'T12:00:00' : d);
-    return isNaN(x) ? String(d) : x.toLocaleDateString('en-US',
-      { month: 'short', day: 'numeric', year: 'numeric' });
+    if (String(d).length <= 10) {
+      var x = new Date(d + 'T12:00:00');
+      return isNaN(x) ? String(d) : x.toLocaleDateString('en-US',
+        { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    var y = new Date(d);
+    return isNaN(y) ? String(d) : tzDate(y);
   }
   /* Permits show a clock time, not a live countdown. The countdown read as
      fussy; what a superintendent needs is "when does this die" plus a flag if
      that is soon. Precision below the minute helps nobody. */
   function fmtTime(t) {
     if (!t) return '—';
-    return new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return tzTime(t);
   }
   function fmtWhen(t) {
     if (!t) return '—';
-    var x = new Date(t), today = new Date();
-    var same = x.toDateString() === today.toDateString();
-    return (same ? 'Today' : x.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) +
-           ' ' + fmtTime(t);
+    var same = tzDayStr(t) === tzDayStr(new Date());
+    return (same ? 'Today' : new Date(t).toLocaleDateString('en-US',
+      { timeZone: TZ, month: 'short', day: 'numeric' })) + ' ' + fmtTime(t);
   }
   function minsLeft(p) {
     return p.expires_at ? Math.round((new Date(p.expires_at) - new Date()) / 60000) : null;
@@ -1666,7 +1688,7 @@
 
     // Every field submission, normalized. Same records the rest of the app shows.
     var subs = [];
-    (B.reports || []).forEach(function (r) { if (r.report_date) subs.push({ t: new Date(r.report_date + 'T09:00:00'), type: 'Observation', job_id: r.job_id, timed: false }); });
+    (B.reports || []).forEach(function (r) { if (r.report_date) subs.push({ t: new Date(repDay(r) + 'T09:00:00'), type: 'Observation', job_id: r.job_id, timed: false }); });
     (CREW || []).forEach(function (r) {
       var when = r.submitted_at ? new Date(r.submitted_at) : (r.inspection_date ? new Date(r.inspection_date + 'T09:00:00') : null);
       if (!when) return;
@@ -1688,7 +1710,7 @@
     var nmYTD = (B.near_misses || []).filter(function (i) { return !i.demo_sample && i.date && new Date(i.date) >= yearStart && inJob(i.job_id); });
     var pass = 0, tot = 0;
     (B.reports || []).forEach(function (r) {
-      if (!inJob(r.job_id) || !r.report_date || new Date(r.report_date + 'T09:00:00') < start) return;
+      if (!inJob(r.job_id) || !r.report_date || new Date(repDay(r) + 'T09:00:00') < start) return;
       var it = r.items || {}; Object.keys(it).forEach(function (k) { var v = it[k]; if (v === 'yes') { pass++; tot++; } else if (v === 'no') { tot++; } });
     });
     var score = tot ? Math.round(pass / tot * 100) : null;
@@ -3516,7 +3538,7 @@
     (B.reports || []).forEach(function (r) {
       if (r.imported) return;   // imported failures are tracked via findings, not report fixes
       Object.keys(r.fixes || {}).forEach(function (k) {
-        out.push({ text: r.fixes[k].action, src: 'Report ' + fmtDate(r.report_date),
+        out.push({ text: r.fixes[k].action, src: 'Report ' + repDateDisp(r),
           owner: r.fixes[k].owner, job: r.job_id, due: r.report_date,
           status: r.fixes[k].status, ref: 'rfix|' + r.id + '|' + k,
           photos: (r.fixes[k].photos || []).length });
@@ -3624,7 +3646,7 @@
       var reps = allReps.filter(function (r) {
         if (obsF.job && r.job_id !== obsF.job) return false;
         if (obsF.person && r.inspector_name !== obsF.person) return false;
-        if (cutR && new Date(r.report_date + 'T00:00:00') < cutR) return false;
+        if (cutR && new Date(repDay(r) + 'T00:00:00') < cutR) return false;
         if (q && ((r.notes || '') + ' ' + jobName(r.job_id) + ' ' + (r.inspector_name || '')).toLowerCase().indexOf(q) === -1) return false;
         return true;
       });
@@ -3637,7 +3659,8 @@
         return '<tr class="click" data-report="' + esc(r.id) + '">' + selCell(r.id) +
           '<td><span class="t-main">' + name + badge + '</span>' +
             '<div class="t-sub">' + esc(sub) + '</div></td>' +
-          '<td>' + esc(fmtDate(r.report_date)) + '</td>' +
+          '<td>' + esc(repDateDisp(r)) +
+            (r.submitted_at ? '<div class="t-sub">' + esc(tzTime(r.submitted_at)) + '</div>' : '') + '</td>' +
           '<td>' + esc(jobName(r.job_id)) + '<div class="t-sub">' + esc(jobNum(r.job_id)) + '</div></td>' +
           '<td>' + esc(r.inspector_name) + '</td>' +
           '<td class="r">' + (r.defect_count
@@ -3724,7 +3747,7 @@
         [{ t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: '', r: 1 }],
         archR.map(function (r) {
           return '<tr><td><span class="t-main">Construction Job Site Safety Checklist</span></td>' +
-            '<td>' + esc(fmtDate(r.report_date)) + '</td>' +
+            '<td>' + esc(repDateDisp(r)) + '</td>' +
             '<td>' + esc(jobName(r.job_id)) + '</td>' +
             '<td>' + esc(r.inspector_name) + '</td>' +
             '<td class="r"><button class="btn btn-sm" data-represtore="' + esc(r.id) + '">Restore</button></td></tr>';
@@ -3752,7 +3775,7 @@
         combinedPrint('Site Safety Reports', ids.map(function (id) {
           var r = (B.reports || []).filter(function (x) { return x.id === id; })[0];
           return { title: 'Site Safety Report', body: reportPBody(r),
-            sub: fmtDate(r.report_date) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name };
+            sub: repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name };
         }) );
       } });
     }
@@ -3821,7 +3844,8 @@
     if (r.imported) return openImportedReport(r);
     var h = pdfBtn('dl-rep');
     h += '<div class="sec-h">Details</div>' +
-      kv('Site', jobName(r.job_id)) + kv('Date', fmtDate(r.report_date)) +
+      kv('Site', jobName(r.job_id)) + kv('Inspection Date', repDateDisp(r)) +
+      (r.submitted_at ? kv('Submitted', tzDateTime(r.submitted_at)) : '') +
       kv('Performed by', r.inspector_name) + kv('Signature', r.signature_typed) +
       kv('Result', r.defect_count ? r.defect_count + ' item' +
          (r.defect_count === 1 ? '' : 's') + ' flagged' : 'All items clear');
@@ -3852,13 +3876,13 @@
       });
     });
     if (r.notes) h += '<div class="sec-h">Notes</div><div class="small">' + esc(r.notes) + '</div>';
-    drawer('Site Safety Report', fmtDate(r.report_date) + ' · ' + jobName(r.job_id), h);
+    drawer('Site Safety Report', repDateDisp(r) + ' · ' + jobName(r.job_id), h);
     $$('.drawer [data-editca]').forEach(function (b) {
       b.onclick = function () { openCA(b.dataset.editca); };
     });
     $('#dl-rep').onclick = function () {
       printRecord('Site Safety Report',
-        fmtDate(r.report_date) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name,
+        repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name,
         reportPBody(r));
     };
   }
@@ -3876,7 +3900,7 @@
       kv('Job / site', jobName(r.job_id)) +
       (r.location ? kv('Reported location', r.location) : '') +
       kv('Performed by', r.inspector_name) +
-      kv('Submitted', fmtDate(r.report_date)) +
+      kv('Submitted', repDateDisp(r)) +
       (r.counts ? kv('Result', 'Pass ' + r.counts.pass + ' · Fail ' + r.counts.fail + ' · N/A ' + r.counts.na + '  (' + r.counts.percent + ')') : '');
     var fails = [];
     (r.s101 || []).forEach(function (sec) { (sec.items || []).forEach(function (it) { if (it.result === 'FAIL') fails.push({ sec: sec.title, q: it.q }); }); });
@@ -3906,7 +3930,7 @@
       h += '<div class="sec-h">Source document</div>' +
         '<a class="btn btn-sm" href="' + esc(r.source_pdf) + '" target="_blank" rel="noopener">Open original Safety 101 PDF</a>';
     }
-    drawer(r.report_type || 'Safety 101 Inspection', fmtDate(r.report_date) + ' · ' + jobName(r.job_id) + ' · Imported', h);
+    drawer(r.report_type || 'Safety 101 Inspection', repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · Imported', h);
     $('#dl-rep').onclick = function () {
       if (r.source_pdf) {
         // Download the ACTUAL imported Safety 101 source PDF, not an app-generated one.
@@ -3917,7 +3941,7 @@
         return;
       }
       printRecord(r.report_type || 'Safety Observation',
-        fmtDate(r.report_date) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name, reportPBody(r), { imported: true });
+        repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name, reportPBody(r), { imported: true });
     };
   }
 
@@ -4032,7 +4056,8 @@
         return '<tr class="click" data-crewi="' + esc(r.id) + '">' + selCell(r.id) +
           '<td><span class="t-main">' + esc(r.inspection_subtype || r.form_type) + '</span>' +
             (r.asset_id ? '<div class="t-sub">' + esc(r.asset_id) + '</div>' : '') + '</td>' +
-          '<td>' + esc(fmtDate(r.inspection_date)) + '</td>' +
+          '<td>' + esc(fmtDate(r.inspection_date)) +
+            (r.submitted_at ? '<div class="t-sub">' + esc(tzTime(r.submitted_at)) + '</div>' : '') + '</td>' +
           '<td>' + esc(r.jobsite) + '</td>' +
           '<td>' + esc(r.inspector_name) +
             (r.sub_id ? '<div class="t-sub">' + esc(subName(r.sub_id)) + '</div>' : '') + '</td>' +
@@ -4194,6 +4219,7 @@
       kv('Site', r.jobsite) +
       kv('Completed by', r.inspector_name + (r.sub_id ? ' · ' + subName(r.sub_id) : '')) +
       kv('Date', fmtDate(r.inspection_date)) +
+      (r.submitted_at ? kv('Submitted', tzDateTime(r.submitted_at)) : '') +
       kv('Result', r.has_defects ? r.defect_count + ' defect' +
          (r.defect_count === 1 ? '' : 's') : 'All items passed');
     // Delivery Activity — only for digitally sent forms (records with a sent
@@ -4754,7 +4780,7 @@
   }
   function downloadJobPdf(kind, rid) {
     if (kind === 'report') { var r = (B.reports || []).filter(function (x) { return x.id === rid; })[0];
-      if (r) printRecord('Site Safety Report', fmtDate(r.report_date) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name, reportPBody(r)); }
+      if (r) printRecord('Site Safety Report', repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · ' + r.inspector_name, reportPBody(r)); }
     else if (kind === 'crew') { var c = CREW.filter(function (x) { return x.id === rid; })[0];
       if (c) printRecord(c.inspection_subtype || c.form_type, fmtDate(c.inspection_date) + ' · ' + c.jobsite + ' · ' + c.inspector_name, crewPBody(c)); }
     else if (kind === 'permit') { var p = (B.permits || []).filter(function (x) { return x.id === rid; })[0];
@@ -4869,7 +4895,8 @@
       [{ t: 'Date' }, { t: 'Inspector' }, { t: 'Result', r: 1 }, { t: '', r: 1 }],
       reps.map(function (r) {
         return '<tr data-report="' + esc(r.id) + '" style="cursor:pointer">' +
-          '<td>' + esc(fmtDate(r.report_date)) + '</td>' +
+          '<td>' + esc(repDateDisp(r)) +
+            (r.submitted_at ? '<div class="t-sub">' + esc(tzTime(r.submitted_at)) + '</div>' : '') + '</td>' +
           '<td>' + esc(r.inspector_name) + '</td>' +
           '<td class="r">' + (r.defect_count ? pill('p-warn', r.defect_count + ' flagged') : pill('p-ok', 'Clear')) + '</td>' +
           pdfCell('report', r.id) + '</tr>';
@@ -4962,7 +4989,7 @@
     var j = (B.jobs || []).filter(function (x) { return x.id === id; })[0]; if (!j) return;
     var parts = [];
     (B.reports || []).filter(function (r) { return r.job_id === id; }).forEach(function (r) {
-      parts.push({ title: 'Site Safety Report', sub: fmtDate(r.report_date) + ' · ' + r.inspector_name, body: reportPBody(r) }); });
+      parts.push({ title: 'Site Safety Report', sub: repDateDisp(r) + ' · ' + r.inspector_name, body: reportPBody(r) }); });
     CREW.filter(function (r) { return r.jobsite === j.name; }).forEach(function (r) {
       parts.push({ title: r.inspection_subtype || r.form_type, sub: fmtDate(r.inspection_date) + ' · ' + r.inspector_name, body: crewPBody(r) }); });
     (B.permits || []).filter(function (p) { return p.job_id === id; }).forEach(function (p) {
@@ -6996,7 +7023,7 @@
       if (!r.fixes[p[2]]) r.fixes[p[2]] = { action: '', owner: '', status: 'open' };
       var fx = r.fixes[p[2]];
       return { context: label, demo: true,
-        where: srcLine([r.report_type || 'Site Safety Report', jobName(r.job_id), fmtDate(r.report_date)]),
+        where: srcLine([r.report_type || 'Site Safety Report', jobName(r.job_id), repDateDisp(r)]),
         get: function () { return fx; },
         set: function (v) { fx.action = v.action; fx.owner = v.owner;
                             fx.status = v.status; fx.photos = v.photos; } };

@@ -124,11 +124,37 @@
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, 2600);
   }
+  /* All activity timestamps display in Indiana time regardless of the phone's
+     timezone. Storage stays UTC; conversion is display-layer only. Date-only
+     strings ("2026-08-25") are calendar dates — never TZ-shifted. */
+  var TZ = 'America/Indiana/Indianapolis';
+  function tzDate(t) {
+    return new Date(t).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function tzTime(t) {
+    return new Date(t).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  }
+  function tzDateTime(t) { return tzDate(t) + ' · ' + tzTime(t); }
+  function tzDayStr(t) {   // YYYY-MM-DD as it reads in Indiana
+    return new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
+  }
+  var FIELD_JOB = null;   // the signed-in field user's job (from cs_portal_field_home)
+  function jobLabelOf(r) {
+    return (r && r.job_name) || (FIELD_JOB && FIELD_JOB.name) || C.contractor || '';
+  }
+  function jobTagOf(r) {
+    var t = (r && r.job_number) || (FIELD_JOB && FIELD_JOB.job_number) || jobLabelOf(r);
+    return String(t || 'Field').replace(/[^A-Za-z0-9-]+/g, '') || 'Field';
+  }
   function fmtDate(d) {
     if (!d) return '';
-    var x = new Date(String(d).length <= 10 ? d + 'T12:00:00' : d);
-    return isNaN(x) ? String(d) : x.toLocaleDateString('en-US',
-      { month: 'short', day: 'numeric', year: 'numeric' });
+    if (String(d).length <= 10) {
+      var x = new Date(d + 'T12:00:00');
+      return isNaN(x) ? String(d) : x.toLocaleDateString('en-US',
+        { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    var y = new Date(d);
+    return isNaN(y) ? String(d) : tzDate(y);
   }
   function daysUntil(d) {
     if (!d) return null;
@@ -540,7 +566,7 @@
     var left = el('div');
     left.appendChild(el('div', 'card-t', (r.form_title || 'Field form') + (r.asset_id ? ' · ' + r.asset_id : '')));
     left.appendChild(el('div', 'card-s',
-      fmtDate(r.submitted_at) +
+      (r.submitted_at ? tzDateTime(r.submitted_at) : '') +
       (r.inspector_name ? ' · ' + r.inspector_name : '') +
       (r.job_number ? ' · ' + r.job_number + ' — ' + (r.job_name || '') : '')));
     row.appendChild(left);
@@ -549,15 +575,15 @@
     c.appendChild(row);
     var acts = el('div');
     acts.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.55rem';
-    var fname = 'Greiner-Purdue-' + String(r.form_type || 'form') +
+    var fname = 'Greiner-' + jobTagOf(r) + '-' + String(r.form_type || 'form') +
       (r.asset_id ? '-' + String(r.asset_id).replace(/[^A-Za-z0-9]+/g, '') : '') +
-      '-' + String(r.submitted_at || '').slice(0, 10) + '.pdf';
+      (r.submitted_at ? '-' + tzDayStr(r.submitted_at) : '') + '.pdf';
     function mkBtn(label, cls, fn) { var b = el('button', 'btn ' + cls + ' btn-sm', label); b.onclick = fn; acts.appendChild(b); }
     mkBtn('View Details', 'btn-gold', function () { openFieldDetail(r); });
     if (r.pdf_path) {
       mkBtn('View PDF', 'btn-out', function () { recordView(r); });
       mkBtn('Download', 'btn-out', function () { recordDownload(r, fname); });
-      mkBtn('Share', 'btn-out', function () { recordShare(r, fname, (r.form_title || r.form_type) + ' — ' + (r.job_name || 'Purdue')); });
+      mkBtn('Share', 'btn-out', function () { recordShare(r, fname, (r.form_title || r.form_type) + ' — ' + jobLabelOf(r)); });
     }
     c.appendChild(acts);
     return c;
@@ -609,7 +635,7 @@
     });
     var pseudo = {
       template_code: (r.inspection_subtype || r.form_type || 'inspection'),
-      report_date: r.inspection_date || (r.submitted_at || '').slice(0, 10),
+      report_date: r.inspection_date || (r.submitted_at ? tzDayStr(r.submitted_at) : ''),
       inspector_name: r.inspector_name, overall: r.has_defects ? 'fail' : 'pass',
       has_defects: r.has_defects, defect_count: r.defect_count,
       items: { 'Job site': r.jobsite || '—' },
@@ -650,7 +676,7 @@
     }
     var cut = new Date();
     cut.setDate(cut.getDate() - Number(f.range));
-    return dateStr >= cut.toISOString().slice(0, 10);
+    return dateStr >= tzDayStr(cut);
   }
 
   // Builds the segmented control + custom range into a mount point. Ids are
@@ -692,8 +718,8 @@
         rows.push({ id: 'cf|' + r.id,
           description: (r.inspection_subtype || r.form_type || 'Inspection') + ' — ' +
             (r.defect_count || 1) + ' item' + ((r.defect_count || 1) === 1 ? '' : 's') + ' flagged',
-          job_id: mj && mj.id, date: String(r.inspection_date || r.submitted_at).slice(0, 10),
-          due: addDays(String(r.inspection_date || r.submitted_at).slice(0, 10), 7),
+          job_id: mj && mj.id, date: r.inspection_date || (r.submitted_at ? tzDayStr(r.submitted_at) : ''),
+          due: addDays(r.inspection_date || (r.submitted_at ? tzDayStr(r.submitted_at) : ''), 7),
           from: 'Crew form · ' + (r.inspector_name || ''), status: 'open' });
       });
       rows.forEach(function (f) {
@@ -1057,7 +1083,7 @@
     var all = STATE.tg || [];
     var shown = all.filter(function (r) { return inRange(inspDate(r), STATE.filters.insp); });
     var fieldSubs = (STATE.fieldInsp || []).filter(function (r) {
-      return inRange(String(r.submitted_at || '').slice(0, 10), STATE.filters.insp);
+      return inRange(r.submitted_at ? tzDayStr(r.submitted_at) : '', STATE.filters.insp);
     });
     var li = $('#list-insp'); li.innerHTML = '';
     var totalShown = shown.length + fieldSubs.length;
@@ -1452,11 +1478,10 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(205, 205, 205); doc.text('Safety Record', 46, 48);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(255); doc.text(item.form_title || item.form_type || 'Inspection', W - 46, 42, { align: 'right' });
     var y = 100, rows = [
-      ['Project / Job', 'Purdue Academic Bldg. · C800-2025'],
+      ['Project / Job', jobLabelOf(item) + (item.job_number ? ' · ' + item.job_number : '')],
       ['Completed by', item.inspector_name || '—'],
       ['Equipment / Asset', item.asset_id || ''],
-      ['Date', item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : '—'],
-      ['Time', item.submitted_at ? new Date(item.submitted_at).toLocaleTimeString() : ''],
+      ['Submitted', item.submitted_at ? tzDateTime(item.submitted_at) : '—'],
       ['Status', item.has_defects ? (item.defect_count + ' flagged') : 'Clear']
     ];
     doc.setFontSize(10);
@@ -1530,7 +1555,8 @@
     host.innerHTML = '<div style="padding:1rem;max-width:640px;margin:0 auto">' +
       '<button class="btn btn-out btn-sm" id="fd-back" style="margin-bottom:.8rem">‹ Back</button>' +
       '<h1 style="font-size:1.2rem;margin:.2rem 0">' + esc(item.form_title || item.form_type) + (item.asset_id ? ' — ' + esc(item.asset_id) : '') + '</h1>' +
-      '<div class="muted small">Purdue Academic Bldg.' + (item.inspector_name ? ' · ' + esc(item.inspector_name) : '') + (item.submitted_at ? ' · ' + new Date(item.submitted_at).toLocaleString() : '') + '</div>' +
+      '<div class="muted small">' + esc(jobLabelOf(item)) + (item.inspector_name ? ' · ' + esc(item.inspector_name) : '') + '</div>' +
+      (item.submitted_at ? '<div class="muted small">Submitted: ' + esc(tzDateTime(item.submitted_at)) + '</div>' : '') +
       '<div style="margin:.5rem 0 .2rem">' + stat + '</div>' +
       '<div id="fd-body" class="muted small" style="margin-top:.6rem">Loading inspection…</div></div>';
     $('#fd-back').onclick = function () { host.style.display = 'none'; };
@@ -1573,6 +1599,7 @@
   function renderFieldHome(d) {
     var host = $('#fieldapp');
     var job = (d.jobs && d.jobs[0]) || {};
+    FIELD_JOB = job;
     var today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     var h = '';
     h += '<header class="hdr"><div class="hdr-in"><div class="mark">CS</div>' +
@@ -1611,15 +1638,14 @@
     var h = '';
     recent.forEach(function (r) {
       FIELD_RECENT[r.id] = r;
-      var when = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-US',
-        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      var when = r.submitted_at ? tzDateTime(r.submitted_at) : '';
       var stat = r.has_defects
         ? '<span style="color:var(--bad,#c0392b)">' + r.defect_count + ' flagged</span>'
         : '<span style="color:var(--ok,#1e7d34)">Clear</span>';
       var btn = 'flex:1 1 96px;min-height:44px';
       h += '<div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem">' +
         '<div style="font-weight:700">' + esc(r.form_title || r.form_type) + (r.asset_id ? ' — ' + esc(r.asset_id) : '') + '</div>' +
-        '<div class="muted small">Purdue · ' + esc(when) + ' · ' + stat + '</div>' +
+        '<div class="muted small">' + esc(jobLabelOf(r)) + ' · ' + esc(when) + ' · ' + stat + '</div>' +
         (r.inspector_name ? '<div class="muted small" style="margin-bottom:.55rem">Completed by ' + esc(r.inspector_name) + '</div>' : '<div style="height:.55rem"></div>') +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
           '<button class="btn btn-gold btn-sm" style="' + btn + '" data-act="details" data-id="' + esc(r.id) + '">View Details</button>' +
@@ -1633,12 +1659,12 @@
       b.onclick = function () {
         var item = FIELD_RECENT[b.dataset.id]; if (!item) return;
         if (b.dataset.act === 'details') { openFieldDetail(item); return; }
-        var name = 'Greiner-Purdue-' + String(item.form_type || 'form') +
+        var name = 'Greiner-' + jobTagOf(item) + '-' + String(item.form_type || 'form') +
           (item.asset_id ? '-' + String(item.asset_id).replace(/[^A-Za-z0-9]+/g, '') : '') +
-          '-' + String(item.submitted_at || '').slice(0, 10) + '.pdf';
+          (item.submitted_at ? '-' + tzDayStr(item.submitted_at) : '') + '.pdf';
         if (b.dataset.act === 'view') recordView(item);
         else if (b.dataset.act === 'download') recordDownload(item, name);
-        else recordShare(item, name, (item.form_title || item.form_type) + ' — Purdue');
+        else recordShare(item, name, (item.form_title || item.form_type) + ' — ' + jobLabelOf(item));
       };
     });
   }
