@@ -1668,8 +1668,10 @@
   function ngBlob(id) { return ngSignedUrl(id).then(function (u) { return fetch(u).then(function (r) { return r.blob(); }); }); }
   function ngView(id) {
     var w = window.open('', '_blank');
-    ngSignedUrl(id).then(function (u) { if (w && !w.closed) w.location = u; else window.location.href = u; })
-      .catch(function (e) { if (w && !w.closed) w.close(); toast(e.message || 'Could not open PDF'); });
+    ngBlob(id).then(function (b) {
+      var u = URL.createObjectURL(b);   // blob: URL on the Greiner origin
+      if (w && !w.closed) w.location = u; else window.location.href = u;
+    }).catch(function (e) { if (w && !w.closed) w.close(); toast(e.message || 'Could not open PDF'); });
   }
   function ngDownload(id, name) {
     ngBlob(id).then(function (b) {
@@ -1730,7 +1732,9 @@
   }
   function recordView(item) {
     var w = window.open('', '_blank');   // opened in the tap gesture -> survives the async fetch
-    var p = item.pdf_path ? ngSignedUrl(item.id) : Promise.resolve(URL.createObjectURL(basicRecordPdf(item)));
+    var p = item.pdf_path
+      ? ngBlob(item.id).then(function (b) { return URL.createObjectURL(b); })
+      : Promise.resolve(URL.createObjectURL(basicRecordPdf(item)));
     p.then(function (u) { if (w && !w.closed) w.location = u; else window.location.href = u; })
       .catch(function () { if (w && !w.closed) w.close(); toast('Could not open PDF'); });
   }

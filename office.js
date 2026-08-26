@@ -116,14 +116,20 @@
      (authorizes the session, returns a short-lived signed URL). */
   function openFieldPdf(id) {
     var s = getSession(); if (!s || !s.session) return;
+    var w = window.open('', '_blank');   // in the click, so it is not popup-blocked
     fetch(C.creekside.url + '/functions/v1/field-pdf', {
       method: 'POST',
       headers: { apikey: C.creekside.anonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'url', token: s.session, id: id })
     }).then(function (r) { return r.json(); }).then(function (j) {
-      if (j && j.url) window.open(j.url, '_blank', 'noopener');
-      else toast('Could not open PDF');
-    }).catch(function () { toast('Could not open PDF'); });
+      if (!j || !j.url) throw new Error('no url');
+      // Serve as a same-origin blob document — the signed storage URL stays
+      // internal and never appears in the address bar.
+      return fetch(j.url).then(function (r2) { return r2.blob(); }).then(function (b) {
+        var u = URL.createObjectURL(b);
+        if (w && !w.closed) w.location = u; else window.open(u, '_blank', 'noopener');
+      });
+    }).catch(function () { if (w && !w.closed) w.close(); toast('Could not open PDF'); });
   }
 
   /* All activity timestamps display in Indiana time regardless of the viewer's
