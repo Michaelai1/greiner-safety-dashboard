@@ -1319,6 +1319,19 @@
       if (sess) post('cs_portal_logout', { p_token: sess }).catch(function () {});
       location.reload();
     };
+    // In-place data refresh — re-pulls everything without reloading the page,
+    // so the session and current tab never reset.
+    $('#refresh-btn').onclick = function () {
+      var rb = $('#refresh-btn');
+      rb.disabled = true; rb.textContent = 'Refreshing…';
+      Promise.all([refresh(),
+        toolguard().then(function (r) { STATE.tg = r; }).catch(function () {}),
+        rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
+          .catch(function () {})])
+        .then(function () { renderHome(); loadFindings(); toast('Up to date'); })
+        .catch(function () { toast('Could not refresh — check connection'); })
+        .then(function () { rb.disabled = false; rb.textContent = 'Refresh'; });
+    };
     document.title = C.pageTitle;
     $('#start-inspection').href = 'inspect.html?k=' + encodeURIComponent(C.inspectKey);
     $('#start-inspection').addEventListener('click', function () { logEvent('inspection_start'); });
@@ -1605,6 +1618,7 @@
     h += '<header class="hdr"><div class="hdr-in"><div class="mark">CS</div>' +
       '<div style="flex:1;min-width:0"><h1 style="font-size:1.05rem;margin:0">' + esc(d.company || C.contractor) + '</h1>' +
       '<div class="by">Signed in as ' + esc(d.user || '') + ' · Powered by ' + esc(C.poweredBy || 'NextGen Safety') + '</div></div>' +
+      '<button class="signout" id="f-refresh" type="button" style="margin-right:.4rem">Refresh</button>' +
       '<button class="signout" id="f-signout" type="button">Sign out</button></div></header>';
     h += '<main class="wrap">';
     h += '<div class="sec"><div class="card" style="padding:1rem">' +
@@ -1625,6 +1639,17 @@
       var s = getSession(); clearSession();
       if (s) post('cs_portal_logout', { p_token: s }).catch(function () {});
       location.reload();
+    };
+    // In-place refresh — re-pulls the field feed without reloading the page.
+    $('#f-refresh').onclick = function () {
+      var rb = $('#f-refresh');
+      rb.disabled = true; rb.textContent = 'Refreshing…';
+      rpc('cs_portal_field_home').then(function (d2) {
+        renderFieldHome(d2); toast('Up to date');
+      }).catch(function () {
+        rb.disabled = false; rb.textContent = 'Refresh';
+        toast('Could not refresh — check connection');
+      });
     };
     Array.prototype.forEach.call(host.querySelectorAll('[data-ngform]'), function (b) {
       b.onclick = function () { openFieldForm(b.dataset.ngform, b); };

@@ -7188,6 +7188,22 @@
     localStorage.removeItem(SKEY);
     location.reload();
   };
+  // In-place data refresh: re-pulls the bundle and field feeds and re-renders
+  // the current page. No browser reload, so the session and view never reset.
+  (function () {
+    var rb = $('#refresh-data');
+    if (!rb) return;
+    rb.onclick = function () {
+      rb.disabled = true; rb.textContent = 'Refreshing…';
+      refreshBundle().then(function () {
+        go(page); toast('Data refreshed');
+      }).catch(function (e) {
+        toast('Could not refresh — ' + ((e && e.message) || 'check connection'));
+      }).then(function () {
+        rb.disabled = false; rb.innerHTML = '&#8635; Refresh data';
+      });
+    };
+  })();
   // Collapsible sidebar: toggle in the header hides it; a floating button reopens.
   (function () {
     var app = $('#app'), tgl = $('#side-toggle'), rop = $('#side-reopen');
