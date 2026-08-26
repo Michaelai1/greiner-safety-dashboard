@@ -551,6 +551,11 @@
     var srcName = ('Safety 101 Inspection ' + (r.report_date || r.id) + '.pdf').replace(/[\/\\?%*:|"<>]/g, '-');
     var v = el('button', 'btn btn-gold btn-sm', 'View');
     v.onclick = function () {
+      if (r.source_pages && r.source_pages.length) {
+        openSourceViewer(templateTitle(r.template_code) + ' · ' + fmtDate(r.report_date),
+          r.source_pages, 'Back');
+        return;
+      }
       if (srcUrl) { window.open(srcUrl, '_blank', 'noopener'); return; }
       var w = window.open('', '_blank');   // open in the tap so iOS doesn't block it
       withReport(r.id, function (rep) {
@@ -753,7 +758,9 @@
                 description: sec.title + ': ' + it.q,
                 job_id: r.job_id, date: r.report_date, due: addDays(r.report_date, 7),
                 from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
-                srcPdf: srcPdf, status: 'open' });
+                note: it.comments || '', srcPdf: srcPdf,
+                srcPages: r.source_pages, srcTitle: 'Safety 101 · ' + (r.report_date || ''),
+                status: 'open' });
             });
           });
           return;
@@ -892,11 +899,22 @@
       btn.appendChild(row);
 
       var body = el('div', 'acc-body hide');
+      if (f.note) {
+        var ob = el('div', 'card-s');
+        ob.style.cssText = 'margin-bottom:.55rem;white-space:pre-wrap';
+        ob.textContent = 'Observation: ' + f.note;
+        body.appendChild(ob);
+      }
       if (f.src) {
         var sb = el('button', 'btn btn-out btn-sm', 'View source inspection');
         sb.style.cssText = 'margin-bottom:.6rem;width:100%';
         sb.onclick = function (ev) { ev.stopPropagation(); openFieldDetail(f.src); };
         body.appendChild(sb);
+      } else if (f.srcPages && f.srcPages.length) {
+        var sp2 = el('button', 'btn btn-out btn-sm', 'View source Safety 101');
+        sp2.style.cssText = 'margin-bottom:.6rem;width:100%';
+        sp2.onclick = function (ev) { ev.stopPropagation(); openSourceViewer(f.srcTitle || 'Safety 101', f.srcPages, 'Back'); };
+        body.appendChild(sp2);
       } else if (f.srcPdf) {
         var sp = el('button', 'btn btn-out btn-sm', 'View source Safety 101 PDF');
         sp.style.cssText = 'margin-bottom:.6rem;width:100%';
@@ -1437,6 +1455,26 @@
     var host = $('#p-insp'); if (!host) return;
     var pj = purdueJob();
 
+    // ----- submitted-today count for the selected job (Indiana day) -----
+    function renderTodayCount() {
+      var box = $('#insp-today'); if (!box) return;
+      var jid = ($('#insp-job-pick') || {}).value || (pj && pj.id) || '';
+      var jrow = ((STATE.bundle || {}).jobs || []).filter(function (j) { return j.id === jid; })[0];
+      var today = tzDayStr(new Date());
+      var subs = (STATE.fieldInsp || []).filter(function (r) {
+        return r.job_id === jid && r.submitted_at && tzDayStr(r.submitted_at) === today;
+      });
+      var per = { jha: 0, hot_work_permit: 0, aerial_platform: 0, forklift: 0 };
+      subs.forEach(function (r) { if (per[r.form_type] != null) per[r.form_type]++; });
+      box.innerHTML = '<div class="card" style="padding:.9rem 1rem">' +
+        '<div style="font-weight:700">' + esc(jrow ? jrow.name : 'Selected job') + '</div>' +
+        '<div style="font-size:1.3rem;font-weight:800;margin:.15rem 0">' + subs.length +
+          ' inspection' + (subs.length === 1 ? '' : 's') + ' submitted today</div>' +
+        '<div class="muted small">JHA ' + per.jha + ' · Hot Work ' + per.hot_work_permit +
+          ' · Aerial ' + per.aerial_platform + ' · Forklift ' + per.forklift + '</div>' +
+        '</div>';
+    }
+
     // ----- job picker for opening forms -----
     var pick = $('#insp-job-pick');
     var jobs = ((STATE.bundle || {}).jobs || []).filter(function (j) { return (j.status || 'active') === 'active'; });
@@ -1446,6 +1484,8 @@
     }).join('');
     if (keep && jobs.some(function (j) { return j.id === keep; })) pick.value = keep;
     else if (pj) pick.value = pj.id;
+    pick.onchange = renderTodayCount;
+    renderTodayCount();
 
     // ----- four form cards -----
     var ff = $('#insp-forms'); ff.innerHTML = '';
@@ -1787,6 +1827,29 @@
     });
     return h;
   }
+  /* Internal viewer for the imported Safety 101 source documents: page images
+     of the actual source PDF inside a full-screen overlay with a sticky Back
+     bar — standalone mode never leaves the app, so the user can't get trapped.
+     Download/Share still deliver the real PDF file. */
+  function openSourceViewer(title, pages, backLabel) {
+    var host = $('#srcviewer');
+    if (!host) { host = el('div'); host.id = 'srcviewer'; document.body.appendChild(host); }
+    host.style.cssText = 'position:fixed;inset:0;background:var(--navy,#0f172a);z-index:1001;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain';
+    host.style.display = 'block';
+    host.innerHTML =
+      '<div style="position:sticky;top:0;z-index:10;background:rgba(15,23,42,.97);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--navy-3,#334155);padding:.5rem 1rem;padding-top:calc(.5rem + env(safe-area-inset-top));display:flex;align-items:center;gap:.6rem">' +
+        '<button class="btn btn-out btn-sm" id="sv-back" style="min-height:44px;min-width:88px">&#8249; ' + esc(backLabel || 'Back') + '</button>' +
+        '<div class="small muted" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title || '') + '</div>' +
+      '</div>' +
+      '<div style="padding:.7rem;padding-bottom:calc(2rem + env(safe-area-inset-bottom));max-width:760px;margin:0 auto">' +
+      pages.map(function (p2) {
+        return '<img src="' + esc(String(p2).split('/').map(encodeURIComponent).join('/')) + '" alt="Source document page" ' +
+          'style="width:100%;max-width:100%;border-radius:8px;border:1px solid var(--navy-3,#334155);margin-bottom:.6rem;background:#fff">';
+      }).join('') + '</div>';
+    host.scrollTop = 0;
+    $('#sv-back').onclick = function () { host.style.display = 'none'; };
+  }
+
   function openFieldDetail(item) {
     var host = $('#fielddetail');
     if (!host) { host = el('div'); host.id = 'fielddetail'; document.body.appendChild(host); }
