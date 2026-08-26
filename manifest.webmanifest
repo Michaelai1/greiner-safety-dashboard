@@ -1,6 +1,6 @@
 {
-  "name": "Greiner Brothers Safety Dashboard",
-  "short_name": "Greiner",
+  "name": "Greiner Safety",
+  "short_name": "Greiner Safety",
   "description": "Greiner Brothers safety program — inspections, field forms, findings.",
   "start_url": "./index.html",
   "scope": "./",

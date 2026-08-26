@@ -481,10 +481,7 @@
   function downloadReport(id) {
     withReport(id, function (rep) {
       buildPdf(rep).then(function (blob) {
-        var url = URL.createObjectURL(blob);
-        var a = el('a'); a.href = url; a.download = reportFilename(rep);
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        saveBlob(blob, reportFilename(rep));
       }).catch(function () { printFallback(rep); });
     });
   }
@@ -501,9 +498,7 @@
           }).catch(function () {});
         }
         // no file sharing (desktop, older iOS) — hand them the download
-        var url = URL.createObjectURL(blob);
-        var a = el('a'); a.href = url; a.download = reportFilename(rep);
-        document.body.appendChild(a); a.click(); a.remove();
+        saveBlob(blob, reportFilename(rep));
         toast('Sharing not supported here — downloaded instead');
       }).catch(function () { printFallback(rep); });
     });
@@ -569,6 +564,12 @@
     var d = el('button', 'btn btn-out btn-sm', 'Download PDF');
     d.onclick = function () {
       if (srcUrl) {
+        if (navigator.standalone) {
+          fetch(srcUrl).then(function (resp) { return resp.blob(); })
+            .then(function (blob) { saveBlob(blob, srcName); })
+            .catch(function () { window.open(srcUrl, '_blank', 'noopener'); });
+          return;
+        }
         var a = el('a'); a.href = srcUrl; a.download = srcName;
         document.body.appendChild(a); a.click(); a.remove();
         return;
@@ -1712,7 +1713,18 @@
     return doc.output('blob');
   }
   function recordBlob(item) { return item.pdf_path ? ngBlob(item.id) : Promise.resolve(basicRecordPdf(item)); }
-  function saveBlob(b, name) { var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100); }
+  function saveBlob(b, name) {
+    if (navigator.standalone) {
+      var f = new File([b], name || 'record.pdf', { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) {
+        navigator.share({ files: [f], title: name || 'Safety record' }).catch(function () {});
+        return;
+      }
+      window.open(URL.createObjectURL(b), '_blank');
+      return;
+    }
+    var a = el('a'); a.href = URL.createObjectURL(b); a.download = name || 'record.pdf'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
+  }
   function recordView(item) {
     var w = window.open('', '_blank');   // opened in the tap gesture -> survives the async fetch
     var p = item.pdf_path ? ngSignedUrl(item.id) : Promise.resolve(URL.createObjectURL(basicRecordPdf(item)));
