@@ -550,10 +550,48 @@
       ok ? 'Pass' : (r.defect_count || 0) + ' flagged'));
     c.appendChild(row);
     var br = el('div', 'btn-row');
+    // Imported Safety 101 records carry the ACTUAL source document — always
+    // serve that, never an app-generated stand-in.
+    var srcUrl = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+    var srcName = ('Safety 101 Inspection ' + (r.report_date || r.id) + '.pdf').replace(/[\/\\?%*:|"<>]/g, '-');
+    var v = el('button', 'btn btn-gold btn-sm', 'View');
+    v.onclick = function () {
+      if (srcUrl) { window.open(srcUrl, '_blank', 'noopener'); return; }
+      var w = window.open('', '_blank');   // open in the tap so iOS doesn't block it
+      withReport(r.id, function (rep) {
+        buildPdf(rep).then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          if (w) w.location = url; else window.open(url, '_blank', 'noopener');
+          setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        }).catch(function () { if (w) w.close(); printFallback(rep); });
+      });
+    };
     var d = el('button', 'btn btn-out btn-sm', 'Download PDF');
-    d.onclick = function () { downloadReport(r.id); };
-    var s = el('button', 'btn btn-gold btn-sm', 'Share');
-    s.onclick = function () { shareReport(r.id); };
+    d.onclick = function () {
+      if (srcUrl) {
+        var a = el('a'); a.href = srcUrl; a.download = srcName;
+        document.body.appendChild(a); a.click(); a.remove();
+        return;
+      }
+      downloadReport(r.id);
+    };
+    var s = el('button', 'btn btn-out btn-sm', 'Share');
+    s.onclick = function () {
+      if (srcUrl) {
+        fetch(srcUrl).then(function (resp) { return resp.blob(); }).then(function (blob) {
+          var file = new File([blob], srcName, { type: 'application/pdf' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            return navigator.share({ files: [file], title: C.contractor + ' safety inspection' }).catch(function () {});
+          }
+          var a = el('a'); a.href = URL.createObjectURL(blob); a.download = srcName;
+          document.body.appendChild(a); a.click(); a.remove();
+          toast('Sharing not supported here — downloaded instead');
+        }).catch(function () { toast('Could not load the PDF'); });
+        return;
+      }
+      shareReport(r.id);
+    };
+    br.appendChild(v);
     br.appendChild(d); br.appendChild(s); c.appendChild(br);
     return c;
   }
@@ -1085,18 +1123,23 @@
     var fieldSubs = (STATE.fieldInsp || []).filter(function (r) {
       return inRange(r.submitted_at ? tzDayStr(r.submitted_at) : '', STATE.filters.insp);
     });
-    var li = $('#list-insp'); li.innerHTML = '';
-    var totalShown = shown.length + fieldSubs.length;
-    var totalAll = all.length + (STATE.fieldInsp || []).length;
-    $('#n-insp').textContent = countLabel('insp', totalShown, totalAll);
-    if (!totalShown) {
-      li.appendChild(el('div', 'empty', totalAll
-        ? 'No crew inspections in this date range.'
-        : 'No crew inspections yet.'));
+    var li = $('#list-insp');
+    if (li) {
+      li.innerHTML = '';
+      var totalShown = shown.length + fieldSubs.length;
+      var totalAll = all.length + (STATE.fieldInsp || []).length;
+      var nInsp = $('#n-insp');
+      if (nInsp) nInsp.textContent = countLabel('insp', totalShown, totalAll);
+      if (!totalShown) {
+        li.appendChild(el('div', 'empty', totalAll
+          ? 'No crew inspections in this date range.'
+          : 'No crew inspections yet.'));
+      }
+      fieldSubs.forEach(function (r) { li.appendChild(fieldInspCard(r)); });
+      shown.forEach(function (r) { li.appendChild(inspCard(r)); });
+      if (hostInsp) paintNote(hostInsp, 'insp', totalShown);
     }
-    fieldSubs.forEach(function (r) { li.appendChild(fieldInspCard(r)); });
-    shown.forEach(function (r) { li.appendChild(inspCard(r)); });
-    if (hostInsp) paintNote(hostInsp, 'insp', totalShown);
+    renderInspTab();
   }
 
   function renderJobs() {
@@ -1267,13 +1310,13 @@
   // Multi-tenant module gating (NextGen OS). Each phone tab maps to a feature
   // module; fail-safe (moduleOn true when the registry is missing/unloaded), so
   // Greiner and any un-provisioned portal show all four tabs.
-  var PHONE_MODULE = { home: 'reports', findings: 'findings', jobs: 'jobsites', certs: 'certifications' };
+  var PHONE_MODULE = { home: 'reports', insp: null, findings: 'findings', jobs: 'jobsites', certs: 'certifications' };
   function phoneModuleOn(tab) {
     var k = PHONE_MODULE[tab];
     return !k || !C.moduleOn || C.moduleOn(k);
   }
   function firstEnabledTab() {
-    var order = ['home', 'findings', 'jobs', 'certs'];
+    var order = ['home', 'insp', 'findings', 'jobs', 'certs'];
     for (var i = 0; i < order.length; i++) if (phoneModuleOn(order[i])) return order[i];
     return 'home';
   }
@@ -1286,7 +1329,7 @@
   function show(tab) {
     if (!phoneModuleOn(tab)) tab = firstEnabledTab();   // never open a disabled module
     logEvent('view', { view: tab });
-    ['home', 'findings', 'jobs', 'certs'].forEach(function (t) {
+    ['home', 'insp', 'findings', 'jobs', 'certs'].forEach(function (t) {
       $('#p-' + t).classList.toggle('hide', t !== tab);
     });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
@@ -1296,6 +1339,169 @@
   }
 
   /* ---------- load ---------------------------------------------------- */
+  var INSPF = { job: '', form: '', status: '' };   // All Inspections filters
+  var FORM_DEFS = [
+    { key: 'jha', title: 'JHA' },
+    { key: 'hotwork', title: 'Hot Work Permit' },
+    { key: 'aerial', title: 'Aerial Platform Inspection' },
+    { key: 'forklift', title: 'Forklift Inspection' }
+  ];
+  // greiner-QR form keys vs stored form_type values
+  var FORM_TYPE_OF = { jha: 'jha', hotwork: 'hot_work_permit', aerial: 'aerial_platform', forklift: 'forklift' };
+  var FORM_TITLE_OF = { jha: 'JHA', hot_work_permit: 'Hot Work Permit', aerial_platform: 'Aerial Platform Inspection', forklift: 'Forklift Inspection' };
+
+  function loadExpected() {
+    return rpc('cs_portal_expected_today').then(function (r) { STATE.expected = r || null; })
+      .catch(function () { STATE.expected = null; });
+  }
+  function purdueJob() {
+    return ((STATE.bundle || {}).jobs || []).filter(function (j) { return /purdue/i.test(j.name || ''); })[0] || null;
+  }
+  function fmtDue(t) {   // "07:00:00" -> "7:00 AM"
+    if (!t) return '';
+    var hm = String(t).split(':'), h = +hm[0], m = hm[1] || '00';
+    var ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+    return h + ':' + m + ' ' + ap;
+  }
+  function indyNowHMS() {
+    return new Date().toLocaleTimeString('en-GB', { timeZone: TZ, hour12: false });
+  }
+
+  function renderInspTab() {
+    var host = $('#p-insp'); if (!host) return;
+    var pj = purdueJob();
+    var exp = STATE.expected;   // {day, configured, items} | null
+    var todayStr = tzDayStr(new Date());
+    var subsToday = (STATE.fieldInsp || []).filter(function (r) {
+      return pj && r.job_id === pj.id && r.submitted_at && tzDayStr(r.submitted_at) === todayStr;
+    });
+    var flaggedToday = subsToday.filter(function (r) { return r.has_defects; });
+
+    // ----- summary -----
+    var sum = $('#insp-summary');
+    var configured = !!(exp && exp.configured);
+    var pItems = (exp && exp.items || []).filter(function (it) { return !pj || it.job_id === pj.id; });
+    var missing = pItems.filter(function (it) { return !it.submission_id; });
+    var h = '<div class="card" style="padding:.9rem 1rem">' +
+      '<div style="font-weight:700;font-size:1.05rem">Purdue Today</div>' +
+      '<div class="small" style="margin-top:.35rem;display:flex;gap:1rem;flex-wrap:wrap">' +
+        '<span>Submitted: <b>' + subsToday.length + '</b></span>' +
+        (configured ? '<span>Still expected: <b style="color:' + (missing.length ? 'var(--bad,#c0392b)' : 'inherit') + '">' + missing.length + '</b></span>' : '') +
+        '<span>Flagged: <b style="color:' + (flaggedToday.length ? 'var(--bad,#c0392b)' : 'inherit') + '">' + flaggedToday.length + '</b></span>' +
+      '</div>' +
+      (!configured ? '<div class="muted small" style="margin-top:.35rem">Submission expectations not configured yet.</div>' : '') +
+      '</div>';
+    sum.innerHTML = h;
+
+    // ----- needs attention -----
+    var attn = $('#insp-attn'); attn.innerHTML = '';
+    if (!exp) {
+      attn.appendChild(el('div', 'empty', 'Could not load expectations — pull refresh to retry.'));
+    } else if (!configured) {
+      attn.appendChild(el('div', 'empty', 'Purdue inspection expectations have not been configured yet. Once each expected person + form is specified, missing submissions will appear here.'));
+    } else if (!missing.length) {
+      attn.appendChild(el('div', 'empty', 'Purdue is caught up — every expected inspection today has been submitted.'));
+    }
+    if (exp && configured) {
+      var nowHMS = indyNowHMS();
+      pItems.forEach(function (it) {
+        var c = el('div', 'card'); c.style.cssText = 'padding:.8rem 1rem;margin-bottom:.55rem';
+        var done = !!it.submission_id;
+        var overdue = !done && it.due_time && nowHMS > String(it.due_time);
+        var pillCls = done ? 'p-ok' : (overdue ? 'p-bad' : 'p-warn');
+        var pillTxt = done ? (it.has_defects ? 'Submitted · ' + (it.defect_count || 0) + ' defect' + ((it.defect_count || 0) === 1 ? '' : 's') : 'Submitted')
+                           : (overdue ? 'Overdue' : 'Not submitted');
+        var row = el('div', 'row');
+        var left = el('div');
+        left.appendChild(el('div', 'card-t', it.user_name || '—'));
+        left.appendChild(el('div', 'card-s',
+          (FORM_TITLE_OF[it.form_type] || it.form_type) + ' · ' + (it.job_name || '') +
+          (it.due_time ? ' · due ' + fmtDue(it.due_time) : '') +
+          (done && it.submitted_at ? ' · ' + tzTime(it.submitted_at) : '')));
+        row.appendChild(left);
+        row.appendChild(el('span', 'pill ' + pillCls, pillTxt));
+        c.appendChild(row);
+        attn.appendChild(c);
+      });
+    }
+
+    // ----- job picker for opening forms -----
+    var pick = $('#insp-job-pick');
+    var jobs = ((STATE.bundle || {}).jobs || []).filter(function (j) { return (j.status || 'active') === 'active'; });
+    var keep = pick.value;
+    pick.innerHTML = jobs.map(function (j) {
+      return '<option value="' + esc(j.id) + '">' + esc(j.name) + (j.job_number ? ' · ' + j.job_number : '') + '</option>';
+    }).join('');
+    if (keep && jobs.some(function (j) { return j.id === keep; })) pick.value = keep;
+    else if (pj) pick.value = pj.id;
+
+    // ----- four form cards -----
+    var ff = $('#insp-forms'); ff.innerHTML = '';
+    FORM_DEFS.forEach(function (f) {
+      var c = el('div', 'card'); c.style.cssText = 'padding:.8rem 1rem;margin-bottom:.55rem';
+      c.appendChild(el('div', 'card-t', f.title));
+      var acts = el('div');
+      acts.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem';
+      var open = el('button', 'btn btn-gold btn-sm', 'Open Form');
+      open.style.cssText = 'flex:1 1 120px;min-height:44px';
+      open.onclick = function () {
+        var jid = $('#insp-job-pick').value;
+        if (!jid) { toast('Pick a job first'); return; }
+        open.disabled = true;
+        rpc('cs_portal_field_ticket', { p_job_id: jid }).then(function (res) {
+          var t = res && res.ticket;
+          if (!t) { toast('Could not start form'); return; }
+          var base = C.qrUrl || location.origin;
+          window.location.href = base + (base.indexOf('?') >= 0 ? '&' : '?') +
+            'ngform=' + encodeURIComponent(f.key) + '&ticket=' + encodeURIComponent(t);
+        }).catch(function (e) { toast(e.message || 'Could not start form'); })
+          .then(function () { open.disabled = false; });
+      };
+      var viewBtn = el('button', 'btn btn-out btn-sm', 'View Submissions');
+      viewBtn.style.cssText = 'flex:1 1 140px;min-height:44px';
+      viewBtn.onclick = function () {
+        INSPF.form = FORM_TYPE_OF[f.key]; INSPF.job = ''; INSPF.status = '';
+        renderInspTab();
+        var t = $('#list-allinsp'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      acts.appendChild(open); acts.appendChild(viewBtn);
+      c.appendChild(acts);
+      ff.appendChild(c);
+    });
+
+    // ----- all inspections: filters + list -----
+    var rows = STATE.fieldInsp || [];
+    var jset = {}, jnames = {};
+    rows.forEach(function (r) { if (r.job_id) { jset[r.job_id] = 1; jnames[r.job_id] = r.job_name || r.job_number || 'Job'; } });
+    var fj = $('#insp-f-job');
+    fj.innerHTML = '<option value="">All Jobs</option>' + Object.keys(jset).map(function (id) {
+      return '<option value="' + esc(id) + '"' + (INSPF.job === id ? ' selected' : '') + '>' + esc(jnames[id]) + '</option>'; }).join('');
+    fj.value = INSPF.job;
+    fj.onchange = function () { INSPF.job = fj.value; renderInspTab(); };
+    var ffm = $('#insp-f-form');
+    ffm.innerHTML = '<option value="">All Forms</option>' + Object.keys(FORM_TITLE_OF).map(function (k) {
+      return '<option value="' + k + '"' + (INSPF.form === k ? ' selected' : '') + '>' + esc(FORM_TITLE_OF[k]) + '</option>'; }).join('');
+    ffm.value = INSPF.form;
+    ffm.onchange = function () { INSPF.form = ffm.value; renderInspTab(); };
+    var fst = $('#insp-f-status');
+    fst.value = INSPF.status;
+    fst.onchange = function () { INSPF.status = fst.value; renderInspTab(); };
+
+    var shown = rows.filter(function (r) {
+      if (INSPF.job && r.job_id !== INSPF.job) return false;
+      if (INSPF.form && r.form_type !== INSPF.form) return false;
+      if (INSPF.status === 'flagged' && !r.has_defects) return false;
+      if (INSPF.status === 'clear' && r.has_defects) return false;
+      return true;
+    });
+    $('#n-allinsp').textContent = shown.length + ' of ' + rows.length;
+    var list = $('#list-allinsp'); list.innerHTML = '';
+    if (!shown.length) {
+      list.appendChild(el('div', 'empty', rows.length ? 'No inspections match these filters.' : 'No field inspections yet.'));
+    }
+    shown.forEach(function (r) { list.appendChild(fieldInspCard(r)); });
+  }
+
   function refresh() {
     return rpc('cs_portal_bundle').then(function (b) {
       STATE.bundle = b;
@@ -1326,6 +1532,7 @@
       rb.disabled = true; rb.textContent = 'Refreshing…';
       Promise.all([refresh(),
         toolguard().then(function (r) { STATE.tg = r; }).catch(function () {}),
+        loadExpected(),
         rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
           .catch(function () {})])
         .then(function () { renderHome(); loadFindings(); toast('Up to date'); })
@@ -1337,6 +1544,7 @@
     $('#start-inspection').addEventListener('click', function () { logEvent('inspection_start'); });
 
     Promise.all([refresh(), toolguard().then(function (r) { STATE.tg = r; }),
+      loadExpected(),
       rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; })
         .catch(function () { STATE.fieldInsp = []; })])
       .then(renderHome)
@@ -1586,7 +1794,10 @@
       var host = $('#fieldapp');
       if (host && !host.classList.contains('hide')) rpc('cs_portal_field_home').then(renderFieldHome).catch(function () {});
     } else if (STATE.bundle) {
-      rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; renderHome(); }).catch(function () {});
+      Promise.all([
+        rpc('cs_portal_field_inspections').then(function (r) { STATE.fieldInsp = r || []; }),
+        loadExpected()
+      ]).then(renderHome).catch(function () {});
     }
   }
   window.addEventListener('pageshow', refreshFeeds);

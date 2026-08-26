@@ -51,8 +51,10 @@ h1,h2,h3{margin:0;line-height:1.2}
 /* tabs — exactly three, so they share the width evenly instead of huddling
    left like a scroll strip with nothing to scroll */
 .tabs{display:flex;gap:.4rem;padding:.6rem var(--pad);
-  border-bottom:1px solid var(--line);background:var(--navy)}
-.tab{flex:1 1 0;min-width:0;min-height:40px;padding:.5rem .4rem;border-radius:99px;
+  border-bottom:1px solid var(--line);background:var(--navy);
+  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;min-width:0;min-height:40px;padding:.5rem .65rem;border-radius:99px;
   border:1px solid var(--navy-3);background:transparent;color:var(--grey);
   font-size:.875rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-align:center}

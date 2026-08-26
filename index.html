@@ -22,9 +22,6 @@
            maxlength="10" placeholder="4-digit PIN" aria-label="Enter your 4-digit PIN">
     <p class="err" id="gate-err" role="alert"></p>
     <button class="btn btn-gold" id="gate-go">Sign In</button>
-    <p class="small muted" style="margin-top:1rem">
-      Stays signed in on this phone for 30 days.
-    </p>
   </div>
 </div>
 
@@ -41,7 +38,8 @@
       <button class="signout" id="signout" type="button">Sign out</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab" role="tab" data-tab="home"     aria-selected="true">Reports</button>
+      <button class="tab" role="tab" data-tab="home"     aria-selected="true">Safety Inspections</button>
+      <button class="tab" role="tab" data-tab="insp"     aria-selected="false">Inspections</button>
       <button class="tab" role="tab" data-tab="findings" aria-selected="false">Findings</button>
       <button class="tab" role="tab" data-tab="jobs"     aria-selected="false">Jobs</button>
       <button class="tab" role="tab" data-tab="certs"    aria-selected="false">Certs</button>
@@ -54,6 +52,31 @@
     <section id="p-home" class="panel">
       <div class="sec">
         <a class="btn btn-gold" id="start-inspection" href="#">Start Safety Inspection</a>
+      </div>
+
+      <div class="sec">
+        <div class="sec-h"><h2>Safety Inspections</h2><span class="small muted" id="n-reports"></span></div>
+        <p class="sec-note">Safety 101 site inspections completed by your safety team.</p>
+        <div class="filter-mount" data-filter="rep"></div>
+        <div id="list-reports"><div class="empty">Loading…</div></div>
+      </div>
+
+    </section>
+
+    <!-- ---------- INSPECTIONS: safety-manager control center ---------- -->
+    <section id="p-insp" class="panel hide">
+      <div class="sec" id="insp-summary"></div>
+      <div class="sec">
+        <div class="sec-h"><h2>Needs Attention — Purdue</h2></div>
+        <div id="insp-attn"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="sec">
+        <div class="sec-h"><h2>Field Forms</h2></div>
+        <div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem">
+          <label for="insp-job-pick" class="small muted" style="display:block;font-weight:600;margin-bottom:.3rem">Open forms for job</label>
+          <select id="insp-job-pick" style="width:100%;min-height:44px"></select>
+        </div>
+        <div id="insp-forms"></div>
         <button class="btn btn-out" id="send-insp" style="margin-top:.55rem">Send forms to a crew</button>
         <div id="send-form" class="card hide" style="margin-top:.7rem">
           <div class="f-grid">
@@ -70,19 +93,17 @@
           <div id="si-result" class="hide" style="margin-top:.7rem"></div>
         </div>
       </div>
-
       <div class="sec">
-        <div class="sec-h"><h2>Reports</h2><span class="small muted" id="n-reports"></span></div>
-        <p class="sec-note">Site safety reports completed by Creekside Safety and your safety team.</p>
-        <div class="filter-mount" data-filter="rep"></div>
-        <div id="list-reports"><div class="empty">Loading…</div></div>
-      </div>
-
-      <div class="sec">
-        <div class="sec-h"><h2>Inspections</h2><span class="small muted" id="n-insp"></span></div>
-        <p class="sec-note">Inspections submitted by your crews in the field.</p>
-        <div class="filter-mount" data-filter="insp"></div>
-        <div id="list-insp"><div class="empty">Loading…</div></div>
+        <div class="sec-h"><h2>All Inspections</h2><span class="small muted" id="n-allinsp"></span></div>
+        <p class="sec-note">Every field inspection across all Greiner jobs, newest first.</p>
+        <div class="f-grid" style="margin-bottom:.6rem">
+          <div><label for="insp-f-job">Job</label><select id="insp-f-job" style="width:100%;min-height:44px"></select></div>
+          <div><label for="insp-f-form">Form</label><select id="insp-f-form" style="width:100%;min-height:44px"></select></div>
+          <div class="full"><label for="insp-f-status">Status</label><select id="insp-f-status" style="width:100%;min-height:44px">
+            <option value="">All</option><option value="flagged">Flagged</option><option value="clear">Clear</option>
+          </select></div>
+        </div>
+        <div id="list-allinsp"><div class="empty">Loading…</div></div>
       </div>
     </section>
 
