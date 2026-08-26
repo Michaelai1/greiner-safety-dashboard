@@ -3655,7 +3655,7 @@
         var badge = r.imported ? ' <span class="src-badge">Imported Safety 101</span>' : '';
         var sub = r.imported
           ? 'Original Safety 101 source record' + (r.counts ? ' · Pass ' + r.counts.pass + ' · Fail ' + r.counts.fail + ' · N/A ' + r.counts.na : '')
-          : (r.notes || '');
+          : (typeof r.notes === 'string' ? r.notes : '');
         return '<tr class="click" data-report="' + esc(r.id) + '">' + selCell(r.id) +
           '<td><span class="t-main">' + name + badge + '</span>' +
             '<div class="t-sub">' + esc(sub) + '</div></td>' +
