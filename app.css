@@ -21,7 +21,8 @@ button,input,select,textarea{font:inherit}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 h1,h2,h3{margin:0;line-height:1.2}
-.wrap{max-width:820px;margin:0 auto;padding-inline:var(--pad)}
+.wrap{max-width:820px;margin:0 auto;padding-inline:var(--pad);
+  padding-bottom:env(safe-area-inset-bottom)}
 .hide{display:none !important}
 .muted{color:var(--grey)}
 .small{font-size:.8125rem}
@@ -29,7 +30,8 @@ h1,h2,h3{margin:0;line-height:1.2}
 
 /* header */
 .hdr{position:sticky;top:0;z-index:50;background:rgba(15,23,42,.96);
-  backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+  padding-top:env(safe-area-inset-top)}
 .hdr-in{display:flex;align-items:center;gap:.75rem;padding:.7rem 0;max-width:820px;
   margin:0 auto;padding-inline:var(--pad)}
 .mark{width:34px;height:34px;border-radius:8px;background:var(--gold);color:var(--navy);
@@ -40,7 +42,9 @@ h1,h2,h3{margin:0;line-height:1.2}
 .hdr .by{font-size:.6875rem;color:var(--grey);letter-spacing:.06em;text-transform:uppercase}
 
 /* gate */
-.gate{min-height:100dvh;display:grid;place-items:center;padding:2rem var(--pad)}
+.gate{min-height:100dvh;display:grid;place-items:center;padding:2rem var(--pad);
+  padding-top:calc(2rem + env(safe-area-inset-top));
+  padding-bottom:calc(2rem + env(safe-area-inset-bottom))}
 .gate-card{width:100%;max-width:340px;text-align:center}
 .gate h2{font-size:1.35rem;margin-bottom:.4rem}
 .gate input{width:100%;margin-top:1.25rem;padding:.9rem 1rem;font-size:1.25rem;text-align:center;
