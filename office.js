@@ -86,7 +86,7 @@
      'permit_checklists','near_misses','incidents','talks','templates','people','invites',
      'talk_sends','permit_sends','doc_folders','hazcats','reg_visits','schedules','send_log',
      'equipment','talk_templates','job_orientations','orientation_sends','worker_pdfs',
-     'internal_crew','findings','cjsc','scorecard'].forEach(function (k) {
+     'internal_crew','findings','cjsc','scorecard','gc_templates'].forEach(function (k) {
       if (!Array.isArray(b[k])) b[k] = [];
     });
     if (!b.company) b.company = { name: (C.contractor || 'Greiner Brothers') };
@@ -1283,30 +1283,9 @@
   var equipTab = 'registry';
 
   function pgEquipment() {
-    var right = subtabs(equipTab, [['registry', 'Equipment'], ['log', 'Inspection Log'], ['archive', 'Archive']], 'eqt');
+    if (equipTab === 'archive') equipTab = 'registry';
+    var right = subtabs(equipTab, [['registry', 'Equipment'], ['log', 'Inspection Log']], 'eqt');
 
-    if (equipTab === 'archive') {
-      var aq = (subQ.eqArch || '').toLowerCase();
-      var arch = (B.equipment || []).filter(function (e) {
-        return e.archived && has((e.id || '') + ' ' + (e.type || '') + ' ' + (e.model || '') + ' ' + (e.serial || '') + ' ' + (e.job || ''), aq); });
-      var ah = head('Equipment', 'Units taken out of the active registry. Restore one to put it back.', right);
-      ah += fbarSearch('eqarch-q', subQ.eqArch, 'Search archived units…');
-      ah += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Unit' }, { t: 'Make / serial' }, { t: 'Jobsite' }, { t: '', r: 1 }],
-        arch.map(function (e) {
-          return '<tr><td><span class="t-main">' + esc(e.id) + '</span><div class="t-sub">' + esc(e.type) + '</div></td>' +
-            '<td>' + esc(e.model) + '<div class="t-sub">SN ' + esc(e.serial) + '</div></td>' +
-            '<td>' + esc(e.job) + '</td>' +
-            '<td class="r"><button class="btn btn-sm" data-eqrestore="' + esc(e.id) + '">Restore</button></td></tr>';
-        }), 'Nothing archived.') + '</div></div>';
-      paint(ah);
-      wireSubtabs('eqt', function (v) { equipTab = v; pgEquipment(); });
-      wireSearch('eqarch-q', function (v) { subQ.eqArch = v; pgEquipment(); });
-      $$('[data-eqrestore]').forEach(function (b) { b.onclick = function () {
-        var e = (B.equipment || []).filter(function (x) { return x.id === b.dataset.eqrestore; })[0];
-        if (e) e.archived = false; toast('Unit restored.'); pgEquipment(); }; });
-      return;
-    }
 
     if (equipTab === 'log') {
       // Company-wide equipment inspection history. Derived from the EXISTING
@@ -1380,77 +1359,26 @@
       return;
     }
 
-    var allEq = (B.equipment || []).filter(function (e) { return !e.archived; })
-      .map(function (e) { return { e: e, s: equipStatus(e) }; })
-      .sort(function (a, b) { var o = { overdue: 0, due: 1, ok: 2 }; return o[a.s.k] - o[b.s.k]; });
-
-    var jobSet = {}, typeSet = {};
-    allEq.forEach(function (r) { if (r.e.job) jobSet[r.e.job] = 1; if (r.e.type) typeSet[r.e.type] = 1; });
-    var eqJobOpts = Object.keys(jobSet).sort().map(function (j) {
-      return '<option value="' + esc(j) + '"' + (eqF.job === j ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('');
-    var eqTypeOpts = Object.keys(typeSet).sort().map(function (t) {
-      return '<option value="' + esc(t) + '"' + (eqF.type === t ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('');
-    var eqStatusOpts = [['', 'Any status'], ['overdue', 'Overdue'], ['due', 'Due today'], ['ok', 'Current']]
-      .map(function (o) { return '<option value="' + o[0] + '"' + (eqF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-
-    var eqQ = eqF.q.toLowerCase();
-    var eq = allEq.filter(function (r) {
-      var e = r.e;
-      if (eqF.job && e.job !== eqF.job) return false;
-      if (eqF.type && e.type !== eqF.type) return false;
-      if (eqF.status && r.s.k !== eqF.status) return false;
-      if (eqQ && ((e.id || '') + ' ' + (e.type || '') + ' ' + (e.model || '') + ' ' + (e.serial || '') + ' ' +
-        (e.job || '') + ' ' + (e.operator || '')).toLowerCase().indexOf(eqQ) === -1) return false;
-      return true;
-    });
-    var overdue = eq.filter(function (r) { return r.s.k === 'overdue'; }).length;
-    var due = eq.filter(function (r) { return r.s.k === 'due'; }).length;
-
+    /* Registry: real units from cs_equipment (backend-ready). Tony has not sent
+       the lift/unit numbers yet, so this is an honest empty list until real
+       units exist — no demo equipment, no invented maintenance schedules.
+       Minimal unit model: unit number, type, assigned job, active state. */
+    var units = (B.equipment || []).slice().sort(function (a, b) {
+      return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
     var html = head('Equipment',
-      'Every serialized machine that needs a pre-use check. Each unit carries a QR sticker — ' +
-      'scan it and the right inspection opens on the phone, already tied to the unit.', right);
-    html += '<div class="cards">' +
-      kpi(eq.length, 'units tracked', 'across active jobsites', 'c-grey') +
-      kpi(overdue, 'checks overdue', overdue ? 'inspection required before use' : 'all current', overdue ? 'c-bad' : 'c-ok') +
-      kpi(due, 'due today', 'before next use', due ? 'c-warn' : 'c-grey') +
-      kpi('QR', 'scan to inspect', 'tap a unit for its code', 'c-ok') +
-      '</div>';
-
-    html += '<div class="fbar">' +
-      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-        '<input id="eq-q" placeholder="Search units…" value="' + esc(eqF.q) + '"></div>' +
-      '<select id="eq-job"><option value="">All jobsites</option>' + eqJobOpts + '</select>' +
-      '<select id="eq-type"><option value="">All types</option>' + eqTypeOpts + '</select>' +
-      '<select id="eq-status">' + eqStatusOpts + '</select></div>';
-
-    var rows = eq.map(function (r, i) {
-      var e = r.e;
-      return '<tr data-eq="' + i + '" style="cursor:pointer">' +
-        '<td><span class="t-main" style="font-weight:600">' + esc(e.id) + '</span><div class="t-sub">' + esc(e.type) + '</div></td>' +
-        '<td>' + esc(e.model) + '<div class="t-sub">SN ' + esc(e.serial) + '</div></td>' +
-        '<td>' + esc(e.job) + '</td>' +
-        '<td>' + esc(equipInspName(e)) + '</td>' +
-        '<td>' + fmtDate(e.last) + '<div class="t-sub">every ' + (e.interval === 1 ? 'shift' : e.interval + ' days') + '</div></td>' +
-        '<td class="r">' + pill(r.s.cls, r.s.label) + '</td>' +
-        '<td class="r"><button class="btn btn-sm" data-eqarch="' + esc(e.id) + '">Archive</button></td></tr>';
-    });
-    html += '<div class="panel"><div class="panel-hd"><div><h3>Registry</h3>' +
-      '<div class="sub">' + eq.length + ' of ' + allEq.length + ' shown · overdue first. Click a unit for its QR sticker and check history.</div>' +
-      '</div></div><div class="panel-bd flush">' + tableWrap(
-      [{ t: 'Unit' }, { t: 'Make / serial' }, { t: 'Jobsite' }, { t: 'Pre-use check' }, { t: 'Last checked' }, { t: 'Status', r: 1 }, { t: '', r: 1 }],
-      rows, 'No equipment matches your filters.') + '</div></div>';
+      'Greiner equipment units. Once Tony provides the lift and unit numbers they are added ' +
+      'here and tie to field inspections by unit.', right);
+    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Unit' }, { t: 'Type' }, { t: 'Assigned job' }, { t: 'Status', r: 1 }],
+      units.map(function (e) {
+        return '<tr><td><span class="t-main">' + esc(e.unit_number || '\u2014') + '</span></td>' +
+          '<td>' + esc(e.equipment_type || '\u2014') + '</td>' +
+          '<td>' + esc(e.job_id ? jobName(e.job_id) : '\u2014') + '</td>' +
+          '<td class="r">' + (e.active === false ? pill('p-grey', 'Inactive') : pill('p-ok', 'Active')) + '</td></tr>';
+      }), 'Equipment will appear here as units are added to Greiner jobs.') + '</div></div>';
     paint(html);
     wireSubtabs('eqt', function (v) { equipTab = v; pgEquipment(); });
-    $$('[data-eq]').forEach(function (tr) { tr.onclick = function () { openEquip(eq[+tr.dataset.eq]); }; });
-    $$('[data-eqarch]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation();
-      var e = (B.equipment || []).filter(function (x) { return x.id === b.dataset.eqarch; })[0];
-      if (e) e.archived = true; toast('Unit archived.'); pgEquipment(); }; });
-    function eqBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { eqF[key] = e.value; pgEquipment(); }; }
-    eqBind('eq-q', 'q'); eqBind('eq-job', 'job'); eqBind('eq-type', 'type'); eqBind('eq-status', 'status');
-    var _eqq = $('#eq-q'); if (_eqq && eqF.q) { _eqq.focus(); try { _eqq.setSelectionRange(_eqq.value.length, _eqq.value.length); } catch (e) {} }
   }
-
   function openEquip(r) {
     var e = r.e, url = equipUrl(e);
     var h = '';
@@ -1710,6 +1638,15 @@
       (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div></div><div class="panel-bd">' + body + '</div></div>';
   }
   function pgAnalytics() {
+    // PILOT: Analytics is intentionally locked until Greiner has accumulated
+    // more real safety data. No sample charts, no fabricated trends. The full
+    // dashboard code below is preserved and unlocks by removing this block.
+    paint(head('Analytics', '', '') +
+      '<div class="panel"><div class="panel-bd" style="text-align:center;padding:56px 24px">' +
+      '<div style="font-size:16px;font-weight:650;margin-bottom:8px">Analytics will become available as Greiner builds more real safety data.</div>' +
+      '<div class="small muted" style="max-width:520px;margin:0 auto">Every inspection, finding and corrective action recorded now feeds this page. Nothing to set up — it unlocks automatically once there is enough real history to be meaningful.</div>' +
+      '</div></div>');
+    return;
     var jobs = B.jobs || [];
     var jobIdByName = function (nm) { for (var i = 0; i < jobs.length; i++) if (jobs[i].name === nm) return jobs[i].id; return null; };
     var now = new Date();
@@ -1957,178 +1894,49 @@
   var permF = { q: '', type: '', job: '' };
   var permLogF = { q: '', type: '', job: '', status: '', range: '' };   // Permit Log filters
   function pgPermits() {
-    var right = subtabs(permitTab, [['permits', 'Permits'], ['awaiting', 'Awaiting Submission'], ['log', 'Permit Log'], ['archive', 'Archive']], 'pt');
-    var all = (B.permits || []).filter(function (p) { return !p.archived; });
+    /* PILOT: the one real permit workflow Greiner runs is the Hot Work Permit —
+       the same field form crews open from the QR/text link. Every row below IS
+       a real field submission (no separate permit dataset); click one for the
+       full record, photos and PDF. The broader multi-type permit platform stays
+       out of the way until another permit type actually exists. */
+    var hw = CREW.filter(function (r) {
+      return !r.archived && /hot/i.test((r.inspection_subtype || '') + ' ' + (r.form_type || ''));
+    }).slice().sort(function (a, b) {
+      return new Date(b.submitted_at || b.inspection_date) - new Date(a.submitted_at || a.inspection_date);
+    });
+    var now = Date.now();
+    var week = hw.filter(function (r) {
+      var t = r.submitted_at ? new Date(r.submitted_at).getTime() : 0;
+      return now - t < 7 * 86400000;
+    }).length;
+    var flagged = hw.filter(function (r) { return r.has_defects; }).length;
 
-    function rows(list, archived) {
-      return list.map(function (p) {
-        var m = minsLeft(p), st;
-        if (p.status === 'active')       st = m <= 60 ? pill('p-bad', 'Expires ' + fmtTime(p.expires_at)) : pill('p-ok', 'Active');
-        else if (p.status === 'pending') st = pill('p-warn', 'Awaiting approval');
-        else if (p.status === 'denied')  st = pill('p-bad', 'Denied');
-        else if (p.status === 'expired') st = pill('p-grey', 'Expired');
-        else                             st = pill('p-grey', 'Closed');
-        return '<tr class="click" data-permit="' + esc(p.id) + '">' +
-          '<td><span class="t-main">' + esc(permitLabel(p.type)) + '</span>' +
-            '<div class="t-sub">' + esc(p.location) + '</div></td>' +
-          '<td>' + esc(jobName(p.job_id)) + '<div class="t-sub">' + esc(jobNum(p.job_id)) + '</div></td>' +
-          '<td>' + esc(subName(p.sub_id)) + '</td>' +
-          '<td class="r num">' + p.workers.length + '</td>' +
-          '<td class="r">' + st + '</td>' +
-          '<td class="r"><button class="btn btn-sm" data-' + (archived ? 'permrestore' : 'permarch') + '="' + esc(p.id) + '">' +
-            (archived ? 'Restore' : 'Archive') + '</button></td></tr>';
-      });
-    }
-    var cols = [{ t: 'Permit' }, { t: 'Site' }, { t: 'Subcontractor' },
-                { t: 'Workers', r: 1 }, { t: 'Status', r: 1 }, { t: '', r: 1 }];
-
-    var html;
-    if (permitTab === 'archive') {
-      html = head('Work Permits', 'Permits moved out of the active list. Restore one to bring it back.', right);
-      var paq = (subQ.permArch || '').toLowerCase();
-      var arch = (B.permits || []).filter(function (p) {
-        return p.archived && has(permitLabel(p.type) + ' ' + (p.location || '') + ' ' + jobName(p.job_id) + ' ' + subName(p.sub_id), paq); });
-      html += fbarSearch('pmarch-q', subQ.permArch, 'Search archived permits…');
-      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(cols, rows(arch, true), 'Nothing archived.') + '</div></div>';
-    } else if (permitTab === 'awaiting') {
-      // Digitally sent permit FORMS not yet submitted — a DELIVERY state, not an
-      // approval state. Reads the demo delivery dataset; excludes submitted ones
-      // (those live in the normal permit system / Permit Log). No approval UI.
-      html = head('Work Permits',
-        'Digitally sent permit forms still awaiting submission — sent but not opened, or ' +
-        'opened but not yet submitted. Once submitted, the permit appears in the permit system.', right);
-      var pawq = (subQ.permAwait || '').toLowerCase();
-      html += fbarSearch('pmaw-q', subQ.permAwait, 'Search awaiting submission…');
-      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Sent To' }, { t: 'Permit' }, { t: 'Site' }, { t: 'Sent' }, { t: 'Opened' }, { t: 'Status', r: 1 }],
-        awaitingRows(B.permit_sends, 'permit', function (s) { return permitLabel(s.type); }, pawq),
-        'Nothing awaiting submission.') + '</div></div>';
-    } else if (permitTab === 'log') {
-      // Permanent permit history, derived from the existing permit records only.
-      // Excludes archived permits (Archive stays its own view) and the approval-
-      // workflow statuses (pending/denied) so the default demo doesn't surface
-      // approvals — the records and their status handling remain untouched.
-      html = head('Work Permits',
-        'A permanent record of every work permit — active, closed and expired — newest first, across all jobsites.', right);
-      var logAll = (B.permits || []).filter(function (p) {
-        return !p.archived && ['pending', 'denied'].indexOf(p.status) === -1; })
-        .slice().sort(function (a, b) { return new Date(b.issued_at || 0) - new Date(a.issued_at || 0); });
-
-      var lTypeSet = {}, lJobSet = {};
-      logAll.forEach(function (p) { lTypeSet[p.type] = 1; if (p.job_id) lJobSet[p.job_id] = 1; });
-      var lTypeOpts = Object.keys(lTypeSet).map(function (t) {
-        return '<option value="' + esc(t) + '"' + (permLogF.type === t ? ' selected' : '') + '>' + esc(permitLabel(t)) + '</option>'; }).join('');
-      var lJobOpts = Object.keys(lJobSet).map(function (id) {
-        return '<option value="' + esc(id) + '"' + (permLogF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
-      var lStatOpts = [['', 'Any status'], ['active', 'Active'], ['closed', 'Closed'], ['expired', 'Expired']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (permLogF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-      var lRangeOpts = [['', 'Any date'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (permLogF.range === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-      html += '<div class="fbar">' +
-        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-          '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-          '<input id="permlog-q" placeholder="Search permits…" value="' + esc(permLogF.q) + '"></div>' +
-        '<select id="permlog-type"><option value="">All types</option>' + lTypeOpts + '</select>' +
-        '<select id="permlog-job"><option value="">All jobsites</option>' + lJobOpts + '</select>' +
-        '<select id="permlog-status">' + lStatOpts + '</select>' +
-        '<select id="permlog-range">' + lRangeOpts + '</select></div>';
-
-      var plq = (permLogF.q || '').toLowerCase();
-      var plcut = permLogF.range ? new Date(Date.now() - (+permLogF.range) * 86400000) : null;
-      var logRows = logAll.filter(function (p) {
-        if (permLogF.type && p.type !== permLogF.type) return false;
-        if (permLogF.job && p.job_id !== permLogF.job) return false;
-        if (permLogF.status && p.status !== permLogF.status) return false;
-        if (plcut && new Date(p.issued_at || 0) < plcut) return false;
-        if (plq && (permitLabel(p.type) + ' ' + (p.location || '') + ' ' + jobName(p.job_id) + ' ' + subName(p.sub_id)).toLowerCase().indexOf(plq) === -1) return false;
-        return true;
-      });
-
-      html += '<div class="panel"><div class="panel-hd"><div><h3>Permit log</h3>' +
-        '<div class="sub">' + logRows.length + ' of ' + logAll.length + ' shown · newest first</div></div></div>' +
-        '<div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Date / Time' }, { t: 'Permit' }, { t: 'Site' }, { t: 'Subcontractor' }, { t: 'Workers', r: 1 }, { t: 'Status', r: 1 }],
-        logRows.map(function (p) {
-          var m = minsLeft(p), st;
-          if (p.status === 'active')       st = m <= 60 ? pill('p-bad', 'Expires ' + fmtTime(p.expires_at)) : pill('p-ok', 'Active');
-          else if (p.status === 'expired') st = pill('p-grey', 'Expired');
-          else                             st = pill('p-grey', 'Closed');
-          return '<tr class="click" data-permit="' + esc(p.id) + '">' +
-            '<td>' + (p.issued_at ? esc(fmtWhen(p.issued_at)) : '—') + '</td>' +
-            '<td><span class="t-main">' + esc(permitLabel(p.type)) + '</span>' +
-              '<div class="t-sub">' + esc(p.location) + '</div></td>' +
-            '<td>' + esc(jobName(p.job_id)) + '<div class="t-sub">' + esc(jobNum(p.job_id)) + '</div></td>' +
-            '<td>' + esc(subName(p.sub_id)) + '</td>' +
-            '<td class="r num">' + p.workers.length + '</td>' +
-            '<td class="r">' + st + '</td></tr>';
-        }), 'No permits in the log.') + '</div></div>';
-    } else {
-      html = head('Work Permits',
-        'Track confined space, excavation, working at height, energized electrical, hot work and ' +
-        'critical lift permits. Each permit is tied to a jobsite, crew and active work window, with ' +
-        'a permanent history after it closes or expires. Click one to review, monitor or close it out.', right);
-
-      var typeSet = {}, jobSet = {};
-      all.forEach(function (p) { typeSet[p.type] = 1; if (p.job_id) jobSet[p.job_id] = 1; });
-      var pTypeOpts = Object.keys(typeSet).map(function (t) {
-        return '<option value="' + esc(t) + '"' + (permF.type === t ? ' selected' : '') + '>' + esc(permitLabel(t)) + '</option>'; }).join('');
-      var pJobOpts = Object.keys(jobSet).map(function (id) {
-        return '<option value="' + esc(id) + '"' + (permF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
-      var pq = permF.q.toLowerCase();
-      var shown = all.filter(function (p) {
-        if (permF.type && p.type !== permF.type) return false;
-        if (permF.job && p.job_id !== permF.job) return false;
-        if (pq && (permitLabel(p.type) + ' ' + (p.location || '') + ' ' + jobName(p.job_id) + ' ' + subName(p.sub_id) + ' ' + (p.requested_by || '')).toLowerCase().indexOf(pq) === -1) return false;
-        return true;
-      });
-      var active  = shown.filter(function (p) { return p.status === 'active'; }).sort(function (a, b) { return minsLeft(a) - minsLeft(b); });
-      var soon = active.filter(function (p) { return minsLeft(p) <= 60; }).length;
-      html += '<div class="cards">' +
-        kpi(active.length, 'active now', 'work happening under these', active.length ? 'c-ok' : 'c-grey') +
-        kpi(soon, 'expiring within 1h', 'requires attention soon', soon ? 'c-bad' : 'c-ok') +
-        '</div>';
-      html += '<div class="fbar">' +
-        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-          '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-          '<input id="pm-q" placeholder="Search permits…" value="' + esc(permF.q) + '"></div>' +
-        '<select id="pm-type"><option value="">All types</option>' + pTypeOpts + '</select>' +
-        '<select id="pm-job"><option value="">All jobsites</option>' + pJobOpts + '</select></div>';
-      function block(title, sub, list) {
-        if (!list.length) return '';
-        return '<div class="panel"><div class="panel-hd"><div><h3>' + esc(title) + '</h3>' +
-          '<div class="sub">' + esc(sub) + '</div></div></div>' +
-          '<div class="panel-bd flush">' + tableWrap(cols, rows(list)) + '</div></div>';
-      }
-      html += block('Active now', 'Work is happening under these right now.', active);
-    }
+    var html = head('Hot Work Permits',
+      'Hot work permits completed in the field. Crews open the Hot Work Permit form from their ' +
+      'job link; every completed permit lands here with its full record and PDF.', '');
+    html += '<div class="cards">' +
+      kpi(hw.length, 'hot work permits', 'all time', 'c-grey') +
+      kpi(week, 'this week', 'last 7 days', week ? 'c-ok' : 'c-grey') +
+      kpi(flagged, 'flagged', flagged ? 'items marked on the permit' : 'none flagged', flagged ? 'c-warn' : 'c-ok') +
+      '</div>';
+    var rows = hw.map(function (r) {
+      return '<tr class="click" data-hotwork="' + esc(r.id) + '">' +
+        '<td><span class="t-main">' + esc(r.form_type || 'Hot Work Permit') + '</span>' +
+          '<div class="t-sub">' + esc(r.inspector_name || '') + '</div></td>' +
+        '<td>' + esc(r.jobsite || '\u2014') + '</td>' +
+        '<td>' + esc(r.submitted_at ? tzDateTime(r.submitted_at) : fmtDate(r.inspection_date)) + '</td>' +
+        '<td class="r">' + (r.has_defects
+          ? pill('p-warn', (r.defect_count || 1) + ' flagged') : pill('p-ok', 'Clear')) + '</td></tr>';
+    });
+    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Permit' }, { t: 'Job' }, { t: 'Submitted' }, { t: 'Result', r: 1 }],
+      rows, 'No hot work permits yet. When a crew completes the Hot Work Permit form in the ' +
+        'field, it appears here with its full record and PDF.') + '</div></div>';
     paint(html);
-    wireSubtabs('pt', function (v) { permitTab = v; pgPermits(); });
-    $$('[data-permarch]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation();
-      var p = (B.permits || []).filter(function (x) { return x.id === b.dataset.permarch; })[0];
-      if (p) p.archived = true; toast('Permit archived.'); pgPermits(); }; });
-    $$('[data-permrestore]').forEach(function (b) { b.onclick = function () {
-      var p = (B.permits || []).filter(function (x) { return x.id === b.dataset.permrestore; })[0];
-      if (p) p.archived = false; toast('Permit restored.'); pgPermits(); }; });
-    function pmBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { permF[key] = e.value; pgPermits(); }; }
-    pmBind('pm-q', 'q'); pmBind('pm-type', 'type'); pmBind('pm-job', 'job');
-    var _pmq = $('#pm-q'); if (_pmq && permF.q) { _pmq.focus(); try { _pmq.setSelectionRange(_pmq.value.length, _pmq.value.length); } catch (e) {} }
-    if (permitTab === 'archive') wireSearch('pmarch-q', function (v) { subQ.permArch = v; pgPermits(); });
-    if (permitTab === 'awaiting') {
-      wireSearch('pmaw-q', function (v) { subQ.permAwait = v; pgPermits(); });
-      $$('[data-permitsend]').forEach(function (r) { r.onclick = function () { openPermitSend(r.dataset.permitsend); }; });
-    }
-    if (permitTab === 'log') {
-      wireSearch('permlog-q', function (v) { permLogF.q = v; pgPermits(); });
-      function plBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { permLogF[key] = e.value; pgPermits(); }; }
-      plBind('permlog-type', 'type'); plBind('permlog-job', 'job'); plBind('permlog-status', 'status'); plBind('permlog-range', 'range');
-    }
+    $$('[data-hotwork]').forEach(function (tr) {
+      tr.onclick = function () { openCrewInsp(tr.dataset.hotwork); };
+    });
   }
-
-  /* ====================== INCIDENTS ===================================== */
-  var CLASS = { recordable: 'OSHA recordable', first_aid: 'First aid',
-                near_miss: 'Near miss', property: 'Property damage' };
-  var incF = { job: '', cls: '', status: '', range: '' };   // Incidents table filters
-  var incTab = 'incidents';
   function pgIncidents() {
     var right = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
       subtabs(incTab, [['incidents', 'Incidents'], ['reg', 'Regulatory Visits']], 'ic') +
@@ -3777,17 +3585,40 @@
       kv('Performed by', r.inspector_name) +
       kv('Submitted', repDateDisp(r)) +
       (r.counts ? kv('Result', 'Pass ' + r.counts.pass + ' · Fail ' + r.counts.fail + ' · N/A ' + r.counts.na + '  (' + r.counts.percent + ')') : '');
+    // Every FAIL line is a real Finding with a stable key; its corrective-action
+    // state comes from cs_finding_actions — the SAME record the Corrective
+    // actions tab and the phone Findings tab read and write.
+    var saved = (B && B.finding_actions) || {};
     var fails = [];
-    (r.s101 || []).forEach(function (sec) { (sec.items || []).forEach(function (it) { if (it.result === 'FAIL') fails.push({ sec: sec.title, q: it.q }); }); });
+    (r.s101 || []).forEach(function (sec, si) {
+      (sec.items || []).forEach(function (it, ii) {
+        if (it.result !== 'FAIL') return;
+        var key = 'rf|' + r.id + '|s101|' + si + '-' + ii;
+        var sv = saved[key];
+        fails.push({ sec: sec.title, q: it.q, comments: it.comments || '', key: key,
+          closed: !!(sv && sv.status === 'closed'), sv: sv || null });
+      });
+    });
     if (fails.length) {
-      h += '<div class="sec-h">Findings — failed items (' + fails.length + ')</div>';
+      var closedN = fails.filter(function (f) { return f.closed; }).length;
+      h += '<div class="sec-h">Findings from this inspection</div>';
+      h += '<div class="small" style="margin-bottom:8px"><b>' + fails.length + ' finding' + (fails.length === 1 ? '' : 's') +
+        '</b> — ' + (fails.length - closedN) + ' open · ' + closedN + ' closed. Each failed item is tracked as its own ' +
+        'finding; closing it here, on Corrective actions, or on the phone updates the same record.</div>';
       fails.forEach(function (f) {
         h += '<div class="fixbox">' +
-          '<div class="who" style="font-weight:700;color:var(--ink-3);margin-bottom:2px">Source observation / finding · ' + esc(f.sec) + '</div>' +
+          '<div class="who" style="font-weight:700;color:var(--ink-3);margin-bottom:2px">' + esc(f.sec) + '</div>' +
           '<div>' + esc(f.q) + '</div>' +
-          '<div class="who" style="margin-top:3px">Corrective action: <i>open — none recorded in source</i> &nbsp; ' + pill('p-warn', 'Open') + '</div></div>';
+          (f.comments ? '<div class="small" style="margin-top:3px;white-space:pre-wrap;color:var(--ink-3)">Observation: ' + esc(f.comments) + '</div>' : '') +
+          (f.closed
+            ? '<div class="who" style="margin-top:5px">' + pill('p-ok', 'Closed') +
+              (f.sv.action ? ' &nbsp;Corrective action: \u201c' + esc(f.sv.action) + '\u201d' : '') +
+              '<div class="small" style="margin-top:2px">Closed' + (f.sv.closed_by ? ' by ' + esc(f.sv.closed_by) : '') +
+              (f.sv.updated_at ? ' \u00b7 ' + esc(tzDateTime(f.sv.updated_at)) : '') + '</div></div>'
+            : '<div class="who" style="margin-top:5px">' + pill('p-warn', 'Open') + ' &nbsp;<span class="small">Corrective action required</span></div>') +
+          '<div style="margin-top:6px"><button class="btn btn-sm" data-viewfind="' + esc(f.key) + '">' +
+            (f.closed ? 'View finding' : 'View finding / close it out') + '</button></div></div>';
       });
-      h += '<div class="small" style="color:var(--ink-4);margin-top:4px">These failed items are tracked as open corrective actions under Corrective Actions.</div>';
     } else {
       h += '<div class="sec-h">Findings</div><div class="small" style="color:var(--ok)">No failed items — full pass.</div>';
     }
@@ -3806,6 +3637,15 @@
         '<a class="btn btn-sm" href="' + esc(r.source_pdf) + '" target="_blank" rel="noopener">Open original Safety 101 PDF</a>';
     }
     drawer(r.report_type || 'Safety 101 Inspection', repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · Imported', h);
+    $$('.drawer [data-viewfind]').forEach(function (b) {
+      b.onclick = function () {
+        openCAFinding(b.dataset.viewfind, { after: function () {
+          go(page);
+          var fresh = (B.reports || []).filter(function (x) { return x.id === r.id; })[0] || r;
+          openImportedReport(fresh);
+        }, backLabel: 'Back to inspection' });
+      };
+    });
     $('#dl-rep').onclick = function () {
       if (r.source_pdf) {
         // Download the ACTUAL imported Safety 101 source PDF, not an app-generated one.
@@ -3917,13 +3757,24 @@
     });
   }
 
-  function openCAFinding(fid) {
+  function openCAFinding(fid, opts) {
+    opts = opts || {};
+    deriveFindings();   // always fresh — callable from any page
     var f = CAFINDS.filter(function (x) { return x.id === fid; })[0];
     if (!f) return;
-    var h = '<div class="sec-h">Finding</div>' +
+    var h = '';
+    if (opts.after) {
+      h += '<div style="margin-bottom:10px"><button class="btn btn-sm" id="caf-back">\u2190 ' +
+        esc(opts.backLabel || 'Back') + '</button></div>';
+    }
+    h += '<div class="sec-h">Finding</div>' +
       kv('Job', jobName(f.job_id)) + kv('Found', fmtDate(f.date)) +
       kv('Due', fmtDate(f.due)) + kv('Source', f.from);
     if (f.note) h += '<div class="small" style="margin:8px 0;white-space:pre-wrap"><b>Observation:</b> ' + esc(f.note) + '</div>';
+    var srcRepId = (!opts.after && f.id.slice(0, 3) === 'rf|') ? f.id.split('|')[1] : null;
+    if (srcRepId || (!opts.after && f.crewId)) {
+      h += '<div style="margin:8px 0"><button class="btn btn-sm" id="caf-src">View source inspection</button></div>';
+    }
     if (f.srcPdf) h += '<div style="margin:8px 0"><a class="btn btn-sm" href="' + esc(f.srcPdf) +
       '" target="_blank" rel="noopener">Open source Safety 101 PDF</a></div>';
     if (f.status === 'closed') {
@@ -3947,6 +3798,12 @@
         '<button class="btn btn-gold" id="caf-save" style="width:100%;justify-content:center">Close it out</button>';
     }
     drawer(f.description, jobName(f.job_id) + ' · ' + fmtDate(f.date), h);
+    var bk = $('#caf-back'); if (bk) bk.onclick = function () { opts.after(); };
+    var sc = $('#caf-src');
+    if (sc) sc.onclick = function () {
+      if (srcRepId) { openReport(srcRepId); }
+      else if (f.crewId) { openCrewInsp(f.crewId); }
+    };
     var pin = $('#caf-photo'), pbtn = $('#caf-pbtn'), prev = $('#caf-prev');
     if (pbtn) pbtn.onclick = function (ev) { ev.preventDefault(); pin.click(); };
     if (pin) pin.onchange = function () {
@@ -3979,7 +3836,7 @@
       }).then(function () {
         closeDrawer();
         toast('Finding closed');
-        pgInsp();
+        if (opts.after) opts.after(); else go(page);
       }).catch(function (e) {
         save.disabled = false; save.textContent = 'Close it out';
         err.textContent = 'Could not save — ' + (e.message || 'try again');
@@ -4613,7 +4470,7 @@
         chain.then(refreshBundle).then(function () {
           closeDrawer();
           toast(picks.length + ' training record' + (picks.length === 1 ? '' : 's') + ' saved for ' + nameVal.trim() + '.');
-          pgTraining();
+          go('training');
         }).catch(function (e) {
           sub.disabled = false; sub.textContent = 'Submit training';
           err.textContent = 'Could not save \u2014 ' + (e.message || 'try again');
@@ -4640,10 +4497,13 @@
       .sort(function (a, b) { return new Date(a.expires) - new Date(b.expires); });
     var p = (B.people || []).filter(function (x) { return x.name === name; })[0] || {};
     var wc = { kind: 'internal', workerId: (w0 && w0.id) || p.id, workerName: name,
-      reopen: function () { pgTraining(); openPerson(name); } };
+      reopen: function () { go('training'); openPerson(name); } };
     var h = pdfBtn('dl-person');
     h += '<div class="sec-h" style="display:flex;align-items:center;gap:10px">Employee' +
-      (w0 ? '<button class="btn btn-sm" id="p-editemp" style="margin-left:auto">Edit employee</button>' : '') + '</div>';
+      (w0 ? '<span style="margin-left:auto;display:flex;gap:8px">' +
+        '<button class="btn btn-sm" id="p-editemp">Edit employee</button>' +
+        (w0.job_id ? '<button class="btn btn-sm" id="p-removejob">Remove from job</button>' : '') +
+        '</span>' : '') + '</div>';
     h += kv('Classification', (w0 && w0.classification) || p.title || '—') +
       kv('Assigned job', (w0 && w0.job_id) ? (jobNum(w0.job_id) ? jobNum(w0.job_id) + ' — ' : '') + jobName(w0.job_id) : '—') +
       kv('Phone', (w0 && w0.phone) || p.phone || '—');
@@ -4689,6 +4549,25 @@
     drawer(name, ((w0 && w0.classification) || p.title || '') +
       ((w0 && w0.job_id) ? ' · ' + jobName(w0.job_id) : ''), h);
     var pe = $('#p-editemp'); if (pe) pe.onclick = function () { openEditWorker(w0); };
+    var prj = $('#p-removejob');
+    if (prj) prj.onclick = function () {
+      // Removes the JOB ASSIGNMENT only. The worker, their training and their
+      // history all remain — this is not a delete.
+      if (!confirm('Remove ' + w0.name + ' from ' + jobName(w0.job_id) + '?\n\n' +
+        'This removes the worker from this job’s active roster. ' +
+        'Their training and safety history will remain.')) return;
+      prj.disabled = true;
+      post('cs_portal_worker_unassign', { p_worker_id: w0.id }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        toast('Removed from job — worker and training kept');
+        go('training'); openPerson(name);
+      }).catch(function (e) {
+        prj.disabled = false;
+        alert('Could not remove — ' + (e.message || 'try again'));
+      });
+    };
     var pat = $('#p-addtrain'); if (pat) pat.onclick = function () { openCertForm(wc, null); };
     $$('[data-editicert]').forEach(function (b) {
       b.onclick = function () {
@@ -4706,7 +4585,7 @@
           return refreshBundle();
         }).then(function () {
           toast('Training record removed');
-          pgTraining(); openPerson(name);
+          go('training'); openPerson(name);
         }).catch(function (e) { alert('Could not remove — ' + (e.message || 'try again')); });
       };
     });
@@ -4734,6 +4613,7 @@
           return '<option' + (c === (w.classification || '') ? ' selected' : '') + '>' + esc(c) + '</option>';
         }).join('') + '</select></div>' +
       '<div class="full"><label>Assigned job</label><select id="ew-job">' +
+        (w.job_id ? '' : '<option value="" selected>— Unassigned —</option>') +
         jobs.map(function (j) {
           return '<option value="' + esc(j.id) + '"' + (j.id === w.job_id ? ' selected' : '') + '>' +
             esc((j.job_number ? j.job_number + ' — ' : '') + j.name) + '</option>';
@@ -4763,7 +4643,7 @@
         }
         return refreshBundle().then(function () {
           toast('Employee updated');
-          pgTraining();
+          go('training');
           openPerson(res.name || nm);
         });
       }).catch(function (e) {
@@ -5381,44 +5261,194 @@
     });
   }
   function pgTemplates() {
-    var all = B.templates || [];
-    if (tplFam !== 'jobs') {
-      var inFam = all.filter(function (t) { return t.family === tplFam; });
-      if (!tplOpen || !inFam.some(function (t) { return t.code === tplOpen; })) {
-        tplOpen = inFam.length ? inFam[0].code : null;
-      }
-    }
-    var famDesc = {
-      report:     'What your safety team walks and writes up.',
-      inspection: 'Task and site checks a crew completes in the field.',
-      equipment:  'Pre-use checks on a thing with a serial number.',
-      permit:     'The pre-entry and pre-task checks behind a permit to work.',
-      orientation:'Company and jobsite safety orientations workers complete before working.',
-      talks:      'Prepared toolbox talks your foremen run with the crew.',
-      jobs:       'Every jobsite runs a different set of inspections — set them per job here.'
-    };
-    var right = '';
-    var html = head('Templates', famDesc[tplFam], right);
-    var famTabs = TPL_FAMS.map(function (f) {
-      var n = all.filter(function (t) { return t.family === f[0]; }).length;
-      return [f[0], f[1] + ' · ' + n];
+    /* Template administration — the receiving dock for the GC-required forms
+       Tony is sending (Shiel Sexton @ Purdue C800, Meyer Najem @ Taylorsville
+       C808). Two layers:
+       1. Standard field forms — live in the field today, company-wide, fixed
+          in code. Untouched by anything on this page.
+       2. GC / job-specific templates — real cs_templates records: name, form
+          type, GC, the job(s) they apply to, and the source file stored in the
+          same private company-docs storage as Documents.
+       Turning a GC source file into the fillable mobile form is a later,
+       deliberate build step — nothing here auto-generates form fields.
+       Field-menu integration point (documented, intentionally not wired yet):
+       the phone form list can later derive per job as
+       [standard forms] + gc_templates.filter(active && (company-wide || job in job_ids)). */
+    var tpls = (B.gc_templates || []).slice();
+    var html = head('Templates',
+      'The safety forms Greiner runs. Standard forms are live in the field today. GC-specific ' +
+      'templates are added here as general contractors send their required forms, and are ' +
+      'assigned to the specific job(s) that GC runs.',
+      '<button class="btn btn-gold" id="tpl-addbtn">Add template</button>');
+
+    html += '<div class="panel" style="margin-bottom:14px"><div class="panel-hd"><div><h3>Standard field forms</h3>' +
+      '<div class="sub">Live on every Greiner job today — crews open these from their field link. Fixed for the pilot.</div></div></div>' +
+      '<div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Form' }, { t: 'Applies to' }, { t: 'Status', r: 1 }],
+      ['JHA — Job Hazard Analysis', 'Hot Work Permit', 'Aerial Platform Inspection', 'Forklift Inspection']
+        .map(function (nm) {
+          return '<tr><td><span class="t-main">' + nm + '</span></td>' +
+            '<td>All Greiner jobs</td><td class="r">' + pill('p-ok', 'Live') + '</td></tr>';
+        })) + '</div></div>';
+
+    var rows = tpls.map(function (t) {
+      var jobLbls = (t.job_ids && t.job_ids.length)
+        ? t.job_ids.map(function (id) { return (jobNum(id) ? jobNum(id) + ' — ' : '') + jobName(id); }).join('<br>')
+        : '<span class="muted">Company-wide (all jobs)</span>';
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(t.name) + '</span>' +
+          (t.gc_name ? '<div class="t-sub">GC: ' + esc(t.gc_name) + '</div>' : '') + '</td>' +
+        '<td>' + esc(t.form_type) + '</td>' +
+        '<td>' + jobLbls + '</td>' +
+        '<td>' + (t.doc_id ? '<button class="linklike" data-tpldoc="' + esc(t.doc_id) + '">View source file</button>'
+                           : '<span class="muted small">No file yet</span>') + '</td>' +
+        '<td class="r">' + (t.active ? pill('p-ok', 'Active') : pill('p-grey', 'Inactive')) + '</td>' +
+        '<td class="r" style="white-space:nowrap">' +
+          '<button class="btn btn-sm" data-tpledit="' + esc(t.id) + '">Edit</button> ' +
+          '<button class="btn btn-sm" data-tpltoggle="' + esc(t.id) + '">' + (t.active ? 'Deactivate' : 'Activate') + '</button> ' +
+          '<button class="linklike" data-tpldel="' + esc(t.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
     });
-    famTabs.push(['talks', 'Toolbox Talks · ' + (B.talk_templates || []).length]);
-    famTabs.push(['jobs', 'Jobs · ' + (B.jobs || []).length]);
-    html += subtabs(tplFam, famTabs, 'tf');
-    html += '<div class="tpl-grid" style="margin-top:14px">' +
-      '<div class="tpl-list" id="tpl-list"></div>' +
-      '<div class="tpl-ed" id="tpl-ed"></div></div>';
+    html += '<div class="panel"><div class="panel-hd"><div><h3>GC &amp; job-specific templates</h3>' +
+      '<div class="sub">Forms required by a general contractor on specific jobs — Shiel Sexton (Purdue), Meyer Najem (Taylorsville Elementary).</div></div></div>' +
+      '<div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Template' }, { t: 'Type' }, { t: 'Assigned job(s)' }, { t: 'Source' }, { t: 'Status', r: 1 }, { t: '', r: 1 }],
+      rows, 'No GC templates yet. When Tony sends a GC form — e.g. the Shiel Sexton JHA for Purdue — ' +
+        'add it here with its source file and assign it to that job.') + '</div></div>';
     paint(html);
-    if (tplFam === 'jobs') { renderJobList(); renderJobAssign(); }
-    else if (tplFam === 'talks') { renderTalkTplList(); renderTalkTplEditor(); }
-    else { renderTplList(); renderTplEditor(); }
-    wireSubtabs('tf', function (v) { tplFam = v; pgTemplates(); });
-    lockTplEditor();
+
+    var ab = $('#tpl-addbtn'); if (ab) ab.onclick = function () { openTemplateForm(null); };
+    $$('[data-tpledit]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tpls.filter(function (x) { return x.id === b.dataset.tpledit; })[0];
+        if (t) openTemplateForm(t);
+      };
+    });
+    $$('[data-tpltoggle]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tpls.filter(function (x) { return x.id === b.dataset.tpltoggle; })[0];
+        if (!t) return;
+        b.disabled = true;
+        post('cs_portal_template_update', { p_template_id: t.id, p_active: !t.active })
+          .then(function (res) {
+            if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+            return refreshBundle();
+          }).then(function () { toast(t.active ? 'Template deactivated' : 'Template activated'); pgTemplates(); })
+          .catch(function (e) { b.disabled = false; toast('Could not save — ' + e.message); });
+      };
+    });
+    $$('[data-tpldel]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tpls.filter(function (x) { return x.id === b.dataset.tpldel; })[0];
+        if (!t) return;
+        if (!confirm('Delete the template "' + t.name + '"?\n\nIts source file (if any) stays in Documents.')) return;
+        post('cs_portal_template_delete', { p_template_id: t.id }).then(function (res) {
+          if (!res || res.ok === false) throw new Error((res && res.error) || 'delete failed');
+          return refreshBundle();
+        }).then(function () { toast('Template deleted'); pgTemplates(); })
+        .catch(function (e) { toast('Could not delete — ' + e.message); });
+      };
+    });
+    $$('[data-tpldoc]').forEach(function (b) {
+      b.onclick = function () {
+        var w = window.open('', '_blank');   // in the click, popup-safe
+        docsEdge({ action: 'url', id: b.dataset.tpldoc }).then(function (jx) {
+          return fetch(jx.url).then(function (r2) { return r2.blob(); });
+        }).then(function (bl) {
+          var u = URL.createObjectURL(bl);
+          if (w && !w.closed) w.location = u; else window.open(u, '_blank', 'noopener');
+        }).catch(function (e) { if (w && !w.closed) w.close(); toast('Could not open — ' + e.message); });
+      };
+    });
   }
 
-  /* Pilot: the library is reference-only. Templates are fixed in code — they
-     ARE the field forms crews receive; nothing typed here would be saved. */
+  /* Add / edit a GC or job-specific template. The optional source file goes
+     into the same private company-docs storage Documents uses; the template
+     row links it by doc id. */
+  function openTemplateForm(t) {
+    var editing = !!t;
+    var TYPES = ['JHA', 'Hot Work Permit', 'Aerial Platform Inspection', 'Forklift Inspection', 'Other'];
+    if (editing && TYPES.indexOf(t.form_type) === -1) TYPES.unshift(t.form_type);
+    var jobs = (B.jobs || []).filter(function (j) { return !j.archived; })
+      .sort(function (a, b) { return String(a.job_number || '').localeCompare(String(b.job_number || '')); });
+    var selJobs = (editing && t.job_ids) ? t.job_ids : [];
+    var h = '<div class="f-grid">' +
+      '<div class="full"><label>Template name</label>' +
+        '<input id="tf-name" type="text" value="' + esc(editing ? t.name : '') + '" placeholder="e.g. Shiel Sexton JHA"></div>' +
+      '<div class="full"><label>Form type</label><select id="tf-type">' +
+        TYPES.map(function (ty) {
+          return '<option' + (editing && ty === t.form_type ? ' selected' : '') + '>' + esc(ty) + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="full"><label>General contractor <span class="muted small">optional</span></label>' +
+        '<input id="tf-gc" type="text" value="' + esc(editing ? (t.gc_name || '') : '') + '" placeholder="e.g. Shiel Sexton"></div>' +
+      '<div class="full"><label>Applies to</label>' +
+        '<div class="small muted" style="margin-bottom:6px">Check the job(s) this form is required on. Leave all unchecked for company-wide (every job).</div>' +
+        jobs.map(function (jx) {
+          var on = selJobs.indexOf(jx.id) !== -1;
+          return '<label style="display:flex;gap:8px;align-items:center;margin:4px 0;font-weight:400">' +
+            '<input type="checkbox" class="tf-job" value="' + esc(jx.id) + '"' + (on ? ' checked' : '') + '>' +
+            esc((jx.job_number ? jx.job_number + ' — ' : '') + jx.name) + '</label>';
+        }).join('') + '</div>' +
+      '<div class="full"><label>Source file <span class="muted small">optional — the form as the GC sent it (PDF, Word, Excel, image)</span></label>' +
+        (editing && t.doc_id ? '<div class="small" style="margin:2px 0 6px">A source file is attached. Choosing a new file replaces the link (the old file stays in Documents).</div>' : '') +
+        '<input type="file" id="tf-file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.csv"></div>' +
+      '<div class="full"><label style="display:flex;gap:8px;align-items:center;font-weight:400">' +
+        '<input type="checkbox" id="tf-active"' + (!editing || t.active ? ' checked' : '') + '> Active</label></div>' +
+      '</div>' +
+      '<p class="err small" id="tf-err" style="min-height:1em"></p>' +
+      '<button class="btn btn-gold" id="tf-save" style="width:100%;justify-content:center">' + (editing ? 'Save changes' : 'Add template') + '</button>';
+    drawer(editing ? 'Edit template' : 'Add template', 'GC / job-specific safety form', h);
+    $('#tf-save').onclick = function () {
+      var name = $('#tf-name').value.trim();
+      var err = $('#tf-err'), btn = $('#tf-save');
+      if (!name) { err.textContent = 'Name the template.'; return; }
+      var jobIds = $$('.tf-job').filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+      var file = ($('#tf-file').files || [])[0];
+      if (file && file.size > 15 * 1024 * 1024) { err.textContent = 'That file is over the 15 MB limit.'; return; }
+      err.textContent = '';
+      btn.disabled = true; btn.textContent = editing ? 'Saving…' : 'Adding…';
+      var uploadP = Promise.resolve(null);
+      if (file) {
+        uploadP = new Promise(function (resolve, reject) {
+          var rd = new FileReader();
+          rd.onerror = function () { reject(new Error('could not read the file')); };
+          rd.onload = function () {
+            var b64 = String(rd.result).split(',')[1] || '';
+            docsEdge({ action: 'upload', filename: file.name, category: 'Template source',
+              mime: file.type || 'application/octet-stream', data_base64: b64 })
+              .then(function (res) { resolve(res && res.doc && res.doc.id || null); })
+              .catch(reject);
+          };
+          rd.readAsDataURL(file);
+        });
+      }
+      uploadP.then(function (docId) {
+        var params = {
+          p_name: name,
+          p_form_type: $('#tf-type').value,
+          p_gc: $('#tf-gc').value.trim(),
+          p_active: $('#tf-active').checked
+        };
+        if (docId) params.p_doc_id = docId;
+        if (editing) {
+          params.p_template_id = t.id;
+          params.p_job_ids = jobIds;              // [] = company-wide, explicit
+          return post('cs_portal_template_update', params);
+        }
+        params.p_job_ids = jobIds.length ? jobIds : null;   // null = company-wide
+        return post('cs_portal_template_add', params);
+      }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        closeDrawer();
+        toast(editing ? 'Template updated' : 'Template added');
+        pgTemplates();
+      }).catch(function (e) {
+        btn.disabled = false; btn.textContent = editing ? 'Save changes' : 'Add template';
+        err.textContent = 'Could not save — ' + (e.message || 'try again');
+      });
+    };
+  }
   function lockTplEditor() {
     var edPane = $('#tpl-ed');
     if (!edPane) return;
