@@ -98,6 +98,17 @@
     return b;
   }
 
+  /* Safety roster: cs_workers is authoritative. Feed it into the shapes the
+     existing UI reads (job rosters + training) with certs joined by name. */
+  function hydrateWorkers() {
+    var by = {};
+    (B.certs || []).forEach(function (c) { (by[c.worker] = by[c.worker] || []).push({ t: c.cert_type, exp: c.expires }); });
+    B.internal_crew = (B.workers || []).map(function (w) {
+      return { worker_id: w.id, job_id: w.job_id, name: w.name, role: w.classification || '',
+               phone: w.phone || '', certs: by[w.name] || [], insp: [] };
+    });
+  }
+
   /* Map real field submissions (cs_portal_field_inspections) into the CREW row
      shape the Inspections/Analytics views expect. */
   function crewFromField(rows) {
@@ -2649,7 +2660,9 @@
       post('cs_portal_incidents', { p_token: tok }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
+      hydrateWorkers();
       CREW = crewFromField(res[1]);
       renderNav();
       return B;
@@ -4339,7 +4352,8 @@
     var extCount = 0;
     sc.forEach(function (x) { extCount += (x.sub.crew || []).length; });
 
-    var tabs = [['internal', 'Internal · ' + Object.keys(by).length],
+    var rosterCount = (function () { var n = {}; (B.workers || []).forEach(function (w) { n[w.name] = 1; }); Object.keys(by).forEach(function (x) { n[x] = 1; }); return Object.keys(n).length; })();
+    var tabs = [['internal', 'Internal · ' + rosterCount],
                 ['external', 'Subcontractors · ' + extCount]];
 
     var html = head('Training & Certifications',
@@ -4375,30 +4389,39 @@
     var certs = B.certs || [];
     var expired = certs.filter(function (c) { return certDays(c.expires) < 0; }).length;
     var soon    = certs.filter(function (c) { var d = certDays(c.expires); return d >= 0 && d <= 60; }).length;
+    var rosterN = (function () { var n = {}; (B.workers || []).forEach(function (w) { n[w.name] = 1; }); Object.keys(by).forEach(function (x) { n[x] = 1; }); return Object.keys(n).length; })();
     var html = '<div class="cards">' +
-      kpi(Object.keys(by).length, 'people', 'on the team', 'c-grey') +
+      kpi(rosterN, 'people', 'on the safety roster', 'c-grey') +
       kpi(certs.length, 'certifications', 'on file', 'c-grey') +
       kpi(soon, 'expiring in 60 days', 'renew now', soon ? 'c-warn' : 'c-ok') +
       kpi(expired, 'expired', expired ? 'not qualified for that task' : 'none', expired ? 'c-bad' : 'c-ok') +
       '</div>';
-    var rows = Object.keys(by).sort().map(function (name) {
-      var list = by[name];
+    // Roster = every safety-roster worker (even with zero certs) plus any
+    // cert holder not on the current roster. One identity, one list.
+    var names = {};
+    (B.workers || []).forEach(function (w) { names[w.name] = 1; });
+    Object.keys(by).forEach(function (n) { names[n] = 1; });
+    var rows = Object.keys(names).sort().map(function (name) {
+      var list = by[name] || [];
+      var w = (B.workers || []).filter(function (x) { return x.name === name; })[0] || {};
       var p = (B.people || []).filter(function (x) { return x.name === name; })[0] || {};
-      var worst = Math.min.apply(null, list.map(function (c) { return certDays(c.expires); }));
+      var worst = list.length ? Math.min.apply(null, list.map(function (c) { return certDays(c.expires); })) : null;
       var next = list.slice().sort(function (a, b) {
         return new Date(a.expires) - new Date(b.expires); })[0];
       return '<tr class="click" data-person="' + esc(name) + '">' + selCell(name) +
         '<td><span class="t-main">' + esc(name) + '</span>' +
-          '<div class="t-sub num">' + esc(p.phone || '') + '</div></td>' +
-        '<td>' + esc(p.title || '—') + '</td>' +
+          '<div class="t-sub num">' + esc(w.phone || p.phone || '') + '</div></td>' +
+        '<td>' + esc(w.classification || p.title || '\u2014') +
+          (w.job_id ? '<div class="t-sub">' + esc(jobName(w.job_id)) + '</div>' : '') + '</td>' +
         '<td class="r num">' + list.length + '</td>' +
-        '<td>' + esc(next.cert_type) + '<div class="t-sub">' + esc(fmtDate(next.expires)) + '</div></td>' +
-        '<td class="r">' + (worst < 0 ? pill('p-bad', 'Expired cert')
+        '<td>' + (next ? esc(next.cert_type) + '<div class="t-sub">' + esc(fmtDate(next.expires)) + '</div>' : '<span class="muted">No certification records yet</span>') + '</td>' +
+        '<td class="r">' + (worst == null ? pill('p-grey', 'No certs on file')
+          : worst < 0 ? pill('p-bad', 'Expired cert')
           : worst <= 60 ? pill('p-warn', 'Expiring') : pill('p-ok', 'Current')) + '</td></tr>';
     });
     return html + '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-      [{ t: '' }, { t: 'Person' }, { t: 'Role' }, { t: 'Certs', r: 1 }, { t: 'Next expiry' },
-       { t: 'Status', r: 1 }], rows, 'No certifications on file.') + '</div></div>';
+      [{ t: '' }, { t: 'Person' }, { t: 'Classification' }, { t: 'Certs', r: 1 }, { t: 'Next expiry' },
+       { t: 'Status', r: 1 }], rows, 'No workers on the roster yet.') + '</div></div>';
   }
 
   // Subcontractor training, grouped by subcontractor. Ties to the subcontractor
@@ -5047,19 +5070,82 @@
   }
 
   // Add one of the GC's own on-site employees to this job.
+  var WORKER_CLASSES = ['JNY', 'JNY FMN L1', 'JNY FMN L2', 'JNY FMN L3',
+    'Apprentice 1st', 'Apprentice 2nd', 'Apprentice 3rd', 'Apprentice 4th', 'Apprentice 5th', 'PRE APPRENTICE'];
   function openAddInternalEmployee(id) {
-    var h = '<div class="f"><label for="ic-name">Employee name</label><input type="text" id="ic-name" autocomplete="off"></div>' +
-      '<div class="f"><label for="ic-role">Role / trade</label><input type="text" id="ic-role" placeholder="e.g. Carpenter"></div>' +
-      '<p class="small" id="ic-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
-      '<button class="btn btn-gold" id="ic-save" style="width:100%;justify-content:center">Add employee</button>';
-    drawer('Add internal employee', 'Your own on-site crew', h);
-    $('#ic-save').onclick = pilotHold('Employee records'); var __held_ic_save = function () {
-      var name = $('#ic-name').value.trim();
-      if (!name) { $('#ic-err').textContent = 'Enter the employee name.'; return; }
-      (B.internal_crew || (B.internal_crew = [])).push({ job_id: id, name: name,
-        role: $('#ic-role').value.trim() || 'Crew', certs: [], insp: [] });
-      closeDrawer(); toast(name + ' added to the job.'); openJob(id);
-    };
+    var picks = [];   // optional training entered at creation time
+    var nameVal = '', classVal = '', phoneVal = '';
+    var today = new Date().toISOString().slice(0, 10);
+    function render() {
+      var h = '<div class="f"><label for="ic-name">Worker name</label>' +
+          '<input type="text" id="ic-name" autocomplete="off" placeholder="First Last" value="' + esc(nameVal) + '"></div>' +
+        '<div class="f"><label for="ic-class">Classification <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 optional</span></label>' +
+          '<select id="ic-class"><option value="">\u2014</option>' +
+          WORKER_CLASSES.map(function (c) { return '<option' + (c === classVal ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
+        '<div class="f"><label for="ic-phone">Phone <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 optional</span></label>' +
+          '<input type="tel" id="ic-phone" placeholder="317-555-0100" value="' + esc(phoneVal) + '"></div>' +
+        '<div class="sec-h">Training / certifications <span class="small muted" style="font-weight:400">\u00b7 optional</span></div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+          TRAIN_TYPES.map(function (t) { return '<button type="button" class="btn btn-sm" data-ict="' + esc(t) + '">+ ' + esc(t) + '</button>'; }).join('') +
+        '</div>' +
+        '<div id="ic-picks">' + picks.map(function (p, i) {
+          return '<div class="panel" style="margin:0 0 8px"><div class="panel-bd">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+              '<div style="flex:1;font-weight:600">' + esc(p.type) + '</div>' +
+              '<button type="button" class="linklike" data-icrm="' + i + '" style="color:var(--fail);font-size:18px;line-height:1">\u00d7</button></div>' +
+            '<div style="display:flex;gap:8px">' +
+              '<div style="flex:1"><label class="small muted" style="display:block;margin-bottom:2px">Issued</label>' +
+                '<input type="date" class="ic-iss" data-i="' + i + '" value="' + esc(p.issued) + '" style="width:100%"></div>' +
+              '<div style="flex:1"><label class="small muted" style="display:block;margin-bottom:2px">Expires</label>' +
+                '<input type="date" class="ic-exp" data-i="' + i + '" value="' + esc(p.expires) + '" style="width:100%"></div>' +
+            '</div></div></div>';
+        }).join('') + '</div>' +
+        '<p class="small" id="ic-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
+        '<button class="btn btn-gold" id="ic-save" style="width:100%;justify-content:center">Add to ' + esc(jobName(id)) + '</button>';
+      drawer('Add internal employee', 'Safety roster \u00b7 ' + jobName(id), h);
+      wire();
+    }
+    function wire() {
+      var ni = $('#ic-name'); if (ni) ni.oninput = function () { nameVal = ni.value; };
+      var nc = $('#ic-class'); if (nc) nc.onchange = function () { classVal = nc.value; };
+      var np = $('#ic-phone'); if (np) np.oninput = function () { phoneVal = np.value; };
+      $$('[data-ict]').forEach(function (b) {
+        b.onclick = function () { picks.push({ type: b.dataset.ict, issued: today, expires: '' }); render(); };
+      });
+      $$('[data-icrm]').forEach(function (b) {
+        b.onclick = function () { picks.splice(+b.dataset.icrm, 1); render(); };
+      });
+      $$('.ic-iss').forEach(function (i2) { i2.onchange = function () { picks[+i2.dataset.i].issued = i2.value; }; });
+      $$('.ic-exp').forEach(function (i2) { i2.onchange = function () { picks[+i2.dataset.i].expires = i2.value; }; });
+      $('#ic-save').onclick = function () {
+        var name = (nameVal || $('#ic-name').value).trim();
+        var err = $('#ic-err');
+        if (!name) { err.textContent = 'Enter the worker\u2019s name.'; return; }
+        var sv = $('#ic-save');
+        sv.disabled = true; sv.textContent = 'Saving\u2026';
+        post('cs_portal_worker_add', {
+          p_name: name, p_job_id: id,
+          p_classification: (classVal || $('#ic-class').value) || null,
+          p_phone: (phoneVal || $('#ic-phone').value).trim() || null
+        }).then(function (res) {
+          if (res && res.ok === false) throw new Error(res.error || 'save failed');
+          var chain = Promise.resolve();
+          picks.forEach(function (p) {
+            chain = chain.then(function () {
+              return post('cs_portal_add_cert', { p_worker: name, p_cert_type: p.type,
+                p_issued: p.issued || null, p_expires: p.expires || null });
+            }).then(function (r2) { if (r2 && r2.ok === false) throw new Error(r2.error || 'training save failed'); });
+          });
+          return chain;
+        }).then(refreshBundle).then(function () {
+          closeDrawer(); toast('Saved'); openJob(id);
+        }).catch(function (e) {
+          sv.disabled = false; sv.textContent = 'Add to ' + jobName(id);
+          err.textContent = 'Could not save \u2014 ' + (e.message || 'try again');
+        });
+      };
+    }
+    render();
   }
 
   // One internal on-site employee: training + the JHAs they submitted.
@@ -5536,284 +5622,124 @@
      OSHA 300/300A recordkeeping, written programs, insurance. Stored here so
      the answer to "send me your..." is a download, not a search. */
   var docYear = new Date().getFullYear();
+  var DOC_CATS = ['Safety Program', 'Training Records', 'Insurance / COI', 'SDS',
+    'Permits', 'Jobsite Documentation', 'Other'];
+  function docsEdge(body) {
+    var sess = getSession();
+    return fetch(C.creekside.url + '/functions/v1/' + (C.docsFunction || 'company-docs'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ token: sess && sess.session }, body || {}))
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok || (b && b.error)) throw new Error((b && b.error) || 'request failed');
+        return b;
+      });
+    });
+  }
+  function fmtBytes(n) {
+    if (!n && n !== 0) return '\u2014';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
   function pgDocs() {
     var docs = B.docs || [];
-    var folders = B.doc_folders || [];
-    var nowY = new Date().getFullYear();
-    function docYearOf(dd) { return new Date(dd.uploaded_at).getFullYear(); }
-    function filesFor(fkey, item) {
-      return docs.filter(function (dd) { return dd.folder === fkey && dd.item === item && docYearOf(dd) === docYear; });
-    }
-    var docsThisYear = docs.filter(function (dd) { return docYearOf(dd) === docYear; });
-    var reqTotal = 0, reqMissing = 0;
-    folders.forEach(function (fo) {
-      fo.items.forEach(function (it) {
-        if (it.req) { reqTotal++; if (!filesFor(fo.key, it.it).length) reqMissing++; }
-      });
-    });
-
     var html = head('Documents',
-      'Your safety-document filing structure. Required items reflect the company’s configured ' +
-      'compliance and prequalification requirements; recommended items are commonly maintained ' +
-      'for audits, clients and safety administration.');
-
-    var dq = (subQ.docs || '').toLowerCase();
-    html += fbarSearch('doc-q', subQ.docs, 'Search documents by name…');
-
-    // Year cycler — step back through prior years to review or upload what was filed.
-    html += '<div style="display:flex;align-items:center;gap:.5rem;margin:.2rem 0 .8rem">' +
-      '<span class="small muted">Filing year</span>' +
-      '<button class="btn btn-sm" id="dy-prev"' + (docYear <= nowY - 6 ? ' disabled' : '') + '>&lsaquo;</button>' +
-      '<span style="font-weight:700;font-size:15px;min-width:52px;text-align:center">' + docYear + '</span>' +
-      '<button class="btn btn-sm" id="dy-next"' + (docYear >= nowY ? ' disabled' : '') + '>&rsaquo;</button>' +
-      '<span class="small muted" style="margin-left:.4rem">' + docsThisYear.length + ' file' +
-      (docsThisYear.length === 1 ? '' : 's') + ' filed in ' + docYear +
-      (docYear < nowY ? ' · viewing a prior year' : '') + '</span></div>';
-
+      'Company safety documents \u2014 stored privately and available from any signed-in device.',
+      '<button class="btn btn-gold" id="doc-new">Upload document</button>');
+    var fresh = docs.filter(function (d) { return (new Date() - new Date(d.created_at)) < 90 * 86400000; }).length;
     html += '<div class="cards">' +
-      kpi(reqMissing, 'required docs missing', 'of ' + reqTotal + ' configured requirements · ' + docYear,
-          reqMissing ? 'c-bad' : 'c-ok') +
-      kpi(docsThisYear.length, 'files on record', 'filed in ' + docYear, 'c-grey') +
-      kpi(docsThisYear.filter(function (dd) {
-        return (new Date() - new Date(dd.uploaded_at)) < 90 * 86400000; }).length,
-        'updated this quarter', 'fresh enough to hand over', 'c-grey') +
-      kpi('Centralized', 'document storage', 'safety records organized in one place', 'c-grey') +
+      kpi(String(docs.length), 'documents on file', 'stored in private company storage', 'c-grey') +
+      kpi(String(fresh), 'added this quarter', 'recent uploads', 'c-grey') +
       '</div>';
-
-    var shownFolders = 0;
-    folders.forEach(function (fo) {
-      var items = dq ? fo.items.filter(function (it) {
-        if (it.it.toLowerCase().indexOf(dq) !== -1) return true;
-        return filesFor(fo.key, it.it).some(function (f) { return (f.name || '').toLowerCase().indexOf(dq) !== -1; });
-      }) : fo.items;
-      if (dq && !items.length) return;
-      shownFolders++;
-      var rows = items.map(function (it) {
-        var files = filesFor(fo.key, it.it);
-        var latest = files[0];
-        var stat;
-        if (files.length) {
-          stat = '<span class="t-main">' + esc(latest.name) + '</span>' +
-            '<div class="t-sub">' + esc(fmtDate(latest.uploaded_at)) +
-            (files.length > 1 ? ' · ' + files.length + ' versions' : '') + '</div>';
-        } else {
-          stat = it.req ? '<span class="c-bad">Missing</span>'
-                        : '<span class="muted">—</span>';
-        }
+    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Document' }, { t: 'Category' }, { t: 'Uploaded' }, { t: 'Size', r: 1 }, { t: '', r: 1 }],
+      docs.map(function (d) {
         return '<tr>' +
-          (latest ? selCell(latest.id) : '<td class="selcol"><input type="checkbox" class="msel" disabled></td>') +
-          '<td><span class="t-main" style="font-weight:500">' + esc(it.it) + '</span></td>' +
-          '<td>' + (it.req ? pill('p-bad', 'Required') : pill('p-grey', 'Recommended')) + '</td>' +
-          '<td>' + stat + '</td>' +
-          '<td class="r">' +
-            (latest ? '<button class="btn btn-sm" data-dl="' + esc(latest.id) + '">Download</button> ' : '') +
-            '<button class="btn btn-sm" data-up="' + esc(fo.key) + '|' + esc(it.it) + '">Upload</button>' +
-          '</td></tr>';
-      });
-      var miss = fo.items.filter(function (it) {
-        return it.req && !filesFor(fo.key, it.it).length; }).length;
-      html += '<div class="panel"><div class="panel-hd"><div><h3>' + esc(fo.name) + '</h3>' +
-        '<div class="sub">' + docs.filter(function (dd) { return dd.folder === fo.key; }).length +
-        ' files' + (miss ? ' · <span style="color:var(--fail);font-weight:600">' + miss +
-        ' required missing</span>' : ' · complete on required items') + '</div></div></div>' +
-        '<div class="panel-bd flush">' + tableWrap(
-          [{ t: '' }, { t: 'Document' }, { t: 'Priority' }, { t: 'On file' }, { t: '', r: 1 }],
-          rows) + '</div></div>';
-    });
-    if (dq && !shownFolders) html += '<div class="empty">No documents match “' + esc(dq) + '”.</div>';
-
-    // Everything in one file — GC / auditor-ready compliance packages.
-    // (Hidden while searching so results stay focused on the matching documents.)
-    if (!dq) {
-    var dir = (B.people || []).filter(function (p) { return /Director/.test(p.title); })[0];
-    var attest = dir ? dir.name + ', ' + dir.title : 'Safety Director';
-    var rptBy = (C.brand || (C.contractor || 'Company') + ' Safety');
-    function reportRow(title, sub, key) {
-      return '<div class="kv" style="padding:10px 0">' +
-        '<span class="k" style="color:var(--ink)"><span class="t-main">' + esc(title) + '</span>' +
-        '<div class="small muted">' + esc(sub) + '</div></span>' +
-        '<span style="display:flex;gap:6px;flex:0 0 auto">' +
-          '<button class="btn btn-sm" data-rpt="open|' + key + '">Open</button>' +
-          '<button class="btn btn-gold btn-sm" data-rpt="dl|' + key + '">Download PDF</button>' +
-        '</span></div>';
-    }
-    html += '<div class="panel"><div class="panel-hd"><div><h3>Everything in one file</h3>' +
-      '<div class="sub">Every inspection, finding and certification — one PDF for your GC or auditor.</div></div>' +
-      '<button class="btn btn-gold" id="doc-all">Download all documentation</button></div>' +
-      '<div class="panel-bd">' +
-        reportRow(docYear + ' Annual Safety Compliance Report',
-          'Prepared by ' + rptBy + ' · attested by ' + attest, 'annual') +
-        reportRow((docYear - 2) + '–' + docYear + ' 3-Year Safety Compliance Report',
-          'Rolling three-year record for prequalification and bids', 'three') +
+          '<td><span class="t-main" style="overflow-wrap:anywhere">' + esc(d.filename) + '</span></td>' +
+          '<td>' + esc(d.category || '\u2014') + '</td>' +
+          '<td>' + esc(fmtWhen(d.created_at)) + '</td>' +
+          '<td class="r num">' + fmtBytes(d.size_bytes) + '</td>' +
+          '<td class="r" style="white-space:nowrap">' +
+            '<button class="btn btn-sm" data-docview2="' + esc(d.id) + '">View</button> ' +
+            '<button class="btn btn-sm" data-docdl="' + esc(d.id) + '">Download</button> ' +
+            '<button class="linklike" data-docdel="' + esc(d.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
+      }), 'No documents yet. Upload the first one \u2014 it will be here from any device, any session.') +
       '</div></div>';
-
-    // CCS annual safety audit certification — the yearly nonprofit audit that
-    // keeps the company qualified to bid large / prequalified work.
-    var ccs = B.ccs || {};
-    var vt = ccs.valid_through ? new Date(ccs.valid_through + 'T12:00:00') : null;
-    var vdays = vt ? Math.round((vt - new Date()) / 86400000) : null;
-    var cstat = vdays === null ? pill('p-grey', 'Not on file')
-      : vdays < 0 ? pill('p-bad', 'Expired')
-      : vdays <= 60 ? pill('p-warn', 'Expires in ' + vdays + ' days') : pill('p-ok', 'Current');
-    html += '<div class="panel"><div class="panel-hd"><div><h3>Annual Safety Audit — Demo</h3>' +
-      '<div class="sub">Example annual safety-audit record used to demonstrate certification tracking and audit-package exports.</div></div>' +
-      pill('p-grey', 'Sample') + '</div><div class="panel-bd">' +
-      kv('Audit type', 'Demo / Example') +
-      kv('Last audit', ccs.last_audit ? fmtDate(ccs.last_audit) : '—') +
-      kv('Valid through', vt ? fmtDate(ccs.valid_through) : '—', vdays !== null && vdays < 0) +
-      kv('Next audit due', vt ? fmtDate(ccs.valid_through) : '—') +
-      '<div class="kv" style="border-bottom:none"><span class="k">Certificate on file</span>' +
-      '<span class="v" style="display:flex;gap:8px;align-items:center">' +
-        (ccs.file ? '<span class="t-main">' + esc(ccs.file.name) + '</span>' : '<span class="muted">None</span>') +
-      '</span></div>' +
-      '<button class="btn btn-gold btn-sm" id="ccs-dl" style="margin-top:6px">Export audit package</button>' +
-      '<div class="small muted" style="margin-top:8px">Compiles the safety records commonly needed for an annual audit or prequalification review.</div>' +
-      '</div></div>';
-    } // end if (!dq)
-
     paint(html);
-    wireSearch('doc-q', function (v) { subQ.docs = v; pgDocs(); });
-    var dp = $('#dy-prev'); if (dp) dp.onclick = function () { if (docYear > nowY - 6) { docYear--; pgDocs(); } };
-    var dn = $('#dy-next'); if (dn) dn.onclick = function () { if (docYear < nowY) { docYear++; pgDocs(); } };
-    var docAll = $('#doc-all'); if (docAll) docAll.onclick = function () { complianceReport('all'); };
-    $$('[data-rpt]').forEach(function (b) {
-      b.onclick = function () { complianceReport(b.dataset.rpt.split('|')[1]); };
-    });
-    massInit({ label: 'Download selected', run: function (ids) {
-      combinedPrint('Document Package', ids.map(function (id) {
-        var dd = docs.filter(function (x) { return x.id === id; })[0];
-        return { title: dd.name, sub: dd.item + ' · uploaded ' + fmtDate(dd.uploaded_at),
-          body: '<div class="row"><span>Folder</span><span>' +
-            esc((folders.filter(function (fo) { return fo.key === dd.folder; })[0] || {}).name || '') +
-            '</span></div><div class="row"><span>Size</span><span>' +
-            Math.round(dd.size / 1024) + ' KB</span></div>' +
-            '<div style="font-size:11.5px;color:#6b7280;margin-top:8px">Demo build: this sheet ' +
-            'stands in for the file. The live build zips the real files.</div>' };
-      }) );
-    } });
-    $$('[data-dl]').forEach(function (b) {
-      b.onclick = function () {
-        toast('Demo build — files download from private Storage in the live version.');
-      };
-    });
-    $$('[data-up]').forEach(function (b) {
-      b.onclick = function () {
-        var pp = b.dataset.up.split('|');
-        openDocUpload(pp[0], pp[1], docYear);
-      };
-    });
-    var ccsDl = $('#ccs-dl');
-    if (ccsDl) ccsDl.onclick = function () {
-      var recordables = (B.incidents || []).filter(function (i) { return i.osha_recordable; }).length;
-      var openCA = (B.findings || []).filter(function (f) { return f.status === 'open'; }).length;
-      var nearMiss = (B.near_misses || []).length;
-      var certsAll = B.certs || [], expired = certsAll.filter(function (c) { return certDays(c.expires) < 0; }).length;
-      var trainPct = certsAll.length ? Math.round((certsAll.length - expired) / certsAll.length * 100) : 100;
-      var scAll = B.scorecard || [], blocked = scAll.filter(function (x) { return !x.cleared; }).length;
-      var body = '<div class="sec">Company</div>' +
-        '<div class="row"><span>Company</span><span>' + esc((B.company && B.company.name) || C.contractor || '') + '</span></div>' +
-        '<div class="sec">Safety performance — trailing 12 months</div>' +
-        '<div class="row"><span>TRIR</span><span>0.94</span></div>' +
-        '<div class="row"><span>DART rate</span><span>0.62</span></div>' +
-        '<div class="row"><span>EMR</span><span>0.89</span></div>' +
-        '<div class="row"><span>Recordables YTD</span><span>' + recordables + '</span></div>' +
-        '<div class="sec">Program standing</div>' +
-        '<div class="row"><span>Open corrective actions</span><span>' + openCA + '</span></div>' +
-        '<div class="row"><span>Near-miss reports (30 days)</span><span>' + nearMiss + '</span></div>' +
-        '<div class="row"><span>Training compliance</span><span>' + trainPct + '%</span></div>' +
-        '<div class="row"><span>Subcontractors cleared</span><span>' + (scAll.length - blocked) + ' of ' + scAll.length + '</span></div>' +
-        '<div class="sec">Filing cabinet</div>' +
-        (B.doc_folders || []).map(function (fo) {
-          return '<div class="row"><span>' + esc(fo.name) + '</span><span>' + (B.docs || []).filter(function (dd) { return dd.folder === fo.key; }).length + ' files</span></div>'; }).join('') +
-        '<div style="font-size:11.5px;color:#6b7280;margin-top:10px">Compiles commonly requested safety records into an export package for review. Demo export — it does not submit anything to any external organization.</div>';
-      printRecord('Safety Audit — Demo Export Package', (B.company && B.company.name) || C.contractor || '', body);
-    };
-  }
-
-  /* One PDF that stands in for the whole program — inspections, findings, certs,
-     incidents and the filing cabinet, over a chosen period. */
-  function complianceReport(key) {
-    var nowY = new Date().getFullYear();
-    var since, until, title;
-    if (key === 'three') { since = new Date((docYear - 2) + '-01-01'); until = new Date(docYear + '-12-31T23:59:59');
-      title = (docYear - 2) + '–' + docYear + ' 3-Year Safety Compliance Report'; }
-    else if (key === 'all') { since = new Date('2000-01-01'); until = new Date(nowY + '-12-31T23:59:59');
-      title = 'Complete Safety Documentation Package'; }
-    else { since = new Date(docYear + '-01-01'); until = new Date(docYear + '-12-31T23:59:59');
-      title = docYear + ' Annual Safety Compliance Report'; }
-    function inRange(dt) { var x = new Date(dt); return x >= since && x <= until; }
-    function rw(k, v) { return '<div class="row"><span>' + esc(k) + '</span><span>' + esc(v) + '</span></div>'; }
-
-    var reps = (B.reports || []).filter(function (r) { return inRange(r.report_date); });
-    var crew = CREW.filter(function (r) { return inRange(r.inspection_date); });
-    var finds = (B.findings || []).filter(function (f) { return inRange(f.date); });
-    var findsOpen = finds.filter(function (f) { return f.status === 'open'; }).length;
-    var certs = B.certs || [];
-    var certsExp = certs.filter(function (c) { return certDays(c.expires) < 0; }).length;
-    var incs = (B.incidents || []).filter(function (i) { return inRange(i.date); });
-    var rec = incs.filter(function (i) { return i.osha_recordable; }).length;
-    var talks = (B.talks || []).filter(function (t) { return inRange(t.date); });
-
-    var dir = (B.people || []).filter(function (p) { return /Director/.test(p.title); })[0];
-    var attest = dir ? dir.name + ', ' + dir.title : 'Safety Director';
-    var rptBy = (C.brand || (C.contractor || 'Company') + ' Safety');
-
-    var body = '<div class="sec">Program summary</div>' +
-      rw('Site safety reports', reps.length) +
-      rw('Crew inspections', crew.length) +
-      rw('Findings logged', finds.length + ' (' + findsOpen + ' still open)') +
-      rw('Certifications on file', certs.length + ' (' + certsExp + ' expired)') +
-      rw('Incidents', incs.length + ' (' + rec + ' OSHA recordable)') +
-      rw('Toolbox Talks', talks.length) +
-      '<div class="sec">Filing cabinet</div>' +
-      (B.doc_folders || []).map(function (fo) {
-        return rw(fo.name, (B.docs || []).filter(function (dd) { return dd.folder === fo.key; }).length + ' files');
-      }).join('') +
-      '<div style="font-size:11.5px;color:#6b7280;margin-top:10px">Prepared by ' + esc(rptBy) +
-      ' · attested by ' + esc(attest) + '. Demo build — the live version compiles the underlying ' +
-      'PDFs into one downloadable file.</div>';
-    printRecord(title, 'Reporting period ending ' +
-      until.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), body);
-  }
-
-  function openDocUpload(fkey, item, year) {
-    var nowY = new Date().getFullYear();
-    var fileYear = year || nowY;
-    var folders = B.doc_folders || [];
-    var h = '<div class="f"><label for="du-folder">Folder</label><select id="du-folder">' +
-      folders.map(function (fo) {
-        return '<option value="' + esc(fo.key) + '"' + (fo.key === fkey ? ' selected' : '') + '>' +
-          esc(fo.name) + '</option>';
-      }).join('') + '</select></div>' +
-      '<div class="f"><label for="du-item">Document type</label><select id="du-item"></select></div>' +
-      '<div class="f"><label for="du-name">File name</label>' +
-      '<input type="text" id="du-name" placeholder="filename.pdf"></div>' +
-      '<p class="small" id="du-err" style="color:var(--fail);min-height:1em"></p>' +
-      '<button class="btn btn-gold" id="du-save" style="width:100%;justify-content:center">Upload</button>' +
-      '<p class="small muted" style="margin-top:.7rem">Demo build: records the entry. The live ' +
-      'version stores the file itself in private Storage — never on a public URL.</p>';
-    drawer('Upload document', 'Filed under ' + fileYear +
-      (fileYear !== nowY ? ' (back-filing a prior year)' : ''), h);
-    function fillItems() {
-      var fo = folders.filter(function (x) { return x.key === $('#du-folder').value; })[0];
-      $('#du-item').innerHTML = (fo ? fo.items : []).map(function (it) {
-        return '<option' + (it.it === item ? ' selected' : '') + '>' + esc(it.it) + '</option>';
-      }).join('');
+    var nb = $('#doc-new'); if (nb) nb.onclick = openDocUpload;
+    function docBlob(id) {
+      return docsEdge({ action: 'url', id: id }).then(function (j) {
+        return fetch(j.url).then(function (r2) { return r2.blob(); }).then(function (b2) {
+          return { blob: b2, filename: j.filename || 'document' };
+        });
+      });
     }
-    fillItems();
-    $('#du-folder').onchange = fillItems;
-    $('#du-save').onclick = pilotHold('Document uploads'); var __held_du_save = function () {
-      var nm = $('#du-name').value.trim();
-      if (!nm) { $('#du-err').textContent = 'Give the file a name.'; return; }
-      // Stamp with today when filing the current year, or mid-year when back-filing.
-      var stamp = fileYear === nowY ? new Date().toISOString() : fileYear + '-06-15T12:00:00.000Z';
-      (B.docs || []).unshift({ id: 'd' + Date.now(), folder: $('#du-folder').value,
-        item: $('#du-item').value, name: nm, uploaded_at: stamp, size: 204800 });
-      closeDrawer(); toast('Filed under ' + $('#du-item').value + ' · ' + fileYear);
-      pgDocs();
-    };
+    $$('[data-docview2]').forEach(function (b) {
+      b.onclick = function () {
+        var w = window.open('', '_blank');   // in the click, popup-safe
+        docBlob(b.dataset.docview2).then(function (res) {
+          var u = URL.createObjectURL(res.blob);
+          if (w && !w.closed) w.location = u; else window.open(u, '_blank', 'noopener');
+        }).catch(function (e) { if (w && !w.closed) w.close(); toast('Could not open \u2014 ' + e.message); });
+      };
+    });
+    $$('[data-docdl]').forEach(function (b) {
+      b.onclick = function () {
+        docBlob(b.dataset.docdl).then(function (res) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(res.blob); a.download = res.filename;
+          document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
+        }).catch(function (e) { toast('Could not download \u2014 ' + e.message); });
+      };
+    });
+    $$('[data-docdel]').forEach(function (b) {
+      b.onclick = function () {
+        var d = (B.docs || []).filter(function (x) { return x.id === b.dataset.docdel; })[0];
+        if (!confirm('Delete "' + (d ? d.filename : 'this document') + '" permanently?')) return;
+        docsEdge({ action: 'delete', id: b.dataset.docdel }).then(refreshBundle).then(function () {
+          toast('Deleted'); pgDocs();
+        }).catch(function (e) { toast('Could not delete \u2014 ' + e.message); });
+      };
+    });
   }
 
+  function openDocUpload() {
+    var h = '<div class="f"><label for="du-file">File <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 PDF, image, Office or CSV \u00b7 15 MB max</span></label>' +
+        '<input type="file" id="du-file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv"></div>' +
+      '<div class="f"><label for="du-cat">Category</label><select id="du-cat">' +
+        DOC_CATS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div class="f"><label for="du-title">Document name <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 optional, defaults to the file name</span></label>' +
+        '<input type="text" id="du-title" placeholder=""></div>' +
+      '<p class="small" id="du-err" style="color:var(--fail);min-height:1em"></p>' +
+      '<button class="btn btn-gold" id="du-save" style="width:100%;justify-content:center">Upload</button>';
+    drawer('Upload document', 'Stored privately \u2014 never on a public URL', h);
+    $('#du-save').onclick = function () {
+      var f = ($('#du-file').files || [])[0];
+      var err = $('#du-err');
+      if (!f) { err.textContent = 'Choose a file.'; return; }
+      if (f.size > 15 * 1024 * 1024) { err.textContent = 'That file is over the 15 MB limit.'; return; }
+      var sv = $('#du-save');
+      sv.disabled = true; sv.textContent = 'Uploading\u2026';
+      var rd = new FileReader();
+      rd.onerror = function () { sv.disabled = false; sv.textContent = 'Upload'; err.textContent = 'Could not read the file.'; };
+      rd.onload = function () {
+        var b64 = String(rd.result).split(',')[1] || '';
+        docsEdge({ action: 'upload',
+          filename: ($('#du-title').value.trim() || f.name),
+          category: $('#du-cat').value, mime: f.type || 'application/octet-stream',
+          data_base64: b64
+        }).then(refreshBundle).then(function () {
+          closeDrawer(); toast('Saved'); pgDocs();
+        }).catch(function (e) {
+          sv.disabled = false; sv.textContent = 'Upload';
+          err.textContent = 'Could not upload \u2014 ' + (e.message || 'try again');
+        });
+      };
+      rd.readAsDataURL(f);
+    };
+  }
 
   /* ====================== ORIENTATION =================================== */
   /* "Who may work here today." The roster is derived from data the system
@@ -7129,7 +7055,9 @@
       post('cs_portal_incidents', { p_token: sess.session }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
+      hydrateWorkers();
       CREW = crewFromField(res[1]);
       $('#side-co').textContent = (B.company && B.company.name) || C.contractor || '';
       var want = (location.hash || '').replace('#', '');

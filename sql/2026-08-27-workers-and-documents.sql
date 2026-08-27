@@ -1,0 +1,22 @@
+-- ============================================================================
+-- Safety roster + real Documents — APPLIED TO PROD 2026-08-27
+-- (migration: greiner_workers_and_documents; edge: company-docs v10)
+--
+-- cs_workers: one authoritative worker identity per company (name, job_id,
+--   classification, optional phone/email). RLS on, RPC-only. Unique on
+--   (company_id, lower(name)) — imports and UI adds are idempotent.
+-- cs_portal_worker_add(token, name, job_id, classification, phone, email):
+--   full scope; upsert-by-name that never blanks existing values.
+-- cs_portal_doc_path / cs_portal_doc_authorize: full-scope brokers for the
+--   private cs-company-docs bucket (bucket created private).
+-- cs_portal_bundle: adds 'workers'.
+-- Roster import: sql/2026-08-27-roster-import.sql — 130 workers from the
+--   Greiner manpower workbook "By name list (1).xlsb" sheet 8.20.26, C###
+--   construction jobs only (BIM/Fab Shop/Service/PM/SHOP/OFFICE/ESTIMATOR/
+--   FLOAT rows ignored). All 9 jobs matched existing cs_jobs rows — none
+--   created, nothing invented. Portal users untouched.
+-- company-docs edge v10: actions upload (15MB, PDF/image/Office/CSV),
+--   url|sign (signed URL; legacy path form company-guarded), delete
+--   (metadata + storage object). Full-scope portal token required for all.
+-- Test cert rows (worker 'Test', 4 rows from manual QA) deleted.
+-- ============================================================================
