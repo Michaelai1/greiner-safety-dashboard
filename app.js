@@ -1039,6 +1039,7 @@
       var dl = $('#cert-names');
       dl.innerHTML = '';
       var seen = {};
+      ((STATE.bundle && STATE.bundle.workers) || []).forEach(function (w2) { if (w2.name) seen[w2.name] = 1; });
       ((STATE.bundle && STATE.bundle.certs) || []).forEach(function (c2) { seen[c2.worker] = 1; });
       ((STATE.bundle && STATE.bundle.jobs) || []).forEach(function (j) {
         if (j.foreman_name) seen[j.foreman_name] = 1;
@@ -1344,19 +1345,50 @@
     });
   }
 
+  /* Training roster: EVERY employee from cs_workers, plus any legacy cert
+     holder not on the roster. A worker with no training shows neutrally —
+     an empty record, not an implied violation. */
+  var CERTQ = '';
   function renderCerts() {
     var certs = STATE.bundle.certs || [];
+    var workers = STATE.bundle.workers || [];
+    var jobs = STATE.bundle.jobs || [];
     var w = $('#list-certs'); w.innerHTML = '';
     var byWorker = {};
     certs.forEach(function (c) { (byWorker[c.worker] = byWorker[c.worker] || []).push(c); });
-    var names = Object.keys(byWorker).sort();
-    $('#n-certs').textContent = names.length ? names.length + ' workers' : '';
+    var byName = {};
+    workers.forEach(function (x) { if (x.name) byName[x.name] = x; });
+    var names = Object.keys(byName);
+    Object.keys(byWorker).forEach(function (n) { if (!byName[n]) names.push(n); });
+    names.sort();
+    function jobLbl(id) {
+      var j = jobs.filter(function (x) { return x.id === id; })[0];
+      return j ? (j.job_number || j.name || '') : '';
+    }
+    var cq = $('#cert-q');
+    if (cq) {
+      cq.oninput = function () { CERTQ = cq.value; renderCerts(); };
+      if (cq.value !== CERTQ) cq.value = CERTQ;
+    }
+    var q = CERTQ.trim().toLowerCase();
+    var shown = !q ? names : names.filter(function (n) {
+      var wk = byName[n] || {};
+      return (n + ' ' + (wk.classification || '') + ' ' + jobLbl(wk.job_id))
+        .toLowerCase().indexOf(q) !== -1;
+    });
+    $('#n-certs').textContent = names.length
+      ? (q ? shown.length + ' of ' + names.length : names.length + ' employees') : '';
     if (!names.length) {
-      w.appendChild(el('div', 'empty', 'No certifications on file yet.'));
+      w.appendChild(el('div', 'empty', 'No employees on the roster yet.'));
       return;
     }
-    names.forEach(function (name, i) {
-      var list = byWorker[name];
+    if (!shown.length) {
+      w.appendChild(el('div', 'empty', 'No employees match your search.'));
+      return;
+    }
+    shown.forEach(function (name, i) {
+      var wk = byName[name];
+      var list = byWorker[name] || [];
       var soon = list.filter(function (c) {
         var d = daysUntil(c.expires); return d !== null && d <= 60;
       }).length;
@@ -1367,7 +1399,13 @@
       var row = el('div', 'row');
       var left = el('div');
       left.appendChild(el('div', 'card-t', name));
-      left.appendChild(el('div', 'card-s', list.length + ' certification' + (list.length === 1 ? '' : 's')));
+      var bits = [];
+      if (wk && wk.classification) bits.push(wk.classification);
+      if (wk && wk.job_id && jobLbl(wk.job_id)) bits.push(jobLbl(wk.job_id));
+      bits.push(list.length
+        ? list.length + ' training record' + (list.length === 1 ? '' : 's')
+        : 'No training records');
+      left.appendChild(el('div', 'card-s', bits.join(' · ')));
       row.appendChild(left);
       var right = el('div', 'row');
       if (soon) right.appendChild(el('span', 'pill p-warn', soon + ' expiring'));
@@ -1375,6 +1413,11 @@
       row.appendChild(right);
       btn.appendChild(row);
       var body = el('div', 'acc-body hide'); body.id = 'cert-' + i;
+      if (!list.length) {
+        var none = el('div', 'd', 'No training records on file yet. Use “Add training / certification” below to add one.');
+        none.style.cssText = 'padding:.6rem .2rem;color:var(--grey)';
+        body.appendChild(none);
+      }
       list.forEach(function (c) {
         var d = daysUntil(c.expires);
         var isSoon = d !== null && d <= 60;

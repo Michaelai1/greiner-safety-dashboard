@@ -74,7 +74,7 @@
   }
 
   /* ---------- formatting ------------------------------------------------- */
-  var B = null, CREW = [];
+  var B = null, CREW = [], FIELDRAW = [];
 
   /* Real backend returns a lean bundle (company/jobs/reports/certs/stats/docs).
      Guarantee every key the UI reads exists so modules with no backend render
@@ -169,7 +169,14 @@
      report_date is the UTC calendar day at insert and reads one day ahead during
      Indiana evenings. Rows without submitted_at fall back to report_date. */
   function repDay(r) { return r.submitted_at ? tzDayStr(r.submitted_at) : (r.report_date || ''); }
-  function repDateDisp(r) { return r.submitted_at ? tzDate(r.submitted_at) : repDateDisp(r); }
+  function repDateDisp(r) { return r.submitted_at ? tzDate(r.submitted_at) : fmtDate(r.report_date); }
+  function addDays(d, n) {
+    if (!d) return '';
+    var x = new Date(d + 'T12:00:00');
+    if (isNaN(x)) return '';
+    x.setDate(x.getDate() + n);
+    return x.toISOString().slice(0, 10);
+  }
   function fmtDate(d) {
     if (!d) return '—';
     if (String(d).length <= 10) {
@@ -544,7 +551,7 @@
     var sch = B.schedules || [], log = B.send_log || [];
     var right = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
       subtabs(autoTab, [['active', 'Automations'], ['log', 'Send Log'], ['archive', 'Archive']], 'au') +
-      (autoTab === 'active' ? '<button class="btn btn-gold" id="auto-new-btn">New automation</button>' : '') + '</div>';
+      '</div>';
     var html = head('Automations',
       'Schedule and manage safety forms, toolbox talks, orientations and permits sent to the field.', right);
 
@@ -684,7 +691,6 @@
 
     paint(html);
     wireSubtabs('au', function (v) { autoTab = v; pgAutomations(); });
-    var nb = $('#auto-new-btn'); if (nb) nb.onclick = function () { openAutomationForm(null); };
     $$('[data-cat]').forEach(function (b) { b.onclick = function () { autoCat = b.dataset.cat; pgAutomations(); }; });
     $$('[data-auto]').forEach(function (tr) { tr.onclick = function (e) {
       if (e.target.closest('[data-unarch]')) return;
@@ -2126,9 +2132,7 @@
   function pgIncidents() {
     var right = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
       subtabs(incTab, [['incidents', 'Incidents'], ['reg', 'Regulatory Visits']], 'ic') +
-      (incTab === 'incidents'
-        ? '<button class="btn btn-gold" id="new-inc">Report incident</button>'
-        : '<button class="btn btn-gold" id="new-reg">Log visit</button>') + '</div>';
+      '</div>';
     if (incTab === 'reg') { pgRegVisits(right); return; }
     // Near Misses have their own dedicated module — exclude near-miss-classified
     // records from Incidents (display/scope only; the records stay in the data).
@@ -2212,8 +2216,6 @@
     wireSearch('inc-q', function (v) { subQ.incMain = v; pgIncidents(); });
     function incBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { incF[key] = e.value; pgIncidents(); }; }
     incBind('inc-job', 'job'); incBind('inc-cls', 'cls'); incBind('inc-status', 'status'); incBind('inc-range', 'range');
-    var nb = $('#new-inc');
-    if (nb) nb.onclick = openNewIncident;
   }
 
   /* Regulatory visits: a log, not a module. The day OSHA shows up is rare,
@@ -2457,8 +2459,7 @@
     var high = all.filter(function (n) { return n.severity === 'high'; }).length;
     var html = head('Near Misses',
       'Close calls with no injury — the early warning. Reported from the field, reviewed and ' +
-      'closed here. A near miss caught today is the incident that never happens.',
-      '<button class="btn btn-gold" id="new-nm">Report near miss</button>');
+      'closed here. A near miss caught today is the incident that never happens.');
     html += '<div class="cards">' +
       kpi(all.length, 'reported this year', 'all sites', 'c-grey') +
       kpi(open, 'open / under review', open ? 'not yet closed' : 'all closed', open ? 'c-warn' : 'c-ok') +
@@ -2514,7 +2515,6 @@
     wireSearch('nm-q', function (v) { subQ.nearMain = v; pgNearMiss(); });
     function nmBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { nmF[key] = e.value; pgNearMiss(); }; }
     nmBind('nm-job', 'job'); nmBind('nm-sev', 'sev'); nmBind('nm-status', 'status'); nmBind('nm-range', 'range');
-    var nb = $('#new-nm'); if (nb) nb.onclick = openNewNearMiss;
     $$('[data-nm]').forEach(function (tr) { tr.onclick = function () { openNearMiss(tr.dataset.nm); }; });
   }
 
@@ -2663,6 +2663,7 @@
       B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       hydrateWorkers();
+      FIELDRAW = res[1] || [];
       CREW = crewFromField(res[1]);
       renderNav();
       return B;
@@ -2804,7 +2805,7 @@
       html += '<div class="panel"><div class="panel-hd"><div><h3>Scorecard</h3>' +
         '<div class="sub">The four gate dots are the prequal gates: Written Safety Program · EMR · ' +
         'Crew Training · Competent Persons. The count shows how many of the four pass.</div></div>' +
-        '<button class="btn btn-sm" id="sub-add-new">+ Add subcontractor</button></div>' +
+        '</div>' +
         '<div class="panel-bd flush">' +
         tableWrap(SUB_COLS, subScoreRows(subAttentionSort(sc))) + '</div></div>';
     } else if (subsTab === 'employees') {
@@ -2827,7 +2828,6 @@
         kpi(noneN, 'no training on file', noneN ? 'cannot verify' : 'all documented', noneN ? 'c-bad' : 'c-ok') +
         '</div>';
 
-      html += '<div style="margin-bottom:12px"><button class="btn btn-sm" id="emp-add-new">+ Add employee</button></div>';
 
       // filter controls
       var subOpts = sc.map(function (x) {
@@ -2905,7 +2905,6 @@
     paint(html);
     wireSubtabs('st', function (v) { subsTab = v; pgSubs(); });
     var _addSub = $('#sub-add-new'); if (_addSub) _addSub.onclick = function () { openSubForm(null); };
-    var _addEmp = $('#emp-add-new'); if (_addEmp) _addEmp.onclick = function () { openEmpForm(subEmpF.sub || '', null); };
     if (subsTab === 'employees') {
       function seBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { subEmpF[key] = e.value; pgSubs(); }; }
       seBind('se-q', 'q'); seBind('se-sub', 'sub'); seBind('se-job', 'job'); seBind('se-status', 'status');
@@ -3585,7 +3584,8 @@
 
   function pgObs() {
     if (obsTab === 'template') obsTab = 'reports';
-    var right = subtabs(obsTab, [['reports', 'Safety Inspections'], ['ca', 'Corrective actions'], ['archive', 'Archive']], 'ot');
+    obsTab = 'reports';
+    var right = '';
     var html;
     if (obsTab === 'reports') {
       html = head('Safety Inspections',
@@ -3633,108 +3633,15 @@
           '<td>' + esc(r.inspector_name) + '</td>' +
           '<td class="r">' + (r.defect_count
             ? pill('p-warn', r.defect_count + ' flagged') : pill('p-ok', 'Clear')) + '</td>' +
-          '<td class="r"><button class="btn btn-sm" data-reparch="' + esc(r.id) + '">Archive</button></td></tr>';
+          '</tr>';
       });
       html += '<div class="panel"><div class="panel-hd"><div><h3>Reports</h3>' +
         '<div class="sub">' + reps.length + ' of ' + allReps.length + ' shown</div></div></div>' +
         '<div class="panel-bd flush">' + tableWrap(
-        [{ t: '' }, { t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: 'Result', r: 1 }, { t: '', r: 1 }],
+        [{ t: '' }, { t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: 'Result', r: 1 }],
         rows, 'No reports match your filters.') + '</div></div>';
-    } else if (obsTab === 'ca') {
-      html = head('Safety Inspections',
-        'Every corrective action across reports, findings and incidents — who owns it ' +
-        'and whether it is closed.', right);
-      var casAll = allCorrective();
-      var openN = casAll.filter(function (c) { return c.status === 'open'; }).length;
-      var overdueN = casAll.filter(caOverdue).length;   // open + due date in the past
-      html += '<div class="cards">' +
-        kpi(casAll.length, 'corrective actions', 'all sources', 'c-grey') +
-        kpi(openN, 'still open', 'requires closeout', openN ? 'c-warn' : 'c-ok') +
-        kpi(overdueN, 'overdue', 'past due date', overdueN ? 'c-bad' : 'c-ok') +
-        '</div>';
-      // filters: search (existing) + jobsite + source + status, populated from the data
-      var caJobSet = {}, caSrcSet = {};
-      casAll.forEach(function (c) { if (c.job) caJobSet[c.job] = 1; if (c.src) caSrcSet[c.src] = 1; });
-      var caJobOpts = Object.keys(caJobSet).map(function (id) {
-        return '<option value="' + esc(id) + '"' + (obsCaF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
-      var caSrcOpts = Object.keys(caSrcSet).sort().map(function (nm) {
-        return '<option value="' + esc(nm) + '"' + (obsCaF.src === nm ? ' selected' : '') + '>' + esc(nm) + '</option>'; }).join('');
-      var caStatOpts = [['', 'Any status'], ['open', 'Open'], ['closed', 'Closed / Verified']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (obsCaF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-      html += '<div class="fbar">' +
-        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-          '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-          '<input id="obsca-q" placeholder="Search corrective actions…" value="' + esc(subQ.obsCa || '') + '"></div>' +
-        '<select id="obsca-job"><option value="">All jobsites</option>' + caJobOpts + '</select>' +
-        '<select id="obsca-src"><option value="">Any source</option>' + caSrcOpts + '</select>' +
-        '<select id="obsca-status">' + caStatOpts + '</select></div>';
-      var caq = (subQ.obsCa || '').toLowerCase();
-      var cas = casAll.filter(function (c) {
-        if (obsCaF.job && c.job !== obsCaF.job) return false;
-        if (obsCaF.src && c.src !== obsCaF.src) return false;
-        if (obsCaF.status && c.status !== obsCaF.status) return false;
-        return has((c.text || '') + ' ' + (c.owner || '') + ' ' + (c.src || '') + ' ' + jobName(c.job), caq); });
-      // Priority: overdue-open → open by nearest due → other open → closed (recent due first).
-      cas.sort(function (a, b) {
-        var ao = a.status === 'open', bo = b.status === 'open';
-        if (ao !== bo) return ao ? -1 : 1;
-        if (ao) {
-          var aov = caOverdue(a), bov = caOverdue(b);
-          if (aov !== bov) return aov ? -1 : 1;
-          var ad = a.due ? new Date(a.due) : new Date(8640000000000000);
-          var bd = b.due ? new Date(b.due) : new Date(8640000000000000);
-          return ad - bd;
-        }
-        return new Date(b.due || 0) - new Date(a.due || 0);
-      });
-      var rows2 = cas.map(function (c) {
-        return '<tr class="click" data-editca="' + esc(c.ref) + '">' +
-          '<td><span class="t-main">' + esc(c.text || '(no action recorded yet — click to add)') + '</span></td>' +
-          '<td>' + esc(c.src) + '</td>' +
-          '<td>' + esc(c.owner || '—') + '</td>' +
-          '<td>' + esc(jobName(c.job)) + '</td>' +
-          '<td>' + esc(fmtDate(c.due)) + '</td>' +
-          '<td class="r num">' + (c.photos ? '📷 ' + c.photos : '—') + '</td>' +
-          '<td class="r">' + (c.status === 'open' ? pill('p-warn', 'Open') : pill('p-ok', 'Closed')) +
-          '</td></tr>';
-      });
-      html += '<div class="panel"><div class="panel-hd"><div><h3>All corrective actions</h3>' +
-        '<div class="sub">Open corrective actions appear first, prioritized by due date.</div>' +
-        '</div></div><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Corrective action' }, { t: 'Source' }, { t: 'Owner' }, { t: 'Site' }, { t: 'Due' },
-         { t: 'Photos', r: 1 }, { t: 'Status', r: 1 }], rows2, 'No corrective actions match these filters.') +
-        '</div></div>';
-    } else {
-      // ARCHIVE — reports moved out of the active list.
-      html = head('Safety Inspections', 'Reports moved out of the active list. Restore one to bring it back.', right);
-      var oaq = (subQ.obsArch || '').toLowerCase();
-      var archR = (B.reports || []).filter(function (r) {
-        return r.archived && has(jobName(r.job_id) + ' ' + (r.inspector_name || '') + ' ' + (r.notes || ''), oaq); });
-      html += fbarSearch('obsarch-q', subQ.obsArch, 'Search archived reports…');
-      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: '', r: 1 }],
-        archR.map(function (r) {
-          return '<tr><td><span class="t-main">Construction Job Site Safety Checklist</span></td>' +
-            '<td>' + esc(repDateDisp(r)) + '</td>' +
-            '<td>' + esc(jobName(r.job_id)) + '</td>' +
-            '<td>' + esc(r.inspector_name) + '</td>' +
-            '<td class="r"><button class="btn btn-sm" data-represtore="' + esc(r.id) + '">Restore</button></td></tr>';
-        }), 'Nothing archived.') + '</div></div>';
     }
     paint(html);
-    wireSubtabs('ot', function (v) { obsTab = v; pgObs(); });
-    $$('[data-reparch]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation();
-      var r = (B.reports || []).filter(function (x) { return x.id === b.dataset.reparch; })[0];
-      if (r) r.archived = true; toast('Report archived.'); pgObs(); }; });
-    $$('[data-represtore]').forEach(function (b) { b.onclick = function () {
-      var r = (B.reports || []).filter(function (x) { return x.id === b.dataset.represtore; })[0];
-      if (r) r.archived = false; toast('Report restored.'); pgObs(); }; });
-    if (obsTab === 'ca') {
-      wireSearch('obsca-q', function (v) { subQ.obsCa = v; pgObs(); });
-      function obcaBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { obsCaF[key] = e.value; pgObs(); }; }
-      obcaBind('obsca-job', 'job'); obcaBind('obsca-src', 'src'); obcaBind('obsca-status', 'status');
-    }
-    if (obsTab === 'archive') wireSearch('obsarch-q', function (v) { subQ.obsArch = v; pgObs(); });
     if (obsTab === 'reports') {
       function obBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { obsF[key] = e.value; pgObs(); }; }
       obBind('ob-q', 'q'); obBind('ob-job', 'job'); obBind('ob-person', 'person'); obBind('ob-range', 'range');
@@ -3913,6 +3820,173 @@
     };
   }
 
+  /* ---- Corrective actions = the phone's Findings, on the desktop ---------
+     Derived from the SAME authoritative rows the phone derives from:
+     - imported Safety 101 reports: every FAIL line item (fields.s101)
+     - flagged field submissions (aerial / forklift / JHA / hot work)
+     cs_finding_actions (B.finding_actions) overlays saved closeouts, so a
+     finding closed on a phone shows closed here and vice versa — same keys. */
+  var CAFINDS = [];
+  function deriveFindings() {
+    var rows = [];
+    ((B && B.reports) || []).filter(function (r) { return (r.defect_count || 0) > 0; })
+      .forEach(function (r) {
+        var srcPdf = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+        if (r.s101 && r.s101.length) {
+          r.s101.forEach(function (sec, si) {
+            (sec.items || []).forEach(function (it, ii) {
+              if (it.result !== 'FAIL') return;
+              rows.push({ id: 'rf|' + r.id + '|s101|' + si + '-' + ii,
+                description: sec.title + ': ' + it.q,
+                job_id: r.job_id, date: repDay(r), due: addDays(repDay(r), 7),
+                from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
+                note: it.comments || '', srcPdf: srcPdf, status: 'open' });
+            });
+          });
+          return;
+        }
+        if (r.imported) {
+          var failN = ((r.counts || {}).fail) || r.defect_count || 0;
+          rows.push({ id: 'rf|' + r.id + '|imported',
+            description: (r.report_type || 'Safety 101 inspection') + ' — ' +
+              failN + ' failed item' + (failN === 1 ? '' : 's') + ' (detail in source PDF)',
+            job_id: r.job_id, date: repDay(r), due: addDays(repDay(r), 7),
+            from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
+            srcPdf: srcPdf, status: 'open' });
+          return;
+        }
+        var answers = r.items || {};
+        ((r.fields && r.fields.sections) || r.sections || []).forEach(function (sec) {
+          (sec.items || []).forEach(function (it) {
+            var v = String(answers[it.id] == null ? '' : answers[it.id]).toLowerCase();
+            if (v !== (it.invert ? 'yes' : 'no')) return;
+            rows.push({ id: 'rf|' + r.id + '|' + it.id, description: it.label,
+              job_id: r.job_id, date: repDay(r), due: addDays(repDay(r), 7),
+              from: 'Safety report · ' + (r.inspector_name || ''), status: 'open' });
+          });
+        });
+      });
+    (FIELDRAW || []).filter(function (r) { return r.has_defects; }).forEach(function (r) {
+      var d = r.submitted_at ? tzDayStr(r.submitted_at) : '';
+      rows.push({ id: 'cf|' + r.id,
+        description: (r.form_title || r.form_type || 'Field inspection') +
+          (r.asset_id ? ' · ' + r.asset_id : '') + ' — ' +
+          (r.defect_count || 1) + ' item' + ((r.defect_count || 1) === 1 ? '' : 's') + ' flagged',
+        job_id: r.job_id, date: d, due: addDays(d, 7),
+        from: 'Field inspection · ' + (r.inspector_name || ''),
+        crewId: r.id, status: 'open' });
+    });
+    var saved = (B && B.finding_actions) || {};
+    rows.forEach(function (f) {
+      var sv = saved[f.id];
+      if (!sv) return;
+      f.status = sv.status === 'closed' ? 'closed' : 'open';
+      f.action = sv.action; f.photos = sv.photos || [];
+      f.closed = String(sv.updated_at || '').slice(0, 10);
+      f.closed_by = sv.closed_by || '';
+    });
+    var today = tzDayStr(new Date());
+    rows.sort(function (x, y) {
+      if (x.status !== y.status) return x.status === 'open' ? -1 : 1;
+      if (x.status === 'open') {
+        var xo = x.due && x.due < today, yo = y.due && y.due < today;
+        if (xo !== yo) return xo ? -1 : 1;
+      }
+      return String(y.date).localeCompare(String(x.date));
+    });
+    CAFINDS = rows;
+    return rows;
+  }
+
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var max = 1200, w = img.width, h2 = img.height;
+        if (w > max || h2 > max) {
+          var k = Math.min(max / w, max / h2);
+          w = Math.round(w * k); h2 = Math.round(h2 * k);
+        }
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h2;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h2);
+        resolve(cv.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  function openCAFinding(fid) {
+    var f = CAFINDS.filter(function (x) { return x.id === fid; })[0];
+    if (!f) return;
+    var h = '<div class="sec-h">Finding</div>' +
+      kv('Job', jobName(f.job_id)) + kv('Found', fmtDate(f.date)) +
+      kv('Due', fmtDate(f.due)) + kv('Source', f.from);
+    if (f.note) h += '<div class="small" style="margin:8px 0;white-space:pre-wrap"><b>Observation:</b> ' + esc(f.note) + '</div>';
+    if (f.srcPdf) h += '<div style="margin:8px 0"><a class="btn btn-sm" href="' + esc(f.srcPdf) +
+      '" target="_blank" rel="noopener">Open source Safety 101 PDF</a></div>';
+    if (f.status === 'closed') {
+      h += '<div class="sec-h">Corrective action</div>' +
+        '<div class="small" style="margin-bottom:6px">✓ Closed ' + esc(fmtDate(f.closed)) +
+        (f.closed_by ? ' by ' + esc(f.closed_by) : '') + '</div>' +
+        (f.action ? '<div style="white-space:pre-wrap">' + esc(f.action) + '</div>' : '');
+      (f.photos || []).forEach(function (p2) {
+        h += '<img src="' + esc(p2) + '" alt="Photo of the fix" ' +
+          'style="max-width:100%;border-radius:10px;border:1px solid var(--ink-4,#2a3448);margin-top:8px">';
+      });
+    } else {
+      h += '<div class="sec-h">Close it out</div>' +
+        '<label class="small muted" style="display:block;margin-bottom:4px">What was done about it</label>' +
+        '<textarea id="caf-act" style="width:100%;min-height:90px;margin-bottom:8px" ' +
+          'placeholder="e.g. Guardrail re-installed and re-inspected"></textarea>' +
+        '<input id="caf-photo" type="file" accept="image/*" style="display:none">' +
+        '<div style="margin-bottom:8px"><button class="btn btn-sm" id="caf-pbtn">📷 Add a photo of the fix</button></div>' +
+        '<div id="caf-prev"></div>' +
+        '<p class="err small" id="caf-err" style="min-height:1em"></p>' +
+        '<button class="btn btn-gold" id="caf-save" style="width:100%;justify-content:center">Close it out</button>';
+    }
+    drawer(f.description, jobName(f.job_id) + ' · ' + fmtDate(f.date), h);
+    var pin = $('#caf-photo'), pbtn = $('#caf-pbtn'), prev = $('#caf-prev');
+    if (pbtn) pbtn.onclick = function (ev) { ev.preventDefault(); pin.click(); };
+    if (pin) pin.onchange = function () {
+      prev.innerHTML = '';
+      var f2 = pin.files && pin.files[0];
+      if (!f2) { pbtn.textContent = '📷 Add a photo of the fix'; return; }
+      var img = document.createElement('img');
+      img.src = URL.createObjectURL(f2);
+      img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--ink-4,#2a3448);margin-bottom:8px';
+      prev.appendChild(img);
+      pbtn.textContent = 'Change photo';
+    };
+    var save = $('#caf-save');
+    if (save) save.onclick = function () {
+      var action = $('#caf-act').value.trim();
+      var err = $('#caf-err');
+      if (!action) { err.textContent = 'Say what was done.'; return; }
+      err.textContent = '';
+      save.disabled = true; save.textContent = 'Saving…';
+      var file = pin.files && pin.files[0];
+      (file ? shrinkPhoto(file) : Promise.resolve(null)).then(function (dataUrl) {
+        return post('cs_portal_save_finding', {
+          p_key: f.id, p_action: action,
+          p_photos: dataUrl ? [dataUrl] : [],
+          p_by: (getSession() || {}).user || 'Office'
+        });
+      }).then(function (res) {
+        if (res && res.ok === false) throw new Error(res.error || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        closeDrawer();
+        toast('Finding closed');
+        pgInsp();
+      }).catch(function (e) {
+        save.disabled = false; save.textContent = 'Close it out';
+        err.textContent = 'Could not save — ' + (e.message || 'try again');
+      });
+    };
+  }
+
   var inspTab = 'completed';
   var inspF = { q: '', job: '', person: '', range: '' };   // Inspections (Completed) filters — desk defaults to all time
   var inCaF = { job: '', status: '' };   // Inspections · Corrective Actions filters
@@ -3985,8 +4059,9 @@
 
   function pgInsp() {
     if (inspTab === 'template') inspTab = 'completed';
+    if (inspTab === 'archive') inspTab = 'completed';
     var right = subtabs(inspTab, [['completed', 'Completed'], ['links', 'Awaiting Submission'],
-      ['ca', 'Corrective actions'], ['archive', 'Archive']], 'it');
+      ['ca', 'Corrective actions']], 'it');
     var html;
     if (inspTab === 'completed') {
       html = head('Inspections',
@@ -4032,13 +4107,13 @@
           '<td class="r">' + (r.has_defects
             ? pill('p-bad', r.defect_count + ' defect' + (r.defect_count === 1 ? '' : 's'))
             : pill('p-ok', 'Clear')) + '</td>' +
-          '<td class="r"><button class="btn btn-sm" data-crewarch="' + esc(r.id) + '">Archive</button></td></tr>';
+          '</tr>';
       });
       html += '<div class="panel"><div class="panel-hd"><div><h3>Completed inspections</h3>' +
         '<div class="sub">' + crewRows.length + ' of ' + activeCrew.length + ' shown</div></div></div>' +
         '<div class="panel-bd flush">' + tableWrap(
         [{ t: '' }, { t: 'Form' }, { t: 'Date' }, { t: 'Site' }, { t: 'By' },
-         { t: 'Result', r: 1 }, { t: '', r: 1 }], rows, 'No inspections match your filters.') + '</div></div>';
+         { t: 'Result', r: 1 }], rows, 'No inspections match your filters.') + '</div></div>';
     } else if (inspTab === 'links') {
       html = head('Inspections',
         'Digitally sent field forms still awaiting submission — sent but not opened, or ' +
@@ -4054,79 +4129,54 @@
         '</div></div>';
     } else if (inspTab === 'ca') {
       html = head('Inspections',
-        'Everything crews flagged in the field and what was done about it. Click one to ' +
-        'edit the action, close it out, or attach photos.', right);
-      var caList = [];
-      CREW.forEach(function (r) { (r.defects || []).forEach(function (dft, ix) { caList.push({ r: r, dft: dft, ix: ix }); }); });
-      var inOpenN = caList.filter(function (x) { return x.dft.status === 'open'; }).length;
-      // No Overdue KPI here: field-form defects carry no due date in the data.
+        'Every failed Safety 101 item and every crew form flagged in the field \u2014 and what was ' +
+        'done about it. Click one to record the corrective action and close it out. Closing a ' +
+        'finding here updates the phone Findings tab too; it is the same record.', right);
+      var fnds = deriveFindings();
+      var caOpenN = fnds.filter(function (f) { return f.status === 'open'; }).length;
       html += '<div class="cards">' +
-        kpi(caList.length, 'corrective actions', 'all field forms', 'c-grey') +
-        kpi(inOpenN, 'still open', 'requires closeout', inOpenN ? 'c-warn' : 'c-ok') +
+        kpi(fnds.length, 'findings', 'all sources', 'c-grey') +
+        kpi(caOpenN, 'still open', 'requires closeout', caOpenN ? 'c-warn' : 'c-ok') +
+        kpi(fnds.length - caOpenN, 'closed out', 'action recorded', 'c-ok') +
         '</div>';
-      var inCaJobSet = {}; caList.forEach(function (x) { if (x.r.jobsite) inCaJobSet[x.r.jobsite] = 1; });
-      var inCaJobOpts = Object.keys(inCaJobSet).sort().map(function (j) {
-        return '<option value="' + esc(j) + '"' + (inCaF.job === j ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('');
-      var inCaStatOpts = [['', 'Any status'], ['open', 'Open'], ['closed', 'Closed / Verified']]
+      var fJobSet = {}; fnds.forEach(function (f) { if (f.job_id) fJobSet[f.job_id] = 1; });
+      var fJobOpts = Object.keys(fJobSet).map(function (id) {
+        return '<option value="' + esc(id) + '"' + (inCaF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
+      var fStatOpts = [['', 'Any status'], ['open', 'Open'], ['closed', 'Closed']]
         .map(function (o) { return '<option value="' + o[0] + '"' + (inCaF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
       html += '<div class="fbar">' +
         '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
           '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-          '<input id="inca-q" placeholder="Search corrective actions…" value="' + esc(subQ.inspCa || '') + '"></div>' +
-        '<select id="inca-job"><option value="">All jobsites</option>' + inCaJobOpts + '</select>' +
-        '<select id="inca-status">' + inCaStatOpts + '</select></div>';
+          '<input id="inca-q" placeholder="Search findings\u2026" value="' + esc(subQ.inspCa || '') + '"></div>' +
+        '<select id="inca-job"><option value="">All jobs</option>' + fJobOpts + '</select>' +
+        '<select id="inca-status">' + fStatOpts + '</select></div>';
       var caq = (subQ.inspCa || '').toLowerCase();
-      var caShown = caList.filter(function (x) {
-        if (inCaF.job && x.r.jobsite !== inCaF.job) return false;
-        if (inCaF.status && x.dft.status !== inCaF.status) return false;
-        return has(x.dft.label + ' ' + (x.r.jobsite || '') + ' ' + (x.r.sub_id ? subName(x.r.sub_id) : x.r.inspector_name) + ' ' + (x.r.inspection_subtype || x.r.form_type || ''), caq);
+      var caShown = fnds.filter(function (f) {
+        if (inCaF.job && f.job_id !== inCaF.job) return false;
+        if (inCaF.status && f.status !== inCaF.status) return false;
+        return has(f.description + ' ' + f.from + ' ' + jobName(f.job_id), caq);
       });
-      // No due dates on field-form defects → Open first, then Closed (newest inspection leads within each group).
-      caShown.sort(function (a, b) {
-        var ao = a.dft.status === 'open', bo = b.dft.status === 'open';
-        if (ao !== bo) return ao ? -1 : 1;
-        return new Date(b.r.inspection_date) - new Date(a.r.inspection_date);
-      });
-      var rows3 = caShown.map(function (x) {
-        var r = x.r, dft = x.dft, ix = x.ix;
-        return '<tr class="click" data-editca="crew|' + esc(r.id) + '|' + ix + '">' +
-            '<td><span class="t-main">' + esc(dft.label) + '</span></td>' +
-            '<td>' + esc(r.inspection_subtype || r.form_type) + ' · ' +
-            esc(fmtDate(r.inspection_date)) + '</td>' +
-            '<td>' + esc(r.jobsite) + '</td>' +
-            '<td>' + esc(r.sub_id ? subName(r.sub_id) : r.inspector_name) + '</td>' +
-            '<td class="r num">' + ((dft.photos || []).length ? '\ud83d\udcf7 ' + dft.photos.length : '—') + '</td>' +
-            '<td class="r">' + (dft.status === 'open' ? pill('p-warn', 'Open') : pill('p-ok', 'Closed')) +
-            '</td></tr>';
+      var caToday = tzDayStr(new Date());
+      var rows3 = caShown.map(function (f) {
+        var overdue = f.status === 'open' && f.due && f.due < caToday;
+        return '<tr class="click" data-caf="' + esc(f.id) + '">' +
+          '<td><span class="t-main">' + esc(f.description) + '</span>' +
+            '<div class="t-sub">' + esc(f.from) + '</div></td>' +
+          '<td>' + esc(jobName(f.job_id)) + '</td>' +
+          '<td>' + esc(fmtDate(f.date)) + '</td>' +
+          '<td class="r num">' + ((f.photos || []).length ? '\ud83d\udcf7 ' + f.photos.length : '\u2014') + '</td>' +
+          '<td class="r">' + (f.status === 'closed' ? pill('p-ok', 'Closed')
+            : overdue ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td></tr>';
       });
       html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Defect & Action' }, { t: 'Source' }, { t: 'Site' }, { t: 'Responsible Party' }, { t: 'Photos', r: 1 },
-         { t: 'Status', r: 1 }], rows3, 'No corrective actions match these filters.') + '</div></div>';
-    } else {
-      // ARCHIVE — inspections moved out of the active list.
-      html = head('Inspections', 'Inspections moved out of the active list. Restore one to bring it back.', right);
-      var iaq = (subQ.inspArch || '').toLowerCase();
-      var archI = CREW.filter(function (r) {
-        return r.archived && has((r.inspection_subtype || r.form_type || '') + ' ' + (r.jobsite || '') + ' ' + (r.inspector_name || ''), iaq); });
-      html += fbarSearch('inarch-q', subQ.inspArch, 'Search archived inspections…');
-      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Form' }, { t: 'Date' }, { t: 'Site' }, { t: 'By' }, { t: '', r: 1 }],
-        archI.map(function (r) {
-          return '<tr><td><span class="t-main">' + esc(r.inspection_subtype || r.form_type) + '</span></td>' +
-            '<td>' + esc(fmtDate(r.inspection_date)) + '</td>' +
-            '<td>' + esc(r.jobsite) + '</td>' +
-            '<td>' + esc(r.inspector_name) + '</td>' +
-            '<td class="r"><button class="btn btn-sm" data-crewrestore="' + esc(r.id) + '">Restore</button></td></tr>';
-        }), 'Nothing archived.') + '</div></div>';
+        [{ t: 'Finding' }, { t: 'Job' }, { t: 'Found' }, { t: 'Photos', r: 1 }, { t: 'Status', r: 1 }],
+        rows3, fnds.length ? 'No findings match these filters.' : 'Nothing flagged. That is the goal.') + '</div></div>';
     }
     paint(html);
     wireSubtabs('it', function (v) { inspTab = v; pgInsp(); });
-    $$('[data-crewarch]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation();
-      var r = CREW.filter(function (x) { return x.id === b.dataset.crewarch; })[0];
-      if (r) r.archived = true; toast('Inspection archived.'); pgInsp(); }; });
-    $$('[data-crewrestore]').forEach(function (b) { b.onclick = function () {
-      var r = CREW.filter(function (x) { return x.id === b.dataset.crewrestore; })[0];
-      if (r) r.archived = false; toast('Inspection restored.'); pgInsp(); }; });
+    $$('[data-caf]').forEach(function (tr) {
+      tr.onclick = function () { openCAFinding(tr.dataset.caf); };
+    });
     if (inspTab === 'links') wireSearch('inlinks-q', function (v) { subQ.inspLinks = v; pgInsp(); });
     if (inspTab === 'ca') {
       wireSearch('inca-q', function (v) { subQ.inspCa = v; pgInsp(); });
@@ -4573,20 +4623,34 @@
     render();
   }
 
+  function workerByName(name) {
+    var n = String(name || '').toLowerCase();
+    return (B.workers || []).filter(function (w) {
+      return String(w.name || '').toLowerCase() === n; })[0] || null;
+  }
+
+  /* Employee Safety Profile — the ONE view of a worker, opened from the
+     Training roster and from every job-site roster. Identity, training and
+     field activity all come from the same authoritative rows (cs_workers,
+     cs_worker_certs, cs_portal_field_inspections). */
   function openPerson(name) {
     docReg = [];
+    var w0 = workerByName(name);
     var list = (certsByWorker()[name] || []).slice()
       .sort(function (a, b) { return new Date(a.expires) - new Date(b.expires); });
     var p = (B.people || []).filter(function (x) { return x.name === name; })[0] || {};
-    var wc = { kind: 'internal', workerId: p.id, workerName: name,
+    var wc = { kind: 'internal', workerId: (w0 && w0.id) || p.id, workerName: name,
       reopen: function () { pgTraining(); openPerson(name); } };
     var h = pdfBtn('dl-person');
-    h += '<div class="sec-h">Contact</div>' +
-      kv('Role', p.title || '—') + kv('Phone', p.phone || '—');
+    h += '<div class="sec-h" style="display:flex;align-items:center;gap:10px">Employee' +
+      (w0 ? '<button class="btn btn-sm" id="p-editemp" style="margin-left:auto">Edit employee</button>' : '') + '</div>';
+    h += kv('Classification', (w0 && w0.classification) || p.title || '—') +
+      kv('Assigned job', (w0 && w0.job_id) ? (jobNum(w0.job_id) ? jobNum(w0.job_id) + ' — ' : '') + jobName(w0.job_id) : '—') +
+      kv('Phone', (w0 && w0.phone) || p.phone || '—');
     h += '<div class="sec-h">Training &amp; Certifications</div>';
     h += '<div style="margin-bottom:10px"><button class="btn btn-sm" id="p-addtrain">+ Add training / certification</button></div>';
     if (!list.length) {
-      h += '<div class="small muted">None on file.</div>';
+      h += '<div class="small muted">No training records on file yet.</div>';
     } else {
       var rows = list.map(function (c) {
         var d = c.expires ? certDays(c.expires) : null;
@@ -4598,15 +4662,33 @@
           '<td>' + esc(fmtDate(c.issued)) + '</td>' +
           '<td>' + esc(fmtDate(c.expires)) + '</td>' +
           '<td>' + stcell + '</td>' +
-          '<td>' + docCell(c.doc, 'Missing') + '</td>' +
-          '<td class="r"><button class="linklike" data-editicert="' + esc(c.id) + '">Edit</button></td></tr>';
+          '<td class="r"><button class="linklike" data-editicert="' + esc(c.id) + '">Edit</button>' +
+          '&nbsp;&nbsp;<button class="linklike" data-delicert="' + esc(c.id) + '">Remove</button></td></tr>';
       });
       h += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Certification' }, { t: 'Completed' }, { t: 'Expires' }, { t: 'Status' }, { t: 'Document' }, { t: '', r: 1 }],
+        [{ t: 'Certification' }, { t: 'Completed' }, { t: 'Expires' }, { t: 'Status' }, { t: '', r: 1 }],
         rows) + '</div></div>';
     }
-    h += otherPdfsHtml(p.id);
-    drawer(name, (p.title || '') + (p.phone ? ' · ' + p.phone : ''), h);
+    // Real field submissions by this person, matched on the inspector name.
+    var acts = (CREW || []).filter(function (r) {
+      return String(r.inspector_name || '').toLowerCase() === String(name).toLowerCase(); });
+    h += '<div class="sec-h">Field activity</div>';
+    if (!acts.length) {
+      h += '<div class="small muted">No field inspections submitted yet.</div>';
+    } else {
+      h += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Form' }, { t: 'Job' }, { t: 'Submitted' }, { t: 'Result', r: 1 }],
+        acts.slice(0, 8).map(function (r) {
+          return '<tr><td><span class="t-main">' + esc(r.form_type) + '</span></td>' +
+            '<td>' + esc(r.jobsite || '—') + '</td>' +
+            '<td>' + esc(r.submitted_at ? tzDateTime(r.submitted_at) : fmtDate(r.inspection_date)) + '</td>' +
+            '<td class="r">' + (r.has_defects
+              ? pill('p-warn', (r.defect_count || 1) + ' flagged') : pill('p-ok', 'Clear')) + '</td></tr>';
+        })) + '</div></div>';
+    }
+    drawer(name, ((w0 && w0.classification) || p.title || '') +
+      ((w0 && w0.job_id) ? ' · ' + jobName(w0.job_id) : ''), h);
+    var pe = $('#p-editemp'); if (pe) pe.onclick = function () { openEditWorker(w0); };
     var pat = $('#p-addtrain'); if (pat) pat.onclick = function () { openCertForm(wc, null); };
     $$('[data-editicert]').forEach(function (b) {
       b.onclick = function () {
@@ -4614,11 +4696,80 @@
         if (c) openCertForm(wc, { id: c.id, cert: c });
       };
     });
-    wireOtherPdfs(wc);
+    $$('[data-delicert]').forEach(function (b) {
+      b.onclick = function () {
+        var c = (certsByWorker()[name] || []).filter(function (x) { return x.id === b.dataset.delicert; })[0];
+        if (!c) return;
+        if (!confirm('Remove "' + c.cert_type + '" from ' + name + '? This deletes the training record.')) return;
+        post('cs_portal_delete_cert', { p_cert_id: c.id }).then(function (res) {
+          if (res && res.ok === false) throw new Error(res.error || 'delete failed');
+          return refreshBundle();
+        }).then(function () {
+          toast('Training record removed');
+          pgTraining(); openPerson(name);
+        }).catch(function (e) { alert('Could not remove — ' + (e.message || 'try again')); });
+      };
+    });
     wireDocLinks();
     $('#dl-person').onclick = function () {
-      printRecord('Training Record — ' + name, (p.title || '') +
-        (p.phone ? ' · ' + p.phone : ''), personPBody(name));
+      printRecord('Training Record — ' + name, ((w0 && w0.classification) || p.title || '') +
+        (((w0 && w0.phone) || p.phone) ? ' · ' + ((w0 && w0.phone) || p.phone) : ''), personPBody(name));
+    };
+  }
+
+  /* Edit an internal employee — writes through cs_portal_worker_update, which
+     also carries training records across a rename (certs are keyed by name). */
+  function openEditWorker(w) {
+    if (!w) return;
+    var jobs = (B.jobs || []).filter(function (j) { return !j.archived; })
+      .sort(function (a, b) { return String(a.job_number || '').localeCompare(String(b.job_number || '')); });
+    var clsOpts = WORKER_CLASSES.slice();
+    if (w.classification && clsOpts.indexOf(w.classification) === -1) clsOpts.unshift(w.classification);
+    var h = '<div class="f-grid">' +
+      '<div class="full"><label>Name</label><input id="ew-name" type="text" value="' + esc(w.name) + '"></div>' +
+      '<div class="full"><label>Phone <span class="muted small">optional</span></label>' +
+        '<input id="ew-phone" type="tel" value="' + esc(w.phone || '') + '" placeholder="317-555-0134"></div>' +
+      '<div class="full"><label>Classification</label><select id="ew-class">' +
+        clsOpts.map(function (c) {
+          return '<option' + (c === (w.classification || '') ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="full"><label>Assigned job</label><select id="ew-job">' +
+        jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (j.id === w.job_id ? ' selected' : '') + '>' +
+            esc((j.job_number ? j.job_number + ' — ' : '') + j.name) + '</option>';
+        }).join('') + '</select></div></div>' +
+      '<p class="err small" id="ew-err" style="min-height:1em"></p>' +
+      '<button class="btn btn-gold" id="ew-save" style="width:100%;justify-content:center">Save changes</button>' +
+      '<button class="btn" id="ew-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>';
+    drawer('Edit employee', w.name, h);
+    $('#ew-cancel').onclick = function () { openPerson(w.name); };
+    $('#ew-save').onclick = function () {
+      var nm = $('#ew-name').value.trim();
+      var err = $('#ew-err'), btn = $('#ew-save');
+      if (!nm) { err.textContent = 'Name is required.'; return; }
+      err.textContent = '';
+      btn.disabled = true; btn.textContent = 'Saving…';
+      post('cs_portal_worker_update', {
+        p_worker_id: w.id,
+        p_name: nm,
+        p_phone: $('#ew-phone').value.trim(),
+        p_classification: $('#ew-class').value,
+        p_job_id: $('#ew-job').value || null
+      }).then(function (res) {
+        if (!res || res.ok === false) {
+          throw new Error(res && res.error === 'name_taken'
+            ? 'Another employee already has that name.'
+            : (res && res.error) || 'save failed');
+        }
+        return refreshBundle().then(function () {
+          toast('Employee updated');
+          pgTraining();
+          openPerson(res.name || nm);
+        });
+      }).catch(function (e) {
+        btn.disabled = false; btn.textContent = 'Save changes';
+        err.textContent = 'Could not save — ' + (e.message || 'try again');
+      });
     };
   }
 
@@ -4862,8 +5013,7 @@
           '<td><span class="t-main">' + esc(p.name) + '</span></td>' +
           '<td>' + esc(p.title) + '</td>' +
           '<td class="r num">' + esc(p.phone) + '</td></tr>';
-      }), 'No safety team assigned yet.',
-      '<button class="btn btn-gold btn-sm" id="js-add">+ Add safety staff</button>');
+      }), 'No safety team assigned yet.');
 
     // Internal — on-site employees (the GC's own field crew)
     html += jobSection('Internal employees on site', internalCrew.length + ' on this job',
@@ -4952,7 +5102,6 @@
     };
     var da = $('#job-dlall'); if (da) da.onclick = function () { downloadJobAll(id); };
     var je = $('#je-add'); if (je) je.onclick = function () { openAddJobEmployee(id); };
-    var js = $('#js-add'); if (js) js.onclick = function () { openAddJobStaff(id); };
     var ic = $('#ice-add'); if (ic) ic.onclick = function () { openAddInternalEmployee(id); };
     $$('[data-ice]').forEach(function (tr) { tr.onclick = function () { openInternalEmp(id, tr.dataset.ice); }; });
     $$('[data-emp]').forEach(function (tr) {
@@ -5149,32 +5298,10 @@
   }
 
   // One internal on-site employee: training + the JHAs they submitted.
+  /* Job rosters open the same Employee Safety Profile as the Training page —
+     one worker, one record, everywhere. */
   function openInternalEmp(jobId, name) {
-    var e = (B.internal_crew || []).filter(function (x) { return x.job_id === jobId && x.name === name; })[0];
-    if (!e) return;
-    var st = empTrainStatus(e);
-    var h = '';
-    if (st.k === 'expired' || st.k === 'none')
-      h += '<div class="alert"><strong>' + (st.k === 'none' ? 'No training on file.' : 'Expired training.') +
-        '</strong> Not verified for the task.</div>';
-    h += '<div class="sec-h">Employee</div>' +
-      kv('Role', e.role) + kv('Assigned job', jobName(jobId)) + kv('Employer', (C.contractor || 'Internal'));
-    h += '<div class="sec-h">Training & Certifications</div>';
-    if (!(e.certs || []).length) h += '<div class="small" style="color:var(--fail);font-weight:600">Nothing on file.</div>';
-    else e.certs.forEach(function (c) {
-      var dd = certDays(c.exp);
-      var tag = dd < 0 ? '<span style="color:var(--fail);font-weight:700">Expired ' + fmtDate(c.exp) + '</span>'
-        : dd <= 60 ? '<span style="color:var(--warn);font-weight:600">Expires ' + fmtDate(c.exp) + ' · ' + dd + 'd</span>'
-        : 'Valid to ' + fmtDate(c.exp);
-      h += '<div class="kv"><span class="k">' + esc(c.t) + '</span><span class="v" style="font-weight:400;font-size:12px">' + tag + '</span></div>';
-    });
-    h += '<div class="sec-h">JHAs & inspections submitted</div>';
-    if (!(e.insp || []).length) h += '<div class="small muted">None on record.</div>';
-    else e.insp.forEach(function (r) {
-      h += '<div class="kv"><span class="k">' + esc(r.form) + '<div class="small muted">' + fmtDate(r.date) + '</div></span>' +
-        (r.defects ? pill('p-bad', r.defects + ' defect' + (r.defects === 1 ? '' : 's')) : pill('p-ok', 'Clear')) + '</div>';
-    });
-    drawer(e.name, e.role + ' · ' + (C.contractor || 'Internal'), h);
+    openPerson(name);
   }
 
   /* ====================== TEMPLATES ===================================== */
@@ -5270,9 +5397,7 @@
       talks:      'Prepared toolbox talks your foremen run with the crew.',
       jobs:       'Every jobsite runs a different set of inspections — set them per job here.'
     };
-    var right = tplFam === 'jobs' ? ''
-      : tplFam === 'talks' ? '<button class="btn btn-gold" id="tpl-new">New toolbox talk</button>'
-      : '<button class="btn btn-gold" id="tpl-new">New template</button>';
+    var right = '';
     var html = head('Templates', famDesc[tplFam], right);
     var famTabs = TPL_FAMS.map(function (f) {
       var n = all.filter(function (t) { return t.family === f[0]; }).length;
@@ -5289,30 +5414,28 @@
     else if (tplFam === 'talks') { renderTalkTplList(); renderTalkTplEditor(); }
     else { renderTplList(); renderTplEditor(); }
     wireSubtabs('tf', function (v) { tplFam = v; pgTemplates(); });
-    var nb = $('#tpl-new');
-    if (nb) nb.onclick = function () {
-      if (tplFam === 'talks') {
-        var id = 'tt_' + Date.now();
-        (B.talk_templates || (B.talk_templates = [])).unshift({ id: id, topic: 'New toolbox talk',
-          mins: 5, cat: 'General', summary: '', points: [''] });
-        talkTplOpen = id;
-        pgTemplates();
-        toast('New toolbox talk created — add its points.');
-        return;
-      }
-      var famName = (TPL_FAMS.filter(function (f) { return f[0] === tplFam; })[0] || ['', 'Template'])[1];
-      var code = 'tpl_' + Date.now();
-      var name = 'New ' + famName.replace(/s$/, '') + ' template';
-      (B.templates || (B.templates = [])).unshift({ code: code, family: tplFam, name: name,
-        sections: 1, items: 1, active: true, used_30d: 0, unassigned: true });
-      TPL_DRAFT[code] = { code: code, name: name, family: tplFam, active: true,
-        sections: [{ id: 's' + Date.now(), title: 'Section 1',
-          items: [{ id: 'i' + Date.now(), label: '', type: 'yesno' }] }] };
-      tplOpen = code;
-      pgTemplates();
-      toast('New template created — add your sections and fields.');
-    };
+    lockTplEditor();
   }
+
+  /* Pilot: the library is reference-only. Templates are fixed in code — they
+     ARE the field forms crews receive; nothing typed here would be saved. */
+  function lockTplEditor() {
+    var edPane = $('#tpl-ed');
+    if (!edPane) return;
+    edPane.querySelectorAll('input, textarea, select').forEach(function (i) { i.disabled = true; });
+    edPane.querySelectorAll('button').forEach(function (b) { b.style.display = 'none'; });
+    if (!edPane.querySelector('.tpl-lock-note')) {
+      var note = document.createElement('div');
+      note.className = 'small muted tpl-lock-note';
+      note.style.cssText = 'padding:10px 14px;border-top:1px solid var(--line-2,#e5e8ee)';
+      note.textContent = 'Reference view — these forms are fixed for the pilot.';
+      edPane.appendChild(note);
+    }
+  }
+  // Re-lock after every editor render, whichever family drew the pane.
+  window.addEventListener('click', function () {
+    if (document.getElementById('tpl-ed')) setTimeout(lockTplEditor, 0);
+  }, true);
 
   // Templates → Toolbox Talks: list, create and edit prepared talks.
   function renderTalkTplList() {
@@ -5327,7 +5450,7 @@
       left.appendChild(el('div', 'nm', t.topic));
       left.appendChild(el('div', 'mt', t.mins + ' min · ' + t.cat + ' · ' + (t.points || []).length + ' points'));
       b.appendChild(left);
-      b.onclick = function () { talkTplOpen = t.id; renderTalkTplList(); renderTalkTplEditor(); };
+      b.onclick = function () { talkTplOpen = t.id; renderTalkTplList(); renderTalkTplEditor(); lockTplEditor(); };
       host.appendChild(b);
     });
   }
@@ -5539,7 +5662,7 @@
         (t.used_30d ? t.used_30d + ' used in 30d' : 'unused')));
       b.appendChild(left);
       if (!t.active) b.appendChild(el('span', 'pill p-grey', 'Off'));
-      b.onclick = function () { tplOpen = t.code; renderTplList(); renderTplEditor(); };
+      b.onclick = function () { tplOpen = t.code; renderTplList(); renderTplEditor(); lockTplEditor(); };
       host.appendChild(b);
     });
   }
@@ -5664,6 +5787,7 @@
           '<td class="r" style="white-space:nowrap">' +
             '<button class="btn btn-sm" data-docview2="' + esc(d.id) + '">View</button> ' +
             '<button class="btn btn-sm" data-docdl="' + esc(d.id) + '">Download</button> ' +
+            '<button class="btn btn-sm" data-docshare="' + esc(d.id) + '">Share</button> ' +
             '<button class="linklike" data-docdel="' + esc(d.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
       }), 'No documents yet. Upload the first one \u2014 it will be here from any device, any session.') +
       '</div></div>';
@@ -5692,6 +5816,28 @@
           a.href = URL.createObjectURL(res.blob); a.download = res.filename;
           document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
         }).catch(function (e) { toast('Could not download \u2014 ' + e.message); });
+      };
+    });
+    $$('[data-docshare]').forEach(function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        docBlob(b.dataset.docshare).then(function (res) {
+          b.disabled = false;
+          var file = new File([res.blob], res.filename,
+            { type: res.blob.type || 'application/octet-stream' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            // System share sheet with the actual file — Mail, Messages, AirDrop…
+            return navigator.share({ files: [file], title: res.filename }).catch(function (e) {
+              if (e && e.name === 'AbortError') return;   // they closed the sheet
+              throw e;
+            });
+          }
+          // This browser has no share sheet: hand them the file to attach themselves.
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(res.blob); a.download = res.filename;
+          document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
+          toast('No share sheet in this browser — downloaded the file so you can attach it yourself.');
+        }).catch(function (e) { b.disabled = false; toast('Could not share — ' + e.message); });
       };
     });
     $$('[data-docdel]').forEach(function (b) {
@@ -7058,6 +7204,7 @@
       B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       hydrateWorkers();
+      FIELDRAW = res[1] || [];
       CREW = crewFromField(res[1]);
       $('#side-co').textContent = (B.company && B.company.name) || C.contractor || '';
       var want = (location.hash || '').replace('#', '');
