@@ -1,0 +1,37 @@
+-- ============================================================================
+-- Production persistence hardening — APPLIED TO PROD 2026-08-27
+-- (migration: greiner_persistence_hardening + follow-up statements)
+--
+-- Root cause of Tony's lost data: the desktop (ported demo UI) mutated only
+-- in-browser state for job edits and called nonexistent RPCs for training
+-- entries. Nothing ever reached the database. Fixed by wiring the desktop to
+-- the real RPC layer and extending it narrowly:
+--
+-- 1. cs_portal_update_job — now accepts p_pm_name, p_gc_name, p_start_date.
+--    Semantics: null param = leave unchanged (older/phone callers safe),
+--    empty string = clear the field. OLD 7-arg overload DROPPED (it made
+--    subset-arg calls ambiguous, PGRST203).
+-- 2. cs_portal_add_job — now accepts p_pm_name, p_gc_name (the desktop form
+--    already sent p_pm_name and 404'd). OLD 6-arg overload DROPPED.
+-- 3. cs_portal_update_cert(p_token, p_cert_id, p_cert_type, p_issued,
+--    p_expires) — NEW. Full scope, company-guarded.
+-- 4. cs_portal_delete_cert(p_token, p_cert_id) — NEW. Full scope.
+-- 5. cs_portal_add_cert — p_expires may now be null (non-expiring cert).
+-- 6. Users: Ross McNeely + Kyler Wheeler created via cs_portal_set_user,
+--    role field, Taylorsville-only (PIN = last 4 of mobile, mobile stored).
+--
+-- Frontend (office.js, same deploy):
+-- * Job edit + add-training + cert form now call these RPCs and only update
+--   the UI after the backend confirms; failures show an error, never "Saved".
+-- * 13 write controls with no backend (subs, employees, incidents, near
+--   misses, toolbox sends, desktop form sends, worker/company doc uploads,
+--   reg visits, desktop corrective-action edits, job crew/staff adds) are
+--   held: clicking Save shows "not saved in this pilot yet" — no fake success.
+-- * Overview rebuilt from real data only (field pulse, open findings derived
+--   the same way as the phone feed, recent field activity); all demo
+--   fixtures (Crossroads/TRIR strip/etc.) removed. Footer shows the real
+--   signed-in user.
+-- * Desktop now retains the cs_finding_actions closeout map so phone
+--   closeouts are reflected in desktop counts.
+-- ============================================================================
+-- (Definitions live in the applied migration; this file is the record.)

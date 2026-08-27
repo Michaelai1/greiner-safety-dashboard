@@ -28,6 +28,14 @@
       .replace(/"/g, '&quot;');
   }
 
+  /* A write surface whose backend isn't part of this pilot yet: refuse the
+     save honestly instead of pretending. Nothing is stored, nothing is lost. */
+  function pilotHold(what) {
+    return function () {
+      toast(what + ' are not saved in this pilot yet \u2014 this screen is preview only.');
+    };
+  }
+
   /* ---------- session ---------------------------------------------------- */
   var SKEY = 'cs_session_' + C.slug;
   function getSession() {
@@ -1836,140 +1844,84 @@
   /* A safety director over six jobs does not want an alphabetical job list.
      They want to know which sites are hot today and what is about to lapse. */
   function pgOverview() {
-    /* Exception-based hit list. Demo values; safety & compliance only. */
-    var needRows = [
-      { what: 'Failed Inspection: Excavator JR12 (Blown Hydraulic Line) — Do Not Operate',
-        who: 'Crossroads Excavating', why: 'Red Tagged — Awaiting Corrective Action', goto: 'equipment' },
-      { what: 'Missing Daily JHA',
-        who: 'Crossroads Excavating (North Dock Footing)', why: 'Crew scanned in, but 0 safety forms submitted for today', goto: 'obs' },
-      { what: 'Open Hazard: Trench missing protective system',
-        who: 'Plainfield Cold Storage', why: 'Reported 2 hours ago — Immediate Action Required', goto: 'corrective' }
-    ];
-    var patterns = [
-      { label: 'Missing Scans', text: 'Crossroads Excavating has missed <b style="color:var(--fail)">4</b> morning JHA deadlines in the last 14 days.' },
-      { label: 'Equipment Hazards', text: 'Track / Tire conditions account for <b style="color:var(--fail)">40%</b> of QR safety inspection failures this month.' },
-      { label: 'Site Compliance', text: 'Westfield HS Athletic Wing has <b style="color:var(--fail)">3</b> unresolved open safety findings.' }
-    ];
+    /* Live overview: every number here is real Greiner data. No demo fixtures. */
+    var today = tzDayStr(new Date());
+    var activeCrew = CREW.filter(function (r) { return !r.archived; });
+    var crewToday = activeCrew.filter(function (r) { return r.submitted_at && tzDayStr(r.submitted_at) === today; });
+    var todayForms = [];
+    crewToday.forEach(function (r) {
+      var nm = r.inspection_subtype || r.form_type || 'Inspection';
+      if (todayForms.indexOf(nm) === -1) todayForms.push(nm);
+    });
+    var activeJobs = (B.jobs || []).filter(function (j) { return j.status === 'active'; }).length;
+    var reps = B.reports || [];
+    // Open findings: failed Safety 101 items + flagged field inspections, minus
+    // saved closeouts (the same derivation the phone Findings feed uses).
+    var acts = B.finding_actions || {};
+    function closedK(k) { var a = acts[k]; return a && a.status === 'closed'; }
+    var openF = 0;
+    reps.forEach(function (r) {
+      if (r.s101 && r.s101.length) {
+        r.s101.forEach(function (sec, si) {
+          (sec.items || []).forEach(function (it, ii) {
+            if (it.result === 'FAIL' && !closedK('rf|' + r.id + '|s101|' + si + '-' + ii)) openF++;
+          });
+        });
+      } else if (r.imported && (r.defect_count || 0) > 0 && !closedK('rf|' + r.id + '|imported')) {
+        openF += r.defect_count;
+      }
+    });
+    activeCrew.forEach(function (r) { if (r.has_defects && !closedK('cf|' + r.id)) openF++; });
 
-    var html = head('Overview', 'Exception-based hit list — what needs attention today.',
-      '<button class="btn" id="digest">Morning digest</button>');
-
-    // TOP — Today's Field Pulse: neutral leading indicators, above the hit list.
-    html += '<h3 class="sub" style="color:var(--ink);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;margin:2px 0 8px">Today’s Field Pulse</h3>' +
+    var html = head('Overview', 'Live across all Greiner jobs \u2014 every number here is real field data.');
+    html += '<h3 class="sub" style="color:var(--ink);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;margin:2px 0 8px">Today\u2019s Field Pulse</h3>' +
       '<div class="cards">' +
-        kpi('12 / 14', 'Daily JHAs', '2 sites outstanding', 'c-grey') +
-        kpi('2', 'Toolbox Talks Logged', '2 today across 6 sites', 'c-grey') +
-        kpi('3', 'Pending Corrective Actions', '3 outstanding from yesterday', 'c-grey') +
-        kpi('42 of 45', 'Daily Equipment Scans', 'Cleared', 'c-grey') +
+        kpi(String(crewToday.length), 'Field Inspections Today', crewToday.length ? todayForms.join(', ') : 'none submitted yet', 'c-grey') +
+        kpi(String(activeJobs), 'Active Jobs', 'company-wide', 'c-grey') +
+        kpi(String(reps.length), 'Safety 101 Inspections', 'on file', 'c-grey') +
+        kpi(String(openF), 'Open Findings', openF ? 'awaiting corrective action' : 'all clear', openF ? 'c-warn' : 'c-grey') +
       '</div>';
 
-    // SECTION 1 — Needs Attention: detailed table, worst first (not KPI boxes).
-    html += '<div class="panel"><div class="panel-hd"><div><h3>Needs Attention</h3>' +
-      '<div class="sub">Failed, overdue, or waiting on action. Worst first.</div></div></div>' +
+    // Recent field activity — the latest real submissions, newest first.
+    var recent = activeCrew.slice().sort(function (a, b) {
+      return String(b.submitted_at || '').localeCompare(String(a.submitted_at || '')); }).slice(0, 6);
+    html += '<div class="panel"><div class="panel-hd"><div><h3>Recent Field Activity</h3>' +
+      '<div class="sub">The latest inspections in from the field. Click one for the full record.</div></div></div>' +
       '<div class="panel-bd flush">' + tableWrap(
-        [{ t: '' }, { t: 'What' }, { t: 'Who' }, { t: 'Why it is here' }],
-        needRows.map(function (n) {
-          return '<tr class="click" data-goto="' + esc(n.goto) + '">' +
-            '<td style="width:22px;vertical-align:top;padding-top:14px"><span class="dot" style="background:var(--fail)"></span></td>' +
-            '<td><span class="t-main" style="color:var(--ink);font-weight:600">' + esc(n.what) + '</span></td>' +
-            '<td>' + esc(n.who) + '</td>' +
-            '<td class="c-bad" style="font-weight:600">' + esc(n.why) + '</td></tr>';
-        })) + '</div></div>';
+        [{ t: 'Form' }, { t: 'Job' }, { t: 'By' }, { t: 'When' }, { t: 'Result', r: 1 }],
+        recent.map(function (r) {
+          return '<tr class="click" data-crewi="' + esc(r.id) + '">' +
+            '<td><span class="t-main">' + esc(r.inspection_subtype || r.form_type) + '</span>' +
+              (r.asset_id ? '<div class="t-sub">' + esc(r.asset_id) + '</div>' : '') + '</td>' +
+            '<td>' + esc(r.jobsite) + '</td>' +
+            '<td>' + esc(r.inspector_name) + '</td>' +
+            '<td>' + esc(r.submitted_at ? fmtWhen(r.submitted_at) : fmtDate(r.inspection_date)) + '</td>' +
+            '<td class="r">' + (r.has_defects
+              ? pill('p-bad', r.defect_count + ' defect' + (r.defect_count === 1 ? '' : 's'))
+              : pill('p-ok', 'Clear')) + '</td></tr>';
+        }), 'No field inspections yet.') + '</div></div>';
 
-    // SECTION 2 — Patterns: text-heavy insight sentences.
-    html += '<div class="panel"><div class="panel-hd"><div><h3>Safety Trends</h3>' +
-      '<div class="sub">Trends automatically surfaced from field activity.</div></div></div>' +
-      '<div class="panel-bd">' + patterns.map(function (p) {
-        return '<div class="bullet" style="padding:7px 0"><span class="dot" style="background:var(--fail);margin-top:6px"></span>' +
-          '<span style="line-height:1.5"><b style="color:var(--ink)">' + esc(p.label) + ':</b> ' + p.text + '</span></div>';
-      }).join('') + '</div></div>';
-
-    // SECTION 3 — Safety Program Health: the numbers a safety department leads
-    // with. Lagging rates on top, program standing below (computed from data).
+    // Program standing — computed from real records only.
     var recordables = (B.incidents || []).filter(function (i) { return i.osha_recordable; }).length;
-    var openCA = (B.findings || []).filter(function (f) { return f.status === 'open'; }).length;
-    var overdueCA = (B.findings || []).filter(caOverdue).length;
-    var nearMiss = (B.near_misses || []).length;
     var certsAll = B.certs || [];
-    var certsExpired = certsAll.filter(function (c) { return certDays(c.expires) < 0; }).length;
-    var trainPct = certsAll.length ? Math.round((certsAll.length - certsExpired) / certsAll.length * 100) : 100;
-    var subsBlocked = (B.scorecard || []).filter(function (x) { return !x.cleared; }).length;
-    var subsTotal = (B.scorecard || []).length;
-
-    html += '<h3 class="sub" style="color:var(--ink);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;margin:18px 0 8px">Safety Performance · Trailing 12 Months</h3>' +
-      '<div class="cards">' +
-        kpi('0.94', 'TRIR', 'Total recordable incident rate', 'c-grey') +
-        kpi('0.62', 'DART Rate', 'Days away / restricted / transfer', 'c-grey') +
-        kpi('23', 'Days Since Last Recordable', 'Company-wide', 'c-grey') +
-        kpi('0.89', 'EMR', "Workers' compensation experience rating", 'c-grey') +
-      '</div>';
+    var certsExpired = certsAll.filter(function (c) { return c.expires && certDays(c.expires) < 0; }).length;
+    var trainPct = certsAll.length ? Math.round((certsAll.length - certsExpired) / certsAll.length * 100) : null;
     html += '<h3 class="sub" style="color:var(--ink-4);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;margin:18px 0 8px">Program Standing</h3>' +
       '<div class="cards">' +
-        kpi(String(recordables), 'Recordables YTD', recordables ? 'as determined by the employer' : 'none this year', 'c-grey') +
-        kpi(String(openCA), 'Open Corrective Actions', overdueCA ? overdueCA + ' overdue — past due date' : 'all on time', overdueCA ? 'c-bad' : 'c-grey') +
-        kpi(String(nearMiss), 'Near-Miss Reports (30d)', 'Leading indicator — reporting is good', 'c-grey') +
-        kpi(trainPct + '%', 'Training Compliance', certsExpired ? certsExpired + ' certs expired' : 'internal certs current', certsExpired ? 'c-bad' : 'c-grey') +
-        kpi(subsBlocked + ' of ' + subsTotal, 'Subcontractors Not Cleared', subsBlocked ? 'failing a prequal gate' : 'all subs cleared', subsBlocked ? 'c-bad' : 'c-grey') +
-      '</div>';
-
-    // Corrective Actions — open / overdue / closed and how fast they close.
-    var caClosed = (B.findings || []).filter(function (f) { return f.status === 'closed'; }).length;
-    var caCd = (B.findings || []).filter(function (f) { return f.status === 'closed' && f.closed; })
-      .map(function (f) { return Math.round((new Date(f.closed) - new Date(f.date)) / 86400000); });
-    var caAvg = caCd.length ? Math.round(caCd.reduce(function (a, b) { return a + b; }, 0) / caCd.length) : 0;
-    html += '<h3 class="sub" style="color:var(--ink);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;margin:18px 0 8px">Corrective Actions</h3>' +
-      '<div class="cards">' +
-        kpi(String(openCA), 'open', overdueCA ? overdueCA + ' overdue' : 'all on time', openCA ? 'c-warn' : 'c-ok') +
-        kpi(String(overdueCA), 'overdue', overdueCA ? 'past due date' : 'none late', overdueCA ? 'c-bad' : 'c-ok') +
-        kpi(String(caClosed), 'closed', 'corrective action verified', 'c-grey') +
-        kpi(caAvg + 'd', 'avg days to close', 'open to verified', 'c-grey') +
+        kpi(String(recordables), 'Recordables YTD', recordables ? 'as determined by the employer' : 'none recorded', 'c-grey') +
+        kpi(String(openF), 'Open Findings', openF ? 'from Safety 101 and field inspections' : 'all clear', openF ? 'c-warn' : 'c-grey') +
+        (trainPct == null
+          ? kpi('\u2014', 'Training Compliance', 'no training records yet', 'c-grey')
+          : kpi(trainPct + '%', 'Training Compliance', certsExpired ? certsExpired + ' cert' + (certsExpired === 1 ? '' : 's') + ' expired' : 'all current', certsExpired ? 'c-bad' : 'c-grey')) +
+        kpi(String((B.near_misses || []).length), 'Near-Miss Reports', 'on file', 'c-grey') +
       '</div>';
 
     paint(html);
-    /* The digest is the notification story: this exact content goes out by
-       email at 6:00 AM in the live build. Here it prints. */
-    var dg = $('#digest');
-    if (dg) dg.onclick = function () {
-      var h = '<div class="small muted" style="margin-bottom:12px">What the live build emails the safety team at 6:00 AM.</div>';
-      h += '<div class="sec-h">Needs attention</div>';
-      needRows.forEach(function (n) {
-        h += '<div style="border-bottom:1px solid var(--line);padding:9px 0">' +
-          '<div class="t-main" style="font-weight:600">' + esc(n.what) + '</div>' +
-          '<div class="small muted">' + esc(n.who) + '</div>' +
-          '<div class="small" style="color:var(--fail);font-weight:600;margin-top:2px">' + esc(n.why) + '</div></div>';
-      });
-      h += '<div class="sec-h">Patterns</div>';
-      patterns.forEach(function (p) {
-        h += '<div class="bullet" style="padding:5px 0"><span class="dot" style="background:var(--fail);margin-top:6px"></span>' +
-          '<span style="line-height:1.5"><b style="color:var(--ink)">' + esc(p.label) + ':</b> ' + p.text + '</span></div>';
-      });
-      h += '<div class="sec-h">Today’s accountability pulse</div>' +
-        kv('Daily equipment scans', '42 of 45 cleared') +
-        kv('Toolbox talks logged', '3 across 6 sites') +
-        kv('Pending corrective actions', '4 open fixes');
-      h += '<button class="btn btn-gold" id="dg-pdf" style="width:100%;justify-content:center;margin-top:16px">Download PDF</button>';
-      drawer('Morning digest', new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }), h);
-      $('#dg-pdf').onclick = function () {
-        var body = '<div class="sec">Needs attention</div>' +
-          needRows.map(function (n) {
-            return '<div class="row"><span>' + esc(n.what) + ' — ' + esc(n.who) +
-              '</span><span class="chip bad">' + esc(n.why) + '</span></div>';
-          }).join('') +
-          '<div class="sec">Patterns</div>' +
-          patterns.map(function (p) {
-            return '<div class="row"><span>' + esc(p.label) + ': ' + p.text.replace(/<[^>]+>/g, '') + '</span></div>';
-          }).join('') +
-          '<div class="sec">Today’s accountability pulse</div>' +
-          '<div class="row"><span>Daily equipment scans</span><span>42 of 45 cleared</span></div>' +
-          '<div class="row"><span>Toolbox talks logged</span><span>3 across 6 sites</span></div>' +
-          '<div class="row"><span>Pending corrective actions</span><span>4 open fixes</span></div>';
-        printRecord('Morning Digest', 'What the live build emails the safety team at 6:00 AM', body);
-      };
-    };
+    $$('[data-crewi]').forEach(function (r) {
+      r.onclick = function () { openCrewInsp(r.dataset.crewi); };
+    });
   }
-  /* Label above an ink number, status colour only on the sub-line — big
-     coloured numerals read as alarm theatre, and this screen is looked at
-     every day. */
+
   function kpi(n, label, sub, cls) {
     return '<div class="kpi"><div class="l">' + esc(label) + '</div>' +
       '<div class="n">' + esc(n) + '</div>' +
@@ -2411,7 +2363,7 @@
       '<p class="small muted" style="margin-top:.7rem">Log it while they are on site. Areas ' +
       'reviewed, citations and abatement get added to the record as they arrive.</p>';
     drawer('Log regulatory visit', 'The five-minute version, expandable later', h);
-    $('#rg-save').onclick = function () {
+    $('#rg-save').onclick = pilotHold('Regulatory visit records'); var __held_rg_save = function () {
       var reason = $('#rg-reason').value.trim();
       if (!reason) { $('#rg-err').textContent = 'Why are they here?'; return; }
       post('cs_portal_add_reg_visit', { p_agency: $('#rg-agency').value.trim(),
@@ -2459,7 +2411,7 @@
       '<p class="small muted" style="margin-top:.7rem">Opens as “investigating,” assigned to you. ' +
       'Root cause and corrective actions are added from the incident record, not here.</p>';
     drawer('Report incident', 'First-hour intake', h);
-    $('#in-save').onclick = function () {
+    $('#in-save').onclick = pilotHold('Incident records'); var __held_in_save = function () {
       var desc = $('#in-desc').value.trim();
       if (!desc) { $('#in-err').textContent = 'Describe what happened.'; return; }
       var body = $('#in-body').value.trim();
@@ -2673,7 +2625,7 @@
       '<p class="small" id="nn-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
       '<button class="btn btn-gold" id="nn-save" style="width:100%;justify-content:center">Report near miss</button>';
     drawer('Report near miss', 'Close call, no injury', h);
-    $('#nn-save').onclick = function () {
+    $('#nn-save').onclick = pilotHold('Near-miss records'); var __held_nn_save = function () {
       var desc = $('#nn-desc').value.trim();
       if (!desc) { $('#nn-err').textContent = 'Describe what happened.'; return; }
       var sess = getSession() || {};
@@ -2697,6 +2649,7 @@
       post('cs_portal_incidents', { p_token: tok }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       CREW = crewFromField(res[1]);
       renderNav();
       return B;
@@ -3064,7 +3017,7 @@
         'findings are derived from this and the crew’s records — never entered here.</p>';
     drawer(editing ? 'Edit subcontractor' : 'Add subcontractor', editing ? s.name : 'New subcontractor', h);
     $('#sf-cancel').onclick = function () { if (editing) openSub(id); else closeDrawer(); };
-    $('#sf-save').onclick = function () {
+    $('#sf-save').onclick = pilotHold('Subcontractor records'); var __held_sf_save = function () {
       var name = $('#sf-name').value.trim();
       if (!name) { $('#sf-err').textContent = 'Company name is required.'; return; }
       var emrRaw = $('#sf-emr').value.trim();
@@ -3114,7 +3067,7 @@
         'With nothing on file they show as “No training,” derived automatically.</p>');
     drawer(editing ? 'Edit employee' : 'Add employee', editing ? (emp.role + ' · ' + s.name) : 'New crew member', h);
     $('#ef-cancel').onclick = function () { if (editing) openEmployee(subId, empName); else closeDrawer(); };
-    $('#ef-save').onclick = function () {
+    $('#ef-save').onclick = pilotHold('Employee records'); var __held_ef_save = function () {
       var nm = $('#ef-name').value.trim();
       if (!nm) { $('#ef-err').textContent = 'Name is required.'; return; }
       var newSub = $('#ef-sub').value;
@@ -3184,10 +3137,7 @@
         '<input type="date" id="cf-comp" value="' + esc(curIssued || '') + '"></div>' +
       '<div class="f"><label for="cf-exp">Expires <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">· optional, blank = does not expire</span></label>' +
         '<input type="date" id="cf-exp" value="' + esc(curExp || '') + '"></div>' +
-      '<div class="f"><label for="cf-file">Supporting certificate (PDF)' + optNote +
-        (editing && c && c.doc ? ' · leave blank to keep current' : '') + '</label>' +
-        '<input type="file" id="cf-file" accept="application/pdf,image/*"></div>' +
-      (editing && c && c.doc ? '<div class="small" style="margin:-6px 0 12px">Current: ' + docCell(c.doc, '') + '</div>' : '') +
+      '<p class="small muted" style="margin:.2rem 0 .8rem">Certificate file attachments are not stored in this pilot yet.</p>' +
       '<p class="small" id="cf-err" style="color:var(--fail);min-height:1em"></p>' +
       '<div style="display:flex;gap:.5rem">' +
         '<button class="btn btn-gold" id="cf-save" style="flex:1;justify-content:center">' + (editing ? 'Save changes' : 'Add training') + '</button>' +
@@ -3199,22 +3149,21 @@
     $('#cf-save').onclick = function () {
       var type = $('#cf-type').value.trim();
       if (!type) { $('#cf-err').textContent = 'Enter the training or certification type.'; return; }
-      var doc = fileToDoc($('#cf-file'));
+      if (wc.kind !== 'internal') { pilotHold('Subcontractor worker records')(); return; }
       var issued = $('#cf-comp').value || null, exp = $('#cf-exp').value || null;
-      var fn, payload;
-      if (wc.kind === 'internal') {
-        payload = { p_type: type, p_issued: issued, p_exp: exp,
-          p_doc_name: doc ? doc.name : null, p_doc_key: doc ? doc.key : null };
-        if (editing) { fn = 'cs_portal_int_cert_update'; payload.p_cert_id = ref.id; }
-        else { fn = 'cs_portal_int_cert_add'; payload.p_worker_id = wc.workerId; payload.p_worker_name = wc.workerName; }
-      } else {
-        payload = { p_sub_id: wc.subId, p_name: wc.empName, p_type: type,
-          p_completed: issued, p_exp: exp, p_doc_name: doc ? doc.name : null, p_doc_key: doc ? doc.key : null };
-        if (editing) { fn = 'cs_portal_update_cert'; payload.p_cert_index = ref.id; }
-        else { fn = 'cs_portal_add_cert'; }
-      }
-      post(fn, payload).then(refreshBundle).then(function () {
-        toast(editing ? 'Training updated' : 'Training added'); wc.reopen();
+      var sv = $('#cf-save');
+      sv.disabled = true; sv.textContent = 'Saving\u2026';
+      var call = editing
+        ? post('cs_portal_update_cert', { p_cert_id: ref.id, p_cert_type: type, p_issued: issued, p_expires: exp })
+        : post('cs_portal_add_cert', { p_worker: wc.workerName, p_cert_type: type, p_issued: issued, p_expires: exp });
+      call.then(function (res) {
+        if (res && res.ok === false) throw new Error(res.error || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        toast('Saved'); wc.reopen();
+      }).catch(function (e) {
+        sv.disabled = false; sv.textContent = editing ? 'Save changes' : 'Add training';
+        $('#cf-err').textContent = 'Could not save \u2014 ' + (e.message || 'try again');
       });
     };
   }
@@ -3272,7 +3221,7 @@
     drawer(editing ? 'Edit document' : 'Upload PDF', wc.workerName, h);
     wireDocLinks();
     $('#wpf-cancel').onclick = wc.reopen;
-    $('#wpf-save').onclick = function () {
+    $('#wpf-save').onclick = pilotHold('Worker document uploads'); var __held_wpf_save = function () {
       var nm = $('#wpf-name').value.trim();
       if (!nm) { $('#wpf-err').textContent = 'Document name is required.'; return; }
       var f = fileToDoc($('#wpf-file'));
@@ -3441,7 +3390,7 @@
       $('#tk-name').value  = p ? p.name : '';
       $('#tk-phone').value = p ? p.phone : '';
     };
-    $('#tk-send').onclick = function () {
+    $('#tk-send').onclick = pilotHold('Toolbox talk sends'); var __held_tk_send = function () {
       var name  = $('#tk-name').value.trim();
       var phone = $('#tk-phone').value.trim();
       var t = tpls.filter(function (x) { return x.id === $('#tk-tpl').value; })[0];
@@ -4320,7 +4269,7 @@
         recips.push({ name: nm || 'Crew', phone: ph }); render();
       };
       $$('[data-rmr]').forEach(function (b) { b.onclick = function () { saveForms(); recips.splice(+b.dataset.rmr, 1); render(); }; });
-      $('#ni-send').onclick = function () {
+      $('#ni-send').onclick = pilotHold('Desktop form sends'); var __held_ni_send = function () {
         saveForms();
         var list = recips.slice();
         var nm = $('#ni-name').value.trim(), ph = $('#ni-phone').value.trim();
@@ -4575,18 +4524,27 @@
       var sub = $('#at-submit');
       if (sub) sub.onclick = function () {
         var err = $('#at-err');
-        if (!nameVal.trim()) { err.textContent = 'Enter the worker’s name.'; return; }
+        if (!nameVal.trim()) { err.textContent = 'Enter the worker\u2019s name.'; return; }
         if (!picks.length) { err.textContent = 'Add at least one training.'; return; }
         if (picks.some(function (p) { return !p.type.trim(); })) { err.textContent = 'Every training needs a name.'; return; }
-        if (!B.certs) B.certs = [];
-        var pp = (B.people || []).filter(function (x) { return x.name === nameVal.trim(); })[0];
-        picks.forEach(function (p, i) {
-          B.certs.push({ id: 'ic_new_' + Date.now() + '_' + i, worker: nameVal.trim(),
-            worker_id: pp ? pp.id : null, cert_type: p.type.trim(), issued: p.issued, expires: p.expires });
+        sub.disabled = true; sub.textContent = 'Saving\u2026';
+        var chain = Promise.resolve();
+        picks.forEach(function (p) {
+          chain = chain.then(function () {
+            return post('cs_portal_add_cert', { p_worker: nameVal.trim(),
+              p_cert_type: p.type.trim(), p_issued: p.issued || null, p_expires: p.expires || null });
+          }).then(function (res) {
+            if (res && res.ok === false) throw new Error(res.error || 'save failed');
+          });
         });
-        closeDrawer();
-        toast(picks.length + ' training record' + (picks.length === 1 ? '' : 's') + ' added for ' + nameVal.trim() + '.');
-        pgTraining();
+        chain.then(refreshBundle).then(function () {
+          closeDrawer();
+          toast(picks.length + ' training record' + (picks.length === 1 ? '' : 's') + ' saved for ' + nameVal.trim() + '.');
+          pgTraining();
+        }).catch(function (e) {
+          sub.disabled = false; sub.textContent = 'Submit training';
+          err.textContent = 'Could not save \u2014 ' + (e.message || 'try again');
+        });
       };
     }
     render();
@@ -5020,10 +4978,25 @@
       '<button class="btn btn-gold" id="ej-save" style="width:100%;justify-content:center">Save job</button>';
     drawer('Edit job', j.job_number, h);
     $('#ej-save').onclick = function () {
+      var sv = $('#ej-save');
+      var vals = {};
       ['name', 'job_number', 'address', 'start_date', 'foreman_name', 'foreman_phone', 'pm_name', 'gc_name'].forEach(function (k) {
-        var e = $('#ej-' + k); if (e) j[k] = e.value.trim();
+        var e = $('#ej-' + k); if (e) vals[k] = e.value.trim();
       });
-      closeDrawer(); toast('Job updated.'); openJob(id);
+      sv.disabled = true; sv.textContent = 'Saving\u2026';
+      post('cs_portal_update_job', {
+        p_job_id: id, p_name: vals.name, p_job_number: vals.job_number,
+        p_address: vals.address, p_foreman_name: vals.foreman_name,
+        p_foreman_phone: vals.foreman_phone, p_pm_name: vals.pm_name,
+        p_gc_name: vals.gc_name, p_start_date: vals.start_date || null
+      }).then(function (res) {
+        if (res && res.ok === false) throw new Error(res.error || 'save failed');
+        Object.keys(vals).forEach(function (k) { j[k] = vals[k]; });
+        closeDrawer(); toast('Saved'); openJob(id);
+      }).catch(function (e) {
+        sv.disabled = false; sv.textContent = 'Save job';
+        toast('Could not save \u2014 ' + (e.message || 'try again'));
+      });
     };
   }
 
@@ -5038,7 +5011,7 @@
       '<p class="small" id="ae-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
       '<button class="btn btn-gold" id="ae-save" style="width:100%;justify-content:center">Add employee</button>';
     drawer('Add employee on site', 'Onto a subcontractor crew', h);
-    $('#ae-save').onclick = function () {
+    $('#ae-save').onclick = pilotHold('Subcontractor crew records'); var __held_ae_save = function () {
       var name = $('#ae-name').value.trim();
       if (!name) { $('#ae-err').textContent = 'Enter the employee name.'; return; }
       var s = (B.subs || []).filter(function (x) { return x.id === $('#ae-sub').value; })[0];
@@ -5059,7 +5032,7 @@
       '<p class="small" id="as-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
       '<button class="btn btn-gold" id="as-save" style="width:100%;justify-content:center">Add to job</button>';
     drawer('Add internal staff', 'Assign your own people to this job', h);
-    $('#as-save').onclick = function () {
+    $('#as-save').onclick = pilotHold('Staff assignments'); var __held_as_save = function () {
       var sel = $('#as-who').value, err = $('#as-err');
       if (sel !== '') {
         var p = off[+sel]; p.jobs = p.jobs || []; if (p.jobs.indexOf(id) === -1) p.jobs.push(id);
@@ -5080,7 +5053,7 @@
       '<p class="small" id="ic-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
       '<button class="btn btn-gold" id="ic-save" style="width:100%;justify-content:center">Add employee</button>';
     drawer('Add internal employee', 'Your own on-site crew', h);
-    $('#ic-save').onclick = function () {
+    $('#ic-save').onclick = pilotHold('Employee records'); var __held_ic_save = function () {
       var name = $('#ic-name').value.trim();
       if (!name) { $('#ic-err').textContent = 'Enter the employee name.'; return; }
       (B.internal_crew || (B.internal_crew = [])).push({ job_id: id, name: name,
@@ -5829,7 +5802,7 @@
     }
     fillItems();
     $('#du-folder').onchange = fillItems;
-    $('#du-save').onclick = function () {
+    $('#du-save').onclick = pilotHold('Document uploads'); var __held_du_save = function () {
       var nm = $('#du-name').value.trim();
       if (!nm) { $('#du-err').textContent = 'Give the file a name.'; return; }
       // Stamp with today when filing the current year, or mid-year when back-filing.
@@ -7123,7 +7096,7 @@
       '<p class="small" id="ca-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
       '<button class="btn btn-gold" id="ca-save" style="width:100%;justify-content:center">Save</button>';
     drawer('Corrective action', res.where, h);
-    $('#ca-save').onclick = function () {
+    $('#ca-save').onclick = pilotHold('Desktop corrective-action edits'); var __held_ca_save = function () {
       var act = $('#ca-act').value.trim();
       if (!act) { $('#ca-err').textContent = 'Describe the corrective action.'; return; }
       var newPhotos = Array.prototype.map.call($('#ca-photos').files || [],
@@ -7140,8 +7113,8 @@
 
   /* ====================== boot ========================================== */
   function setWho() {
-    var r = ROLES[ROLE] || ROLES.admin;
-    if ($('#who')) $('#who').textContent = r.user + ' · ' + r.title;
+    var s = getSession() || {};
+    if ($('#who')) $('#who').textContent = (s.user || 'Signed in') + ' \u00b7 Safety';
   }
   function openApp(sess) {
     $('#gate').classList.add('hide');
@@ -7156,6 +7129,7 @@
       post('cs_portal_incidents', { p_token: sess.session }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       CREW = crewFromField(res[1]);
       $('#side-co').textContent = (B.company && B.company.name) || C.contractor || '';
       var want = (location.hash || '').replace('#', '');
