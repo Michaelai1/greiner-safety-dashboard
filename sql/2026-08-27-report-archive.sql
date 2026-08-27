@@ -1,0 +1,7 @@
+-- Real, persistent archive state for Safety Inspection reports (applied 2026-08-27).
+-- Organizational state only — findings, corrective actions, and source PDFs untouched.
+-- cs_reports: + archived boolean default false, archived_at timestamptz, archived_by text
+-- cs_portal_report_archive(p_token, p_report_id, p_archived): full scope; stamps
+--   archived_at/archived_by from the session on archive, clears both on restore.
+-- cs_portal_bundle: reports now include archived / archived_at / archived_by.
+-- Full definitions in the applied migration `report_archive_state`.

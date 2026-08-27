@@ -3391,9 +3391,16 @@
   }
 
   function pgObs() {
-    if (obsTab === 'template') obsTab = 'reports';
-    obsTab = 'reports';
-    var right = '';
+    /* Safety Inspections = one connected workflow:
+       Safety Inspections (active reports) | Corrective actions (the real
+       findings from those reports, cs_finding_actions backend — the same
+       records the phone Findings tab uses) | Archive (reports Tony has
+       intentionally archived; server-side state on cs_reports, organizational
+       only — findings, corrective actions and source PDFs are untouched). */
+    if (obsTab !== 'reports' && obsTab !== 'ca' && obsTab !== 'archive') obsTab = 'reports';
+    var archN = (B.reports || []).filter(function (r) { return r.archived; }).length;
+    var right = subtabs(obsTab, [['reports', 'Safety Inspections'], ['ca', 'Corrective actions'],
+      ['archive', 'Archive' + (archN ? ' · ' + archN : '')]], 'ot');
     var html;
     if (obsTab === 'reports') {
       html = head('Safety Inspections',
@@ -3441,15 +3448,126 @@
           '<td>' + esc(r.inspector_name) + '</td>' +
           '<td class="r">' + (r.defect_count
             ? pill('p-warn', r.defect_count + ' flagged') : pill('p-ok', 'Clear')) + '</td>' +
-          '</tr>';
+          '<td class="r"><button class="btn btn-sm" data-obarch="' + esc(r.id) + '">Archive</button></td></tr>';
       });
       html += '<div class="panel"><div class="panel-hd"><div><h3>Reports</h3>' +
         '<div class="sub">' + reps.length + ' of ' + allReps.length + ' shown</div></div></div>' +
         '<div class="panel-bd flush">' + tableWrap(
-        [{ t: '' }, { t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: 'Result', r: 1 }],
+        [{ t: '' }, { t: 'Report' }, { t: 'Date' }, { t: 'Site' }, { t: 'Inspector' }, { t: 'Result', r: 1 }, { t: '', r: 1 }],
         rows, 'No reports match your filters.') + '</div></div>';
+    } else if (obsTab === 'ca') {
+      html = head('Safety Inspections',
+        'Every failed Safety 101 item and every crew form flagged in the field — and what was ' +
+        'done about it. Click one to record the corrective action and close it out. Closing a ' +
+        'finding here updates the phone Findings tab too; it is the same record.', right);
+      var fnds = deriveFindings();
+      var caOpenN = fnds.filter(function (f) { return f.status === 'open'; }).length;
+      html += '<div class="cards">' +
+        kpi(fnds.length, 'findings', 'all sources', 'c-grey') +
+        kpi(caOpenN, 'still open', 'requires closeout', caOpenN ? 'c-warn' : 'c-ok') +
+        kpi(fnds.length - caOpenN, 'closed out', 'action recorded', 'c-ok') +
+        '</div>';
+      var fJobSet = {}; fnds.forEach(function (f) { if (f.job_id) fJobSet[f.job_id] = 1; });
+      var fJobOpts = Object.keys(fJobSet).map(function (id) {
+        return '<option value="' + esc(id) + '"' + (inCaF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
+      var fStatOpts = [['', 'Any status'], ['open', 'Open'], ['closed', 'Closed']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (inCaF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+      html += '<div class="fbar">' +
+        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+          '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+          '<input id="inca-q" placeholder="Search findings…" value="' + esc(subQ.inspCa || '') + '"></div>' +
+        '<select id="inca-job"><option value="">All jobs</option>' + fJobOpts + '</select>' +
+        '<select id="inca-status">' + fStatOpts + '</select></div>';
+      var caq = (subQ.inspCa || '').toLowerCase();
+      var caShown = fnds.filter(function (f) {
+        if (inCaF.job && f.job_id !== inCaF.job) return false;
+        if (inCaF.status && f.status !== inCaF.status) return false;
+        return has(f.description + ' ' + f.from + ' ' + jobName(f.job_id), caq);
+      });
+      var caToday = tzDayStr(new Date());
+      var rows3 = caShown.map(function (f) {
+        var overdue = f.status === 'open' && f.due && f.due < caToday;
+        return '<tr class="click" data-caf="' + esc(f.id) + '">' +
+          '<td><span class="t-main">' + esc(f.description) + '</span>' +
+            '<div class="t-sub">' + esc(f.from) + '</div></td>' +
+          '<td>' + esc(jobName(f.job_id)) + '</td>' +
+          '<td>' + esc(fmtDate(f.date)) + '</td>' +
+          '<td class="r num">' + ((f.photos || []).length ? '📷 ' + f.photos.length : '—') + '</td>' +
+          '<td class="r">' + (f.status === 'closed' ? pill('p-ok', 'Closed')
+            : overdue ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td></tr>';
+      });
+      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Finding' }, { t: 'Job' }, { t: 'Found' }, { t: 'Photos', r: 1 }, { t: 'Status', r: 1 }],
+        rows3, fnds.length ? 'No findings match these filters.' : 'Nothing flagged. That is the goal.') + '</div></div>';
+    } else {
+      // ARCHIVE — reports Tony intentionally archived. Server-side state; the
+      // full historical record stays intact and fully openable.
+      html = head('Safety Inspections',
+        'Safety Inspections moved out of the active list. Everything is preserved — the report, ' +
+        'its findings, corrective actions and source PDF — and a report can be restored at any time.', right);
+      var arch = (B.reports || []).filter(function (r) { return r.archived; })
+        .slice().sort(function (a, b) { return String(b.archived_at || '').localeCompare(String(a.archived_at || '')); });
+      var allF = deriveFindings();
+      var rowsA = arch.map(function (r) {
+        var mine = allF.filter(function (f) { return f.id.indexOf('rf|' + r.id + '|') === 0; });
+        var openN = mine.filter(function (f) { return f.status === 'open'; }).length;
+        var fsum = mine.length
+          ? mine.length + ' finding' + (mine.length === 1 ? '' : 's') +
+            (openN ? ' · ' + openN + ' open' : ' · all closed')
+          : 'No findings';
+        return '<tr class="click" data-report="' + esc(r.id) + '">' +
+          '<td><span class="t-main">' + esc(r.report_type || 'Safety 101 Inspection') + '</span>' +
+            '<div class="t-sub">' + esc(r.inspector_name || '') + '</div></td>' +
+          '<td>' + esc(jobName(r.job_id)) + '<div class="t-sub">' + esc(jobNum(r.job_id)) + '</div></td>' +
+          '<td>' + esc(repDateDisp(r)) + '</td>' +
+          '<td>' + esc(fsum) + '</td>' +
+          '<td>' + esc(r.archived_at ? tzDateTime(r.archived_at) : '—') +
+            (r.archived_by ? '<div class="t-sub">by ' + esc(r.archived_by) + '</div>' : '') + '</td>' +
+          '<td class="r"><button class="btn btn-sm" data-obrestore="' + esc(r.id) + '">Restore</button></td></tr>';
+      });
+      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Report' }, { t: 'Site' }, { t: 'Inspection date' }, { t: 'Findings' }, { t: 'Archived' }, { t: '', r: 1 }],
+        rowsA, 'Nothing archived. Archiving a Safety Inspection moves it here — nothing is ever deleted.') + '</div></div>';
     }
     paint(html);
+    wireSubtabs('ot', function (v) { obsTab = v; pgObs(); });
+    $$('[data-obarch]').forEach(function (b) {
+      b.onclick = function (ev) {
+        ev.stopPropagation();
+        var r = (B.reports || []).filter(function (x) { return x.id === b.dataset.obarch; })[0];
+        if (!r) return;
+        if (!confirm('Archive this Safety Inspection?\n\nThe inspection, findings, corrective actions, ' +
+          'and source report will remain in the system. You can restore it from Archive.')) return;
+        b.disabled = true;
+        post('cs_portal_report_archive', { p_report_id: r.id, p_archived: true }).then(function (res) {
+          if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+          return refreshBundle();
+        }).then(function () { toast('Report archived — restore it any time from Archive'); pgObs(); })
+        .catch(function (e) { b.disabled = false; toast('Could not archive — ' + (e.message || 'try again')); });
+      };
+    });
+    $$('[data-obrestore]').forEach(function (b) {
+      b.onclick = function (ev) {
+        ev.stopPropagation();
+        var r = (B.reports || []).filter(function (x) { return x.id === b.dataset.obrestore; })[0];
+        if (!r) return;
+        if (!confirm('Restore this Safety Inspection to the active list?')) return;
+        b.disabled = true;
+        post('cs_portal_report_archive', { p_report_id: r.id, p_archived: false }).then(function (res) {
+          if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+          return refreshBundle();
+        }).then(function () { toast('Report restored'); pgObs(); })
+        .catch(function (e) { b.disabled = false; toast('Could not restore — ' + (e.message || 'try again')); });
+      };
+    });
+    if (obsTab === 'ca') {
+      $$('[data-caf]').forEach(function (tr) {
+        tr.onclick = function () { openCAFinding(tr.dataset.caf); };
+      });
+      wireSearch('inca-q', function (v) { subQ.inspCa = v; pgObs(); });
+      function ocaBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { inCaF[key] = e.value; pgObs(); }; }
+      ocaBind('inca-job', 'job'); ocaBind('inca-status', 'status');
+    }
     if (obsTab === 'reports') {
       function obBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { obsF[key] = e.value; pgObs(); }; }
       obBind('ob-q', 'q'); obBind('ob-job', 'job'); obBind('ob-person', 'person'); obBind('ob-range', 'range');
@@ -3463,7 +3581,6 @@
       } });
     }
   }
-
   // ---- Construction Job Site Safety Checklist editor (Template subtab) ----
   function cjscEditorHtml(d) {
     return d.sections.map(function (s, si) {
@@ -3916,9 +4033,8 @@
 
   function pgInsp() {
     if (inspTab === 'template') inspTab = 'completed';
-    if (inspTab === 'archive') inspTab = 'completed';
-    var right = subtabs(inspTab, [['completed', 'Completed'], ['links', 'Awaiting Submission'],
-      ['ca', 'Corrective actions']], 'it');
+    if (inspTab === 'archive' || inspTab === 'ca') inspTab = 'completed';
+    var right = subtabs(inspTab, [['completed', 'Completed'], ['links', 'Awaiting Submission']], 'it');
     var html;
     if (inspTab === 'completed') {
       html = head('Inspections',
@@ -3984,63 +4100,10 @@
         [{ t: 'Sent To' }, { t: 'Form' }, { t: 'Jobsite' }, { t: 'Sent' }, { t: 'Opened' },
          { t: 'Status', r: 1 }], rows2, 'Nothing awaiting submission.') +
         '</div></div>';
-    } else if (inspTab === 'ca') {
-      html = head('Inspections',
-        'Every failed Safety 101 item and every crew form flagged in the field \u2014 and what was ' +
-        'done about it. Click one to record the corrective action and close it out. Closing a ' +
-        'finding here updates the phone Findings tab too; it is the same record.', right);
-      var fnds = deriveFindings();
-      var caOpenN = fnds.filter(function (f) { return f.status === 'open'; }).length;
-      html += '<div class="cards">' +
-        kpi(fnds.length, 'findings', 'all sources', 'c-grey') +
-        kpi(caOpenN, 'still open', 'requires closeout', caOpenN ? 'c-warn' : 'c-ok') +
-        kpi(fnds.length - caOpenN, 'closed out', 'action recorded', 'c-ok') +
-        '</div>';
-      var fJobSet = {}; fnds.forEach(function (f) { if (f.job_id) fJobSet[f.job_id] = 1; });
-      var fJobOpts = Object.keys(fJobSet).map(function (id) {
-        return '<option value="' + esc(id) + '"' + (inCaF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
-      var fStatOpts = [['', 'Any status'], ['open', 'Open'], ['closed', 'Closed']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (inCaF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-      html += '<div class="fbar">' +
-        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-          '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-          '<input id="inca-q" placeholder="Search findings\u2026" value="' + esc(subQ.inspCa || '') + '"></div>' +
-        '<select id="inca-job"><option value="">All jobs</option>' + fJobOpts + '</select>' +
-        '<select id="inca-status">' + fStatOpts + '</select></div>';
-      var caq = (subQ.inspCa || '').toLowerCase();
-      var caShown = fnds.filter(function (f) {
-        if (inCaF.job && f.job_id !== inCaF.job) return false;
-        if (inCaF.status && f.status !== inCaF.status) return false;
-        return has(f.description + ' ' + f.from + ' ' + jobName(f.job_id), caq);
-      });
-      var caToday = tzDayStr(new Date());
-      var rows3 = caShown.map(function (f) {
-        var overdue = f.status === 'open' && f.due && f.due < caToday;
-        return '<tr class="click" data-caf="' + esc(f.id) + '">' +
-          '<td><span class="t-main">' + esc(f.description) + '</span>' +
-            '<div class="t-sub">' + esc(f.from) + '</div></td>' +
-          '<td>' + esc(jobName(f.job_id)) + '</td>' +
-          '<td>' + esc(fmtDate(f.date)) + '</td>' +
-          '<td class="r num">' + ((f.photos || []).length ? '\ud83d\udcf7 ' + f.photos.length : '\u2014') + '</td>' +
-          '<td class="r">' + (f.status === 'closed' ? pill('p-ok', 'Closed')
-            : overdue ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td></tr>';
-      });
-      html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-        [{ t: 'Finding' }, { t: 'Job' }, { t: 'Found' }, { t: 'Photos', r: 1 }, { t: 'Status', r: 1 }],
-        rows3, fnds.length ? 'No findings match these filters.' : 'Nothing flagged. That is the goal.') + '</div></div>';
     }
     paint(html);
     wireSubtabs('it', function (v) { inspTab = v; pgInsp(); });
-    $$('[data-caf]').forEach(function (tr) {
-      tr.onclick = function () { openCAFinding(tr.dataset.caf); };
-    });
     if (inspTab === 'links') wireSearch('inlinks-q', function (v) { subQ.inspLinks = v; pgInsp(); });
-    if (inspTab === 'ca') {
-      wireSearch('inca-q', function (v) { subQ.inspCa = v; pgInsp(); });
-      function incaBind(id, key) { var e = $('#' + id); if (e) e.onchange = function () { inCaF[key] = e.value; pgInsp(); }; }
-      incaBind('inca-job', 'job'); incaBind('inca-status', 'status');
-    }
-    if (inspTab === 'archive') wireSearch('inarch-q', function (v) { subQ.inspArch = v; pgInsp(); });
     if (inspTab === 'completed') {
       function inBind(id, key) { var e = $('#' + id); if (e) e.oninput = e.onchange = function () { inspF[key] = e.value; pgInsp(); }; }
       inBind('in-q', 'q'); inBind('in-job', 'job'); inBind('in-person', 'person'); inBind('in-range', 'range');
