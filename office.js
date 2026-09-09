@@ -5859,15 +5859,33 @@
     if (n < 1048576) return Math.round(n / 1024) + ' KB';
     return (n / 1048576).toFixed(1) + ' MB';
   }
+  var docF = { q: '', cat: '' };            // Documents search/filter state
   function pgDocs() {
-    var docs = B.docs || [];
+    var all = B.docs || [];
+    var q = docF.q.trim().toLowerCase();
+    var docs = all.filter(function (d) {
+      return (has(d.filename, q) || has(d.category, q)) &&
+             (!docF.cat || (d.category || '') === docF.cat);
+    });
     var html = head('Documents',
       'Company safety documents \u2014 stored privately and available from any signed-in device.',
       '<button class="btn btn-gold" id="doc-new">Upload document</button>');
-    var fresh = docs.filter(function (d) { return (new Date() - new Date(d.created_at)) < 90 * 86400000; }).length;
+    var fresh = all.filter(function (d) { return (new Date() - new Date(d.created_at)) < 90 * 86400000; }).length;
     html += '<div class="cards">' +
-      kpi(String(docs.length), 'documents on file', 'stored in private company storage', 'c-grey') +
+      kpi(String(all.length), 'documents on file', 'stored in private company storage', 'c-grey') +
       kpi(String(fresh), 'added this quarter', 'recent uploads', 'c-grey') +
+      '</div>';
+    var cats = {};
+    all.forEach(function (d) { if (d.category) cats[d.category] = 1; });
+    html += '<div class="fbar">' +
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+        '<input id="doc-q" placeholder="Search documents\u2026" value="' + esc(docF.q) + '"></div>' +
+      '<select id="doc-cat"><option value="">All categories</option>' +
+        Object.keys(cats).sort().map(function (c) {
+          return '<option value="' + esc(c) + '"' + (docF.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('') + '</select>' +
+      (q || docF.cat ? '<span class="small muted" style="align-self:center">' + docs.length + ' of ' + all.length + '</span>' : '') +
       '</div>';
     html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
       [{ t: 'Document' }, { t: 'Category' }, { t: 'Uploaded' }, { t: 'Size', r: 1 }, { t: '', r: 1 }],
@@ -5882,9 +5900,13 @@
             '<button class="btn btn-sm" data-docdl="' + esc(d.id) + '">Download</button> ' +
             '<button class="btn btn-sm" data-docshare="' + esc(d.id) + '">Share</button> ' +
             '<button class="linklike" data-docdel="' + esc(d.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
-      }), 'No documents yet. Upload the first one \u2014 it will be here from any device, any session.') +
+      }), (q || docF.cat)
+        ? 'No documents match your search.'
+        : 'No documents yet. Upload the first one \u2014 it will be here from any device, any session.') +
       '</div></div>';
     paint(html);
+    wireSearch('doc-q', function (v) { docF.q = v; pgDocs(); });
+    var cs2 = $('#doc-cat'); if (cs2) cs2.onchange = function () { docF.cat = cs2.value; pgDocs(); };
     var nb = $('#doc-new'); if (nb) nb.onclick = openDocUpload;
     function docBlob(id) {
       return docsEdge({ action: 'url', id: id }).then(function (j) {
