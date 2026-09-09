@@ -1937,8 +1937,13 @@
   }
   window.addEventListener('pageshow', refreshFeeds);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshFeeds(); });
+  // Job Site Analysis (Checklist) is intentionally NOT listed here: field crews
+  // only ever see these four. The alternate JSA form is review-only until Tony
+  // confirms the format — reachable via the greiner-QR ?ngform=jobsiteanalysis
+  // review link, never surfaced to crews. To switch it on later, add
+  // { key: 'jobsiteanalysis', label: 'Job Site Analysis' } (or swap it for jha).
   var FIELD_FORMS = [
-    { key: 'jha',      label: 'Start JHA' },
+    { key: 'jha',      label: 'JHA (Task / Hazard / Control)' },
     { key: 'hotwork',  label: 'Hot Work Permit' },
     { key: 'aerial',   label: 'Aerial Platform Inspection' },
     { key: 'forklift', label: 'Forklift Inspection' }
