@@ -97,6 +97,13 @@ h1,h2,h3,h4{margin:0;line-height:1.25}
 .side-ft{padding:14px 18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-4)}
 .side-ft button{color:var(--accent);font-weight:600;font-size:12px;padding:0;margin-top:4px}
 .side-ft a{color:var(--accent);text-decoration:none;font-weight:600}
+/* Refresh: an obvious bordered pill instead of link-like text. Behavior
+   unchanged (re-runs the existing read-only data hydration). */
+.side-ft #refresh-data{display:flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;padding:8px 12px;margin:8px 0 6px;border:1px solid var(--accent);
+  border-radius:8px;background:var(--accent);color:#fff;font-size:12.5px;cursor:pointer}
+.side-ft #refresh-data:hover:not(:disabled){filter:brightness(.95)}
+.side-ft #refresh-data:disabled{opacity:.6;cursor:default}
 
 .main{min-width:0;padding:26px 30px 60px;max-width:1320px;margin-inline:auto;width:100%}
 .pg-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;
