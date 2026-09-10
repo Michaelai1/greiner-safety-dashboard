@@ -1977,9 +1977,20 @@
       '<div class="muted small">' + esc(job.job_number || '') + (job.address ? ' · ' + esc(job.address) : '') + '</div>' +
       '<div class="muted small" style="margin-top:.25rem">' + esc(today) + '</div></div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Start a form</h2></div><div id="f-forms">';
+    // Per-job form availability (server-provided). external_hotwork = the job's
+    // hot work runs through the GC's own process (e.g. Meyer's QR at
+    // Taylorsville) — so the Greiner hot work permit is not offered here.
+    // enabled_forms, when present, is the explicit allow-list for the job;
+    // absent = all default Greiner forms. No config => current behavior.
+    var allowed = (job.enabled_forms && job.enabled_forms.length) ? job.enabled_forms : null;
     FIELD_FORMS.forEach(function (f) {
+      if (job.external_hotwork && f.key === 'hotwork') return;
+      if (allowed && allowed.indexOf(f.key) === -1) return;
       h += '<button class="btn btn-gold" style="width:100%;margin-bottom:.5rem" data-ngform="' + f.key + '">' + esc(f.label) + '</button>';
     });
+    if (job.external_hotwork) {
+      h += '<p class="muted small" style="margin:.2rem 0 .5rem">Hot work on this job uses the general contractor’s permit process.</p>';
+    }
     h += '</div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
     h += '</main><div style="height:2rem"></div>';
