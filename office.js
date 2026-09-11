@@ -4734,7 +4734,7 @@
      job cards. All drag/drop updates LOCAL UI STATE only. Save Changes is a
      staged, isolated handler — it does NOT persist yet (the assignment write
      path is being finished separately). Nothing here touches a write path. */
-  var asg = { tab: 'people', q: '', peo: null, eqp: null, base: '', fieldNames: null, fieldTried: false };
+  var asg = { tab: 'people', q: '', fieldNames: null, fieldTried: false, flashT: 0 };
   // Edge auto-scroll while dragging, so job cards below the fold are reachable.
   var asgScroll = { on: false, y: 0, raf: 0, docWired: false };
   function asgScrollTick() {
@@ -4753,29 +4753,48 @@
   }
   function asgPersonById(id) { return (B.workers || []).filter(function (w) { return w.id === id; })[0]; }
   function asgEquipById(id) { return (B.equipment || []).filter(function (e) { return e.id === id; })[0]; }
-  function asgInit() {
-    var peo = {}, eqp = {};
-    (B.workers || []).forEach(function (w) { if (w.job_id) { (peo[w.id] = peo[w.id] || {})[w.job_id] = true; } });
-    (B.equipment || []).forEach(function (e) { if (e.job_id) { (eqp[e.id] = eqp[e.id] || {})[e.job_id] = true; } });
-    asg.peo = peo; asg.eqp = eqp;
-    asg.base = JSON.stringify({ peo: peo, eqp: eqp });
+  /* Assignment is ONE job per person / per unit (the roster + equipment tables
+     both store a single job_id). Each drop saves immediately: we update the row
+     optimistically so the board moves at once, fire the write, and roll back if
+     it fails. People move via cs_portal_worker_update / _unassign (live); units
+     via cs_portal_equipment_set_job (from sql/2026-09-12-equipment-set-job.sql). */
+  function asgFlash(msg, bad) {
+    var s = $('#asg-status'); if (!s) return;
+    s.textContent = msg; s.className = 'asg-status' + (bad ? ' bad' : ' ok');
+    clearTimeout(asg.flashT);
+    asg.flashT = setTimeout(function () {
+      var s2 = $('#asg-status'); if (s2) { s2.textContent = 'Changes save automatically'; s2.className = 'asg-status'; }
+    }, 2200);
   }
-  function asgMap(kind) { return kind === 'e' ? asg.eqp : asg.peo; }
-  function asgDirtyCount() {
-    if (!asg.base) return 0;
-    var base = JSON.parse(asg.base), n = 0;
-    ['peo', 'eqp'].forEach(function (k) {
-      var cur = asg[k] || {}, b = base[k] || {}, ids = {};
-      Object.keys(cur).forEach(function (i) { ids[i] = 1; });
-      Object.keys(b).forEach(function (i) { ids[i] = 1; });
-      Object.keys(ids).forEach(function (id) {
-        var cj = cur[id] || {}, bj = b[id] || {}, js = {};
-        Object.keys(cj).forEach(function (j) { js[j] = 1; });
-        Object.keys(bj).forEach(function (j) { js[j] = 1; });
-        Object.keys(js).forEach(function (j) { if (!!cj[j] !== !!bj[j]) n++; });
-      });
-    });
-    return n;
+  function asgAssign(kind, id, jid) {
+    if (kind === 'e') {
+      var e = asgEquipById(id); if (!e || e.job_id === jid) return;
+      var old = e.job_id; e.job_id = jid; pgAssign(); asgFlash('Saving…');
+      post('cs_portal_equipment_set_job', { p_equipment_id: id, p_job_id: jid }).then(function (r) {
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Saved');
+      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+    } else {
+      var w = asgPersonById(id); if (!w || w.job_id === jid) return;
+      var oldp = w.job_id; w.job_id = jid; hydrateWorkers(); pgAssign(); asgFlash('Saving…');
+      post('cs_portal_worker_update', { p_worker_id: id, p_job_id: jid }).then(function (r) {
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Saved');
+      }).catch(function (err) { w.job_id = oldp; hydrateWorkers(); pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+    }
+  }
+  function asgUnassign(kind, id) {
+    if (kind === 'e') {
+      var e = asgEquipById(id); if (!e) return;
+      var old = e.job_id; e.job_id = null; pgAssign(); asgFlash('Saving…');
+      post('cs_portal_equipment_set_job', { p_equipment_id: id, p_job_id: null }).then(function (r) {
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Removed');
+      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+    } else {
+      var w = asgPersonById(id); if (!w) return;
+      var oldp = w.job_id; w.job_id = null; hydrateWorkers(); pgAssign(); asgFlash('Saving…');
+      post('cs_portal_worker_unassign', { p_worker_id: id }).then(function (r) {
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Removed');
+      }).catch(function (err) { w.job_id = oldp; hydrateWorkers(); pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+    }
   }
   function asgLoadFieldNames() {
     if (asg.fieldTried) return;               // once per session
@@ -4820,16 +4839,13 @@
       '<button type="button" class="asg-x" data-rm="' + kind + '" data-id="' + esc(id) + '" data-job="' + esc(jid) + '" aria-label="Remove">×</button></div>';
   }
   function asgAssignedFor(kind, jid) {
-    var map = kind === 'e' ? asg.eqp : asg.peo, out = [];
-    Object.keys(map).forEach(function (id) { if (map[id] && map[id][jid]) out.push(id); });
-    return out;
+    var src = kind === 'e' ? (B.equipment || []) : (B.workers || []);
+    return src.filter(function (x) { return x.job_id === jid; }).map(function (x) { return x.id; });
   }
 
   function pgAssign() {
-    if (!asg.peo) asgInit();
     asgLoadFieldNames();
     var isP = asg.tab === 'people';
-    var dirty = asgDirtyCount();
 
     var style = '<style>' +
       '.asg-tabs{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--shadow)}' +
@@ -4841,9 +4857,10 @@
       '.asg-srch svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-5);pointer-events:none}' +
       '.asg-srch input{width:100%;padding:9px 12px 9px 35px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13px;color:var(--ink);box-shadow:var(--shadow)}' +
       '.asg-srch input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tt)}' +
-      '.asg-save{margin-left:auto;display:flex;align-items:center;gap:12px}' +
-      '.asg-count{font-size:13px;color:var(--accent);font-weight:600}' +
-      '.asg-count.clean{color:var(--ink-5);font-weight:400}' +
+      '.asg-status{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-5);font-weight:500}' +
+      '.asg-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-5)}' +
+      '.asg-status.ok{color:var(--ok);font-weight:600}.asg-status.ok::before{background:var(--ok)}' +
+      '.asg-status.bad{color:var(--fail);font-weight:600}.asg-status.bad::before{background:var(--fail)}' +
       '.asg-pool{display:flex;flex-wrap:wrap;gap:8px;max-height:230px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}' +
       '.asg-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:grab;user-select:none;box-shadow:var(--shadow);transition:box-shadow .12s,transform .1s,border-color .12s}' +
       '.asg-chip:hover{box-shadow:var(--shadow-lg);border-color:var(--line-2)}' +
@@ -4874,13 +4891,10 @@
     var SVG_E = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
     var SVG_SRCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 
-    var right = '<div class="asg-save">' +
-      '<span id="asg-count" class="asg-count' + (dirty ? '' : ' clean') + '">' +
-        (dirty ? dirty + ' unsaved change' + (dirty === 1 ? '' : 's') : 'No unsaved changes') + '</span>' +
-      '<button class="btn btn-gold" id="asg-save"' + (dirty ? '' : ' disabled') + '>Save Changes</button></div>';
+    var right = '<span id="asg-status" class="asg-status">Changes save automatically</span>';
 
     var html = style + head('Planner',
-      'Drag people and equipment onto a job to assign them. Changes are staged until you hit Save.', right);
+      'Drag a person or unit onto a job to assign it — one job each, so a drop moves them. Every change saves automatically.', right);
 
     // Toolbar: tabs + search
     html += '<div class="asg-bar">' +
@@ -4969,35 +4983,13 @@
         ev.preventDefault(); zone.classList.remove('over'); asgStopScroll();
         var raw = ev.dataTransfer.getData('text/plain'); if (!raw) return;
         var parts = raw.split(':'), kind = parts[0], id = parts.slice(1).join(':');
-        var jid = zone.dataset.drop, map = asgMap(kind);
-        (map[id] = map[id] || {})[jid] = true;
-        pgAssign();
+        asgAssign(kind, id, zone.dataset.drop);   // saves immediately
       };
     });
-    // Remove controls
+    // Remove controls — unassign immediately
     $$('.asg-x').forEach(function (x) {
-      x.onclick = function () {
-        var map = asgMap(x.dataset.rm), id = x.dataset.id, jid = x.dataset.job;
-        if (map[id]) { delete map[id][jid]; if (!Object.keys(map[id]).length) delete map[id]; }
-        pgAssign();
-      };
+      x.onclick = function () { asgUnassign(x.dataset.rm, x.dataset.id); };
     });
-    // Save (staged; isolated future write path)
-    var sv = $('#asg-save');
-    if (sv) sv.onclick = asgSave;
-  }
-  /* ISOLATED FUTURE SAVE HANDLER.
-     Persistence is intentionally NOT wired here — the assignment write path is
-     being finished separately. This stages the change set and reports honestly
-     that it has not been saved. When a verified write RPC is ready, send
-     `changes` from here and then call asgInit() to reset the baseline. */
-  function asgSave() {
-    var n = asgDirtyCount();
-    if (!n) return;
-    alert(n + ' change' + (n === 1 ? '' : 's') + ' staged.\n\n' +
-      'Saving to the server is not enabled in this build yet — the assignment ' +
-      'write path is being finished separately. Your changes are held in this ' +
-      'screen only and will not persist after a refresh.');
   }
 
   /* ====================== JOBS ========================================== */
