@@ -7655,7 +7655,7 @@
   /* ====================== boot ========================================== */
   function setWho() {
     var s = getSession() || {};
-    if ($('#who')) $('#who').textContent = (s.user || 'Signed in') + ' \u00b7 Safety';
+    if ($('#who')) $('#who').textContent = (s.user || 'Signed in');
   }
   function openApp(sess) {
     $('#gate').classList.add('hide');
