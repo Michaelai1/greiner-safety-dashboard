@@ -25,32 +25,32 @@
 -- ============================================================================
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Matt Thuer', '3109', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Matt Thuer', '3109', null, 'full', null);
   raise notice 'OK: Matt Thuer (PIN 3109)';
 exception when others then raise notice 'FAILED Matt Thuer: %', sqlerrm; end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Jeff Hearrell', '1001', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Jeff Hearrell', '1001', null, 'full', null);
   raise notice 'OK: Jeff Hearrell (PIN 1001)';
 exception when others then raise notice 'FAILED Jeff Hearrell: %', sqlerrm; end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Jon Deater', '3941', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Jon Deater', '3941', null, 'full', null);
   raise notice 'OK: Jon Deater (PIN 3941)';
 exception when others then raise notice 'FAILED Jon Deater: %', sqlerrm; end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Steve Logan', '3110', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Steve Logan', '3110', null, 'full', null);
   raise notice 'OK: Steve Logan (PIN 3110)';
 exception when others then raise notice 'FAILED Steve Logan: %', sqlerrm; end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Chris Greiner Jr', '3101', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Chris Greiner Jr', '3101', null, 'full', null);
   raise notice 'OK: Chris Greiner Jr (PIN 3101)';
 exception when others then raise notice 'FAILED Chris Greiner Jr: %', sqlerrm; end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Paul Howard', '7719', 'Admin', 'full', null);
+  perform cs_portal_set_user('greiner', 'Paul Howard', '7719', null, 'full', null);
   raise notice 'OK: Paul Howard (PIN 7719)';
 exception when others then raise notice 'FAILED Paul Howard: %', sqlerrm; end $$;
 
