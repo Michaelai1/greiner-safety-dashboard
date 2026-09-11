@@ -391,7 +391,7 @@
     { id: 'docs',      label: 'Documents',       group: 'Safety program' },
     { id: 'automations', label: 'Automations',   group: 'Setup' },
     { id: 'jobs',      label: 'Jobs',            group: 'Setup' },
-    { id: 'assign',    label: 'People & Equipment', group: 'Setup' },
+    { id: 'assign',    label: 'Planner',           group: 'Setup' },
     { id: 'templates', label: 'Templates',       group: 'Setup' }
   ];
   var page = 'overview';
@@ -4735,6 +4735,17 @@
      staged, isolated handler — it does NOT persist yet (the assignment write
      path is being finished separately). Nothing here touches a write path. */
   var asg = { tab: 'people', q: '', peo: null, eqp: null, base: '', fieldNames: null, fieldTried: false };
+  // Edge auto-scroll while dragging, so job cards below the fold are reachable.
+  var asgScroll = { on: false, y: 0, raf: 0, docWired: false };
+  function asgScrollTick() {
+    if (!asgScroll.on) { asgScroll.raf = 0; return; }
+    var h = window.innerHeight, edge = 110, y = asgScroll.y;
+    if (y < edge) window.scrollBy(0, -Math.ceil((edge - y) / 5));
+    else if (y > h - edge) window.scrollBy(0, Math.ceil((y - (h - edge)) / 5));
+    asgScroll.raf = requestAnimationFrame(asgScrollTick);
+  }
+  function asgStartScroll(y) { asgScroll.on = true; asgScroll.y = y; if (!asgScroll.raf) asgScroll.raf = requestAnimationFrame(asgScrollTick); }
+  function asgStopScroll() { asgScroll.on = false; if (asgScroll.raf) { cancelAnimationFrame(asgScroll.raf); asgScroll.raf = 0; } }
 
   function asgActiveJobs() {
     return (B.jobs || []).filter(function (j) { return j.status === 'active'; })
@@ -4868,7 +4879,7 @@
         (dirty ? dirty + ' unsaved change' + (dirty === 1 ? '' : 's') : 'No unsaved changes') + '</span>' +
       '<button class="btn btn-gold" id="asg-save"' + (dirty ? '' : ' disabled') + '>Save Changes</button></div>';
 
-    var html = style + head('People & Equipment',
+    var html = style + head('Planner',
       'Drag people and equipment onto a job to assign them. Changes are staged until you hit Save.', right);
 
     // Toolbar: tabs + search
@@ -4933,19 +4944,29 @@
     if (qi) { qi.oninput = function () { asg.q = qi.value; asgApplyFilter(); }; }
     asgApplyFilter();
 
+    // Track the cursor during any drag so edge auto-scroll can follow it,
+    // and stop scrolling when the drag ends anywhere. Wired on document once.
+    if (!asgScroll.docWired) {
+      document.addEventListener('dragover', function (ev) { if (asgScroll.on) asgScroll.y = ev.clientY; });
+      document.addEventListener('drop', asgStopScroll);
+      document.addEventListener('dragend', asgStopScroll);
+      asgScroll.docWired = true;
+    }
     // Drag sources
     $$('#asg-pool .asg-chip').forEach(function (chip) {
       chip.ondragstart = function (ev) {
         ev.dataTransfer.setData('text/plain', chip.dataset.kind + ':' + chip.dataset.id);
         ev.dataTransfer.effectAllowed = 'copy';
+        asgStartScroll(ev.clientY);
       };
+      chip.ondragend = asgStopScroll;
     });
     // Drop targets
     $$('.asg-job').forEach(function (zone) {
       zone.ondragover = function (ev) { ev.preventDefault(); zone.classList.add('over'); ev.dataTransfer.dropEffect = 'copy'; };
       zone.ondragleave = function () { zone.classList.remove('over'); };
       zone.ondrop = function (ev) {
-        ev.preventDefault(); zone.classList.remove('over');
+        ev.preventDefault(); zone.classList.remove('over'); asgStopScroll();
         var raw = ev.dataTransfer.getData('text/plain'); if (!raw) return;
         var parts = raw.split(':'), kind = parts[0], id = parts.slice(1).join(':');
         var jid = zone.dataset.drop, map = asgMap(kind);
