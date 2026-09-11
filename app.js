@@ -1937,16 +1937,17 @@
   }
   window.addEventListener('pageshow', refreshFeeds);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshFeeds(); });
-  // Job Site Analysis (Checklist) is intentionally NOT listed here: field crews
-  // only ever see these four. The alternate JSA form is review-only until Tony
-  // confirms the format — reachable via the greiner-QR ?ngform=jobsiteanalysis
-  // review link, never surfaced to crews. To switch it on later, add
-  // { key: 'jobsiteanalysis', label: 'Job Site Analysis' } (or swap it for jha).
+  // Both JHA formats are shown so Tony can open and test each during the
+  // pilot meeting. 'jha' = the current Task/Hazard/Control pilot JHA (unchanged).
+  // 'jobsiteanalysis' = the alternate GBI checklist JHA, clearly marked "Review"
+  // until Tony confirms which format Greiner adopts. Hot work stays job-scoped
+  // (hidden where external_hotwork, e.g. Taylorsville → Meyer QR).
   var FIELD_FORMS = [
-    { key: 'jha',      label: 'JHA (Task / Hazard / Control)' },
-    { key: 'hotwork',  label: 'Hot Work Permit' },
-    { key: 'aerial',   label: 'Aerial Platform Inspection' },
-    { key: 'forklift', label: 'Forklift Inspection' }
+    { key: 'jha',            label: 'JHA: Task / Hazard / Control' },
+    { key: 'jobsiteanalysis',label: 'JHA: Checklist — Review' },
+    { key: 'hotwork',        label: 'Hot Work Permit' },
+    { key: 'aerial',         label: 'Aerial Platform Inspection' },
+    { key: 'forklift',       label: 'Forklift Inspection' }
   ];
   function showFieldLanding() {
     $('#gate').classList.add('hide');
