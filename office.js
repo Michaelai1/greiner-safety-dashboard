@@ -4821,29 +4821,47 @@
     var dirty = asgDirtyCount();
 
     var style = '<style>' +
-      '.asg-tabs{display:inline-flex;border:1px solid var(--line,#1e293b);border-radius:8px;overflow:hidden}' +
-      '.asg-tabs button{border:0;background:transparent;color:var(--muted,#94a3b8);padding:7px 16px;font:inherit;font-weight:600;cursor:pointer}' +
-      '.asg-tabs button.on{background:var(--gold,#eab308);color:#1a1206}' +
-      '.asg-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}' +
-      '.asg-bar input{flex:1;min-width:180px}' +
-      '.asg-save{margin-left:auto;display:flex;align-items:center;gap:10px}' +
-      '.asg-count{font-size:13px;color:var(--gold,#eab308);font-weight:600}' +
-      '.asg-count.clean{color:var(--muted,#94a3b8);font-weight:400}' +
-      '.asg-pool{display:flex;flex-wrap:wrap;gap:8px;max-height:210px;overflow:auto;padding:4px;border:1px solid var(--line,#1e293b);border-radius:10px;background:rgba(148,163,184,.04)}' +
-      '.asg-chip{display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line,#1e293b);border-radius:999px;background:var(--card,#0f172a);cursor:grab;user-select:none}' +
-      '.asg-chip:active{cursor:grabbing}.asg-chip.hide{display:none}' +
-      '.asg-nm{font-weight:600}.asg-sub{font-size:12px;color:var(--muted,#94a3b8)}' +
-      '.asg-fa{font-size:11px;color:var(--ok,#22c55e);font-weight:600}.asg-nf{font-size:11px;color:var(--muted,#94a3b8)}' +
-      '.asg-jobs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px}' +
-      '.asg-job{border:1px solid var(--line,#1e293b);border-radius:12px;padding:14px;background:var(--card,#0f172a);transition:border-color .12s,background .12s}' +
-      '.asg-job.over{border-color:var(--gold,#eab308);background:rgba(234,179,8,.08)}' +
-      '.asg-job h4{margin:0 0 4px;font-size:15px}.asg-job .asg-hint{font-size:12px;color:var(--muted,#94a3b8);margin-bottom:10px}' +
-      '.asg-sec{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#94a3b8);margin:10px 0 6px}' +
-      '.asg-list{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}' +
-      '.asg-a{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border:1px solid var(--line,#1e293b);border-radius:999px;background:rgba(148,163,184,.08);font-size:13px}' +
-      '.asg-x{border:0;background:transparent;color:var(--fail,#ef4444);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}' +
-      '.asg-empty{font-size:12px;color:var(--muted,#94a3b8);font-style:italic}' +
+      '.asg-tabs{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--shadow)}' +
+      '.asg-tabs button{border:0;background:transparent;color:var(--ink-4);padding:8px 18px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;transition:background .12s,color .12s}' +
+      '.asg-tabs button.on{background:var(--accent);color:#fff}' +
+      '.asg-tabs button:not(.on):hover{background:var(--accent-tt);color:var(--accent)}' +
+      '.asg-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}' +
+      '.asg-srch{position:relative;flex:1;min-width:200px;max-width:340px}' +
+      '.asg-srch svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-5);pointer-events:none}' +
+      '.asg-srch input{width:100%;padding:9px 12px 9px 35px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13px;color:var(--ink);box-shadow:var(--shadow)}' +
+      '.asg-srch input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tt)}' +
+      '.asg-save{margin-left:auto;display:flex;align-items:center;gap:12px}' +
+      '.asg-count{font-size:13px;color:var(--accent);font-weight:600}' +
+      '.asg-count.clean{color:var(--ink-5);font-weight:400}' +
+      '.asg-pool{display:flex;flex-wrap:wrap;gap:8px;max-height:230px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}' +
+      '.asg-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:grab;user-select:none;box-shadow:var(--shadow);transition:box-shadow .12s,transform .1s,border-color .12s}' +
+      '.asg-chip:hover{box-shadow:var(--shadow-lg);border-color:var(--line-2)}' +
+      '.asg-chip:active{cursor:grabbing;transform:scale(.97)}.asg-chip.hide{display:none}' +
+      '.asg-nm{font-weight:600;font-size:13px;color:var(--ink)}.asg-sub{font-size:11.5px;color:var(--ink-5)}' +
+      '.asg-fa{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ok);font-weight:600}' +
+      '.asg-fa::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}' +
+      '.asg-nf{font-size:11px;color:var(--ink-5)}' +
+      '.asg-jobs{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;margin-top:12px}' +
+      '.asg-job{border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:var(--shadow);overflow:hidden;transition:box-shadow .12s,border-color .12s}' +
+      '.asg-job:hover{box-shadow:var(--shadow-lg)}' +
+      '.asg-job.over{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tt)}' +
+      '.asg-jhd{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:stretch;gap:11px}' +
+      '.asg-jhd .bar{width:4px;border-radius:3px;background:var(--accent);flex:0 0 auto}' +
+      '.asg-jhd h4{margin:0;font-size:14.5px;color:var(--ink);line-height:1.25}' +
+      '.asg-jhd .sub{font-size:12px;color:var(--ink-4);margin-top:3px}' +
+      '.asg-jbody{padding:13px 15px 16px}' +
+      '.asg-sec{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-4);font-weight:700;margin:14px 0 7px}' +
+      '.asg-sec:first-child{margin-top:0}.asg-sec svg{width:13px;height:13px;flex:0 0 auto;color:var(--ink-5)}' +
+      '.asg-sec .n{margin-left:auto;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;letter-spacing:0;color:var(--ink-3);font-weight:600}' +
+      '.asg-list{display:flex;flex-wrap:wrap;gap:6px;min-height:24px}' +
+      '.asg-a{display:inline-flex;align-items:center;gap:6px;padding:5px 7px 5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:12.5px;color:var(--ink-2)}' +
+      '.asg-x{border:0;background:transparent;color:var(--ink-5);font-size:15px;line-height:1;cursor:pointer;padding:0 2px;transition:color .12s}' +
+      '.asg-x:hover{color:var(--fail)}' +
+      '.asg-empty{font-size:12px;color:var(--ink-5);font-style:italic}' +
       '</style>';
+    var SVG_P = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+    var SVG_E = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
+    var SVG_SRCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 
     var right = '<div class="asg-save">' +
       '<span id="asg-count" class="asg-count' + (dirty ? '' : ' clean') + '">' +
@@ -4859,7 +4877,9 @@
         '<button data-atab="people" class="' + (isP ? 'on' : '') + '">People</button>' +
         '<button data-atab="equipment" class="' + (!isP ? 'on' : '') + '">Equipment</button>' +
       '</div>' +
-      '<input type="search" id="asg-q" autocomplete="off" placeholder="Search ' + (isP ? 'people' : 'equipment') + ' by name…" value="' + esc(asg.q) + '">' +
+      '<div class="asg-srch">' + SVG_SRCH +
+        '<input type="search" id="asg-q" autocomplete="off" placeholder="Search ' + (isP ? 'people' : 'equipment') + ' by name…" value="' + esc(asg.q) + '">' +
+      '</div>' +
       '</div>';
 
     // Pool
@@ -4876,18 +4896,23 @@
     html += '<div class="sec-h" style="margin-top:18px">Assigned jobs</div>';
     html += '<div class="asg-jobs">' + (jobs.length ? jobs.map(function (j) {
       var peopleIds = asgAssignedFor('p', j.id), equipIds = asgAssignedFor('e', j.id);
+      var sub = [j.job_number, j.address].filter(Boolean).join('  ·  ');
       return '<div class="asg-job" data-drop="' + esc(j.id) + '">' +
-        '<h4>' + esc(j.name) + '</h4>' +
-        '<div class="asg-hint">Drop a ' + (isP ? 'person' : 'unit') + ' here to assign</div>' +
-        '<div class="asg-sec">People (' + peopleIds.length + ')</div>' +
-        '<div class="asg-list">' + (peopleIds.length
-          ? peopleIds.map(function (id) { return asgAssignedChip('p', id, j.id); }).join('')
-          : '<span class="asg-empty">None assigned</span>') + '</div>' +
-        '<div class="asg-sec">Equipment (' + equipIds.length + ')</div>' +
-        '<div class="asg-list">' + (equipIds.length
-          ? equipIds.map(function (id) { return asgAssignedChip('e', id, j.id); }).join('')
-          : '<span class="asg-empty">None assigned</span>') + '</div>' +
-        '</div>';
+        '<div class="asg-jhd"><span class="bar"></span><div style="min-width:0">' +
+          '<h4>' + esc(j.name) + '</h4>' +
+          (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') +
+        '</div></div>' +
+        '<div class="asg-jbody">' +
+          '<div class="asg-sec">' + SVG_P + 'People <span class="n">' + peopleIds.length + '</span></div>' +
+          '<div class="asg-list">' + (peopleIds.length
+            ? peopleIds.map(function (id) { return asgAssignedChip('p', id, j.id); }).join('')
+            : '<span class="asg-empty">Drag a person here</span>') + '</div>' +
+          '<div class="asg-sec">' + SVG_E + 'Equipment <span class="n">' + equipIds.length + '</span></div>' +
+          '<div class="asg-list">' + (equipIds.length
+            ? equipIds.map(function (id) { return asgAssignedChip('e', id, j.id); }).join('')
+            : '<span class="asg-empty">Drag a unit here</span>') + '</div>' +
+        '</div>' +
+      '</div>';
     }).join('') : '<div class="empty">No active jobs.</div>') + '</div>';
 
     paint(html);
