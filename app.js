@@ -1481,14 +1481,15 @@
   /* ---------- load ---------------------------------------------------- */
   var INSPF = { job: '', form: '', status: '' };   // All Inspections filters
   var FORM_DEFS = [
-    { key: 'jha', title: 'JHA' },
+    { key: 'jha', title: 'JHA: Task / Hazard / Control' },
+    { key: 'jobsiteanalysis', title: 'JHA: Checklist — Review' },
     { key: 'hotwork', title: 'Hot Work Permit' },
     { key: 'aerial', title: 'Aerial Platform Inspection' },
     { key: 'forklift', title: 'Forklift Inspection' }
   ];
   // greiner-QR form keys vs stored form_type values
-  var FORM_TYPE_OF = { jha: 'jha', hotwork: 'hot_work_permit', aerial: 'aerial_platform', forklift: 'forklift' };
-  var FORM_TITLE_OF = { jha: 'JHA', hot_work_permit: 'Hot Work Permit', aerial_platform: 'Aerial Platform Inspection', forklift: 'Forklift Inspection' };
+  var FORM_TYPE_OF = { jha: 'jha', jobsiteanalysis: 'job_site_analysis', hotwork: 'hot_work_permit', aerial: 'aerial_platform', forklift: 'forklift' };
+  var FORM_TITLE_OF = { jha: 'JHA', job_site_analysis: 'JHA Checklist', hot_work_permit: 'Hot Work Permit', aerial_platform: 'Aerial Platform Inspection', forklift: 'Forklift Inspection' };
 
   function purdueJob() {
     return ((STATE.bundle || {}).jobs || []).filter(function (j) { return /purdue/i.test(j.name || ''); })[0] || null;
@@ -1844,26 +1845,28 @@
     if (!doc || !doc.sections || !doc.sections.length) return '<div class="empty">The full record is available in the PDF.</div>';
     var h = '';
     doc.sections.forEach(function (sec) {
-      h += '<div style="font-weight:700;margin:1rem 0 .4rem;overflow-wrap:anywhere">' + esc(sec.title) + '</div>';
+      h += '<div style="font-weight:800;color:var(--gold,#eab308);letter-spacing:.02em;margin:1.1rem 0 .45rem;overflow-wrap:anywhere">' + esc(sec.title) + '</div>';
       (sec.items || []).forEach(function (it) {
         var raw = it.response == null ? '' : String(it.response);
         if (/^[a-z]:\\fakepath\\/i.test(raw)) raw = '';   // hide browser file-picker noise
         var resp = docRespLabel(raw);
-        var col = it.flagged ? 'var(--bad,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(resp) ? 'var(--ok,#1e7d34)' : 'inherit');
+        // Explicit high-contrast colors (no bare "inherit") so checklist text is
+        // never grey-on-grey on a phone: flagged=red, affirmative=green, else bright.
+        var col = it.flagged ? 'var(--bad,#ef4444)' : (/^(yes|pass|safe|ok|n\/a|complete|selected)$/i.test(resp) ? 'var(--ok,#22c55e)' : 'var(--paper,#f8fafc)');
         // A short pass/fail choice sits to the right; anything longer (JHA task /
         // hazard / control text) stacks on its own line and wraps so nothing
         // ever runs outside the card on a phone.
         var shortChoice = resp && it.type === 'choice' && resp.length <= 14;
         var head = shortChoice
           ? '<div style="display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start">' +
-              '<div style="font-weight:600;min-width:0;overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
+              '<div style="font-weight:600;color:var(--paper,#f8fafc);min-width:0;overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
               '<div style="font-weight:700;color:' + col + ';flex:0 0 auto;white-space:nowrap">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</div>' +
             '</div>'
-          : '<div style="font-weight:600;overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
+          : '<div style="font-weight:600;color:var(--paper,#f8fafc);overflow-wrap:anywhere">' + esc(it.label) + '</div>' +
             (resp ? '<div style="font-weight:700;color:' + col + ';margin-top:.15rem;overflow-wrap:anywhere">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</div>' : '');
         h += '<div class="card" style="padding:.6rem .8rem;margin-bottom:.4rem;overflow-wrap:anywhere;word-break:break-word">' +
           head +
-          (it.notes ? '<div class="muted small" style="margin-top:.3rem;overflow-wrap:anywhere"><em>' + (it.flagged ? 'Notes / what went wrong: ' : 'Notes: ') + esc(it.notes) + '</em></div>' : '') +
+          (it.notes ? '<div class="small" style="margin-top:.3rem;color:var(--grey,#cbd5e1);overflow-wrap:anywhere"><em>' + (it.flagged ? 'Notes / what went wrong: ' : 'Notes: ') + esc(it.notes) + '</em></div>' : '') +
           (it.photos || []).map(function (p) { return '<div style="margin-top:.4rem"><img src="' + esc(p) + '" style="max-width:100%;height:auto;border-radius:8px;border:1px solid var(--line,#334)"></div>'; }).join('') +
           '</div>';
       });
