@@ -391,6 +391,7 @@
     { id: 'docs',      label: 'Documents',       group: 'Safety program' },
     { id: 'automations', label: 'Automations',   group: 'Setup' },
     { id: 'jobs',      label: 'Jobs',            group: 'Setup' },
+    { id: 'assign',    label: 'People & Equipment', group: 'Setup' },
     { id: 'templates', label: 'Templates',       group: 'Setup' }
   ];
   var page = 'overview';
@@ -1570,7 +1571,7 @@
     ({ overview: pgOverview, analytics: pgAnalytics, permits: pgPermits, incidents: pgIncidents, obs: pgObs,
        insp: pgInsp, equipment: pgEquipment, corrective: pgCorrective, talks: pgTalks, nearmiss: pgNearMiss,
        subs: pgSubs, training: pgTraining, templates: pgTemplates, jobs: pgJobs, docs: pgDocs,
-       automations: pgAutomations, orient: pgOrient }[id] || pgOverview)();
+       automations: pgAutomations, orient: pgOrient, assign: pgAssign }[id] || pgOverview)();
     window.scrollTo(0, 0);
   }
 
@@ -4726,6 +4727,231 @@
         err.textContent = 'Could not save — ' + (e.message || 'try again');
       });
     };
+  }
+
+  /* ================== PEOPLE & EQUIPMENT (assignment board) =============
+     Visual drag-and-drop board: drag people / equipment from the top pool onto
+     job cards. All drag/drop updates LOCAL UI STATE only. Save Changes is a
+     staged, isolated handler — it does NOT persist yet (the assignment write
+     path is being finished separately). Nothing here touches a write path. */
+  var asg = { tab: 'people', q: '', peo: null, eqp: null, base: '', fieldNames: null, fieldTried: false };
+
+  function asgActiveJobs() {
+    return (B.jobs || []).filter(function (j) { return j.status === 'active'; })
+      .sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+  }
+  function asgPersonById(id) { return (B.workers || []).filter(function (w) { return w.id === id; })[0]; }
+  function asgEquipById(id) { return (B.equipment || []).filter(function (e) { return e.id === id; })[0]; }
+  function asgInit() {
+    var peo = {}, eqp = {};
+    (B.workers || []).forEach(function (w) { if (w.job_id) { (peo[w.id] = peo[w.id] || {})[w.job_id] = true; } });
+    (B.equipment || []).forEach(function (e) { if (e.job_id) { (eqp[e.id] = eqp[e.id] || {})[e.job_id] = true; } });
+    asg.peo = peo; asg.eqp = eqp;
+    asg.base = JSON.stringify({ peo: peo, eqp: eqp });
+  }
+  function asgMap(kind) { return kind === 'e' ? asg.eqp : asg.peo; }
+  function asgDirtyCount() {
+    if (!asg.base) return 0;
+    var base = JSON.parse(asg.base), n = 0;
+    ['peo', 'eqp'].forEach(function (k) {
+      var cur = asg[k] || {}, b = base[k] || {}, ids = {};
+      Object.keys(cur).forEach(function (i) { ids[i] = 1; });
+      Object.keys(b).forEach(function (i) { ids[i] = 1; });
+      Object.keys(ids).forEach(function (id) {
+        var cj = cur[id] || {}, bj = b[id] || {}, js = {};
+        Object.keys(cj).forEach(function (j) { js[j] = 1; });
+        Object.keys(bj).forEach(function (j) { js[j] = 1; });
+        Object.keys(js).forEach(function (j) { if (!!cj[j] !== !!bj[j]) n++; });
+      });
+    });
+    return n;
+  }
+  function asgLoadFieldNames() {
+    if (asg.fieldTried) return;               // once per session
+    asg.fieldTried = true;
+    post('cs_portal_field_users').then(function (res) {
+      if (!Array.isArray(res)) return;
+      var m = {};
+      res.forEach(function (u) { if (u && u.name) m[String(u.name).toLowerCase()] = true; });
+      asg.fieldNames = m;
+      if (page === 'assign') pgAssign();       // repaint with badges once known
+    }).catch(function () { /* read-only nicety; ignore if unavailable */ });
+  }
+
+  function asgPoolPeople() {
+    return (B.workers || []).slice().sort(function (a, b) {
+      return String(a.name || '').toLowerCase() < String(b.name || '').toLowerCase() ? -1 : 1; });
+  }
+  function asgPoolEquip() {
+    return (B.equipment || []).slice().sort(function (a, b) {
+      return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
+  }
+  function asgPersonChip(w, drag) {
+    var status = '';
+    if (asg.fieldNames) status = asg.fieldNames[String(w.name || '').toLowerCase()]
+      ? '<span class="asg-fa">Field access ✓</span>' : '<span class="asg-nf">No field login</span>';
+    return '<div class="asg-chip"' + (drag ? ' draggable="true"' : '') + ' data-kind="p" data-id="' + esc(w.id) +
+      '" data-name="' + esc(((w.name || '') + ' ' + (w.classification || '')).toLowerCase()) + '">' +
+      '<span class="asg-nm">' + esc(w.name || '—') + '</span>' +
+      (w.classification ? '<span class="asg-sub">' + esc(w.classification) + '</span>' : '') + status + '</div>';
+  }
+  function asgEquipChip(e, drag) {
+    return '<div class="asg-chip"' + (drag ? ' draggable="true"' : '') + ' data-kind="e" data-id="' + esc(e.id) +
+      '" data-name="' + esc(((e.unit_number || '') + ' ' + (e.equipment_type || '')).toLowerCase()) + '">' +
+      '<span class="asg-nm">' + esc(e.unit_number || '—') + '</span>' +
+      (e.equipment_type ? '<span class="asg-sub">' + esc(e.equipment_type) + '</span>' : '') + '</div>';
+  }
+  function asgAssignedChip(kind, id, jid) {
+    var label = kind === 'e'
+      ? ((asgEquipById(id) || {}).unit_number || '—')
+      : ((asgPersonById(id) || {}).name || '—');
+    return '<div class="asg-a"><span>' + esc(label) + '</span>' +
+      '<button type="button" class="asg-x" data-rm="' + kind + '" data-id="' + esc(id) + '" data-job="' + esc(jid) + '" aria-label="Remove">×</button></div>';
+  }
+  function asgAssignedFor(kind, jid) {
+    var map = kind === 'e' ? asg.eqp : asg.peo, out = [];
+    Object.keys(map).forEach(function (id) { if (map[id] && map[id][jid]) out.push(id); });
+    return out;
+  }
+
+  function pgAssign() {
+    if (!asg.peo) asgInit();
+    asgLoadFieldNames();
+    var isP = asg.tab === 'people';
+    var dirty = asgDirtyCount();
+
+    var style = '<style>' +
+      '.asg-tabs{display:inline-flex;border:1px solid var(--line,#1e293b);border-radius:8px;overflow:hidden}' +
+      '.asg-tabs button{border:0;background:transparent;color:var(--muted,#94a3b8);padding:7px 16px;font:inherit;font-weight:600;cursor:pointer}' +
+      '.asg-tabs button.on{background:var(--gold,#eab308);color:#1a1206}' +
+      '.asg-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}' +
+      '.asg-bar input{flex:1;min-width:180px}' +
+      '.asg-save{margin-left:auto;display:flex;align-items:center;gap:10px}' +
+      '.asg-count{font-size:13px;color:var(--gold,#eab308);font-weight:600}' +
+      '.asg-count.clean{color:var(--muted,#94a3b8);font-weight:400}' +
+      '.asg-pool{display:flex;flex-wrap:wrap;gap:8px;max-height:210px;overflow:auto;padding:4px;border:1px solid var(--line,#1e293b);border-radius:10px;background:rgba(148,163,184,.04)}' +
+      '.asg-chip{display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line,#1e293b);border-radius:999px;background:var(--card,#0f172a);cursor:grab;user-select:none}' +
+      '.asg-chip:active{cursor:grabbing}.asg-chip.hide{display:none}' +
+      '.asg-nm{font-weight:600}.asg-sub{font-size:12px;color:var(--muted,#94a3b8)}' +
+      '.asg-fa{font-size:11px;color:var(--ok,#22c55e);font-weight:600}.asg-nf{font-size:11px;color:var(--muted,#94a3b8)}' +
+      '.asg-jobs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px}' +
+      '.asg-job{border:1px solid var(--line,#1e293b);border-radius:12px;padding:14px;background:var(--card,#0f172a);transition:border-color .12s,background .12s}' +
+      '.asg-job.over{border-color:var(--gold,#eab308);background:rgba(234,179,8,.08)}' +
+      '.asg-job h4{margin:0 0 4px;font-size:15px}.asg-job .asg-hint{font-size:12px;color:var(--muted,#94a3b8);margin-bottom:10px}' +
+      '.asg-sec{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#94a3b8);margin:10px 0 6px}' +
+      '.asg-list{display:flex;flex-wrap:wrap;gap:6px;min-height:26px}' +
+      '.asg-a{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border:1px solid var(--line,#1e293b);border-radius:999px;background:rgba(148,163,184,.08);font-size:13px}' +
+      '.asg-x{border:0;background:transparent;color:var(--fail,#ef4444);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}' +
+      '.asg-empty{font-size:12px;color:var(--muted,#94a3b8);font-style:italic}' +
+      '</style>';
+
+    var right = '<div class="asg-save">' +
+      '<span id="asg-count" class="asg-count' + (dirty ? '' : ' clean') + '">' +
+        (dirty ? dirty + ' unsaved change' + (dirty === 1 ? '' : 's') : 'No unsaved changes') + '</span>' +
+      '<button class="btn btn-gold" id="asg-save"' + (dirty ? '' : ' disabled') + '>Save Changes</button></div>';
+
+    var html = style + head('People & Equipment',
+      'Drag people and equipment onto a job to assign them. Changes are staged until you hit Save.', right);
+
+    // Toolbar: tabs + search
+    html += '<div class="asg-bar">' +
+      '<div class="asg-tabs">' +
+        '<button data-atab="people" class="' + (isP ? 'on' : '') + '">People</button>' +
+        '<button data-atab="equipment" class="' + (!isP ? 'on' : '') + '">Equipment</button>' +
+      '</div>' +
+      '<input type="search" id="asg-q" autocomplete="off" placeholder="Search ' + (isP ? 'people' : 'equipment') + ' by name…" value="' + esc(asg.q) + '">' +
+      '</div>';
+
+    // Pool
+    var poolItems = isP
+      ? asgPoolPeople().map(function (w) { return asgPersonChip(w, true); })
+      : asgPoolEquip().map(function (e) { return asgEquipChip(e, true); });
+    html += '<div class="sec-h">Available ' + (isP ? 'people' : 'equipment') + '</div>';
+    html += '<div class="asg-pool" id="asg-pool">' + (poolItems.length ? poolItems.join('') :
+      '<span class="asg-empty">' + (isP ? 'No people in the roster yet.' :
+        'No equipment units yet — they appear here once unit numbers are added.') + '</span>') + '</div>';
+
+    // Job cards
+    var jobs = asgActiveJobs();
+    html += '<div class="sec-h" style="margin-top:18px">Assigned jobs</div>';
+    html += '<div class="asg-jobs">' + (jobs.length ? jobs.map(function (j) {
+      var peopleIds = asgAssignedFor('p', j.id), equipIds = asgAssignedFor('e', j.id);
+      return '<div class="asg-job" data-drop="' + esc(j.id) + '">' +
+        '<h4>' + esc(j.name) + '</h4>' +
+        '<div class="asg-hint">Drop a ' + (isP ? 'person' : 'unit') + ' here to assign</div>' +
+        '<div class="asg-sec">People (' + peopleIds.length + ')</div>' +
+        '<div class="asg-list">' + (peopleIds.length
+          ? peopleIds.map(function (id) { return asgAssignedChip('p', id, j.id); }).join('')
+          : '<span class="asg-empty">None assigned</span>') + '</div>' +
+        '<div class="asg-sec">Equipment (' + equipIds.length + ')</div>' +
+        '<div class="asg-list">' + (equipIds.length
+          ? equipIds.map(function (id) { return asgAssignedChip('e', id, j.id); }).join('')
+          : '<span class="asg-empty">None assigned</span>') + '</div>' +
+        '</div>';
+    }).join('') : '<div class="empty">No active jobs.</div>') + '</div>';
+
+    paint(html);
+    wireAssign();
+  }
+
+  function asgApplyFilter() {
+    var q = (asg.q || '').trim().toLowerCase();
+    $$('#asg-pool .asg-chip').forEach(function (c) {
+      c.classList.toggle('hide', !!q && c.dataset.name.indexOf(q) === -1);
+    });
+  }
+  function wireAssign() {
+    $$('[data-atab]').forEach(function (b) {
+      b.onclick = function () { asg.tab = b.dataset.atab; asg.q = ''; pgAssign(); };
+    });
+    var qi = $('#asg-q');
+    if (qi) { qi.oninput = function () { asg.q = qi.value; asgApplyFilter(); }; }
+    asgApplyFilter();
+
+    // Drag sources
+    $$('#asg-pool .asg-chip').forEach(function (chip) {
+      chip.ondragstart = function (ev) {
+        ev.dataTransfer.setData('text/plain', chip.dataset.kind + ':' + chip.dataset.id);
+        ev.dataTransfer.effectAllowed = 'copy';
+      };
+    });
+    // Drop targets
+    $$('.asg-job').forEach(function (zone) {
+      zone.ondragover = function (ev) { ev.preventDefault(); zone.classList.add('over'); ev.dataTransfer.dropEffect = 'copy'; };
+      zone.ondragleave = function () { zone.classList.remove('over'); };
+      zone.ondrop = function (ev) {
+        ev.preventDefault(); zone.classList.remove('over');
+        var raw = ev.dataTransfer.getData('text/plain'); if (!raw) return;
+        var parts = raw.split(':'), kind = parts[0], id = parts.slice(1).join(':');
+        var jid = zone.dataset.drop, map = asgMap(kind);
+        (map[id] = map[id] || {})[jid] = true;
+        pgAssign();
+      };
+    });
+    // Remove controls
+    $$('.asg-x').forEach(function (x) {
+      x.onclick = function () {
+        var map = asgMap(x.dataset.rm), id = x.dataset.id, jid = x.dataset.job;
+        if (map[id]) { delete map[id][jid]; if (!Object.keys(map[id]).length) delete map[id]; }
+        pgAssign();
+      };
+    });
+    // Save (staged; isolated future write path)
+    var sv = $('#asg-save');
+    if (sv) sv.onclick = asgSave;
+  }
+  /* ISOLATED FUTURE SAVE HANDLER.
+     Persistence is intentionally NOT wired here — the assignment write path is
+     being finished separately. This stages the change set and reports honestly
+     that it has not been saved. When a verified write RPC is ready, send
+     `changes` from here and then call asgInit() to reset the baseline. */
+  function asgSave() {
+    var n = asgDirtyCount();
+    if (!n) return;
+    alert(n + ' change' + (n === 1 ? '' : 's') + ' staged.\n\n' +
+      'Saving to the server is not enabled in this build yet — the assignment ' +
+      'write path is being finished separately. Your changes are held in this ' +
+      'screen only and will not persist after a refresh.');
   }
 
   /* ====================== JOBS ========================================== */
