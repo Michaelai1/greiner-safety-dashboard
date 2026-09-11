@@ -138,7 +138,9 @@
   function tzDayStr(t) {   // YYYY-MM-DD as it reads in Indiana
     return new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
   }
-  var FIELD_JOB = null;   // the signed-in field user's job (from cs_portal_field_home)
+  var FIELD_JOB = null;   // the signed-in field user's CURRENTLY SELECTED job
+  var FIELD_HOME = null;  // last cs_portal_field_home payload (for re-render on job switch)
+  var FIELD_SELECTED_JOB_ID = null;  // which job the user is working (multi-job)
   function jobLabelOf(r) {
     return (r && r.job_name) || (FIELD_JOB && FIELD_JOB.name) || C.contractor || '';
   }
@@ -1966,7 +1968,13 @@
   }
   function renderFieldHome(d) {
     var host = $('#fieldapp');
-    var job = (d.jobs && d.jobs[0]) || {};
+    FIELD_HOME = d;
+    var jobs = d.jobs || [];
+    // Which job is the user working right now. Defaults to the first; a
+    // multi-job user picks with the selector below, so every form and
+    // submission attributes to the right job.
+    var job = jobs.filter(function (j) { return j.id === FIELD_SELECTED_JOB_ID; })[0] || jobs[0] || {};
+    FIELD_SELECTED_JOB_ID = job.id || null;
     FIELD_JOB = job;
     var today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     var h = '';
@@ -1976,6 +1984,17 @@
       '<button class="signout" id="f-refresh" type="button" style="margin-right:.4rem">Refresh</button>' +
       '<button class="signout" id="f-signout" type="button">Sign out</button></div></header>';
     h += '<main class="wrap">';
+    // Multi-job: a job switcher at the top (like the office view) so the crew
+    // member picks which jobsite they're on before starting a form.
+    if (jobs.length > 1) {
+      h += '<div class="sec"><div class="card" style="padding:.8rem 1rem">' +
+        '<label for="f-job" class="muted small" style="display:block;font-weight:600;margin-bottom:.35rem">Working on which jobsite?</label>' +
+        '<select id="f-job" style="width:100%;min-height:46px;font-size:1rem">' +
+        jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (j.id === job.id ? ' selected' : '') + '>' +
+            esc(j.name) + (j.job_number ? ' · ' + esc(j.job_number) : '') + '</option>';
+        }).join('') + '</select></div></div>';
+    }
     h += '<div class="sec"><div class="card" style="padding:1rem">' +
       '<div style="font-weight:700;font-size:1.15rem">' + esc(job.name || '—') + '</div>' +
       '<div class="muted small">' + esc(job.job_number || '') + (job.address ? ' · ' + esc(job.address) : '') + '</div>' +
@@ -2020,6 +2039,8 @@
     Array.prototype.forEach.call(host.querySelectorAll('[data-ngform]'), function (b) {
       b.onclick = function () { openFieldForm(b.dataset.ngform, b); };
     });
+    var jp = $('#f-job');
+    if (jp) jp.onchange = function () { FIELD_SELECTED_JOB_ID = jp.value; renderFieldHome(FIELD_HOME); };
     renderFieldRecent(d.recent || []);
   }
   function renderFieldRecent(recent) {
@@ -2061,7 +2082,11 @@
   }
   function openFieldForm(formKey, btn) {
     if (btn) btn.disabled = true;
-    rpc('cs_portal_field_ticket').then(function (res) {
+    // Mint a ticket scoped to the SELECTED job (2-arg RPC), so a multi-job
+    // user's inspection attributes to the jobsite they picked — not always the
+    // first one. Single-job users are unaffected (their one job is passed).
+    var jid = FIELD_JOB && FIELD_JOB.id;
+    rpc('cs_portal_field_ticket', jid ? { p_job_id: jid } : undefined).then(function (res) {
       var t = res && res.ticket;
       if (!t) { toast('Could not start form'); return; }
       var base = C.qrUrl || location.origin;
