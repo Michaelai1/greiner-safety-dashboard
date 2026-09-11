@@ -5176,7 +5176,85 @@
   // Add one of the GC's own on-site employees to this job.
   var WORKER_CLASSES = ['JNY', 'JNY FMN L1', 'JNY FMN L2', 'JNY FMN L3',
     'Apprentice 1st', 'Apprentice 2nd', 'Apprentice 3rd', 'Apprentice 4th', 'Apprentice 5th', 'PRE APPRENTICE'];
+  // The searchable roster picker: add EXISTING people to a job with one click,
+  // showing the job each person is on now. Adding someone who is on another job
+  // moves them (roster is one-job-per-person); already-on-this-job rows offer
+  // Remove. "Add a new person" drops to the full new-hire form below.
   function openAddInternalEmployee(id) {
+    var q = '', changed = false;
+    function roster() {
+      return (B.workers || []).slice().sort(function (a, b) {
+        var ao = a.job_id === id ? 0 : 1, bo = b.job_id === id ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return String(a.name || '').toLowerCase() < String(b.name || '').toLowerCase() ? -1 : 1;
+      });
+    }
+    function rowHtml(w) {
+      var onThis = w.job_id === id;
+      var where = w.job_id ? (onThis ? 'On this job' : 'On ' + jobName(w.job_id)) : 'Not on a job yet';
+      var right = onThis
+        ? '<button type="button" class="btn btn-sm" data-aprm="' + esc(w.id) + '" style="color:var(--fail);border-color:var(--fail)">Remove</button>'
+        : '<button type="button" class="btn btn-gold btn-sm" data-apadd="' + esc(w.id) + '">' + (w.job_id ? 'Move here' : 'Add') + '</button>';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line,#1e293b);border-radius:8px;margin-bottom:6px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:600">' + esc(w.name) + (w.classification ? ' <span class="small muted" style="font-weight:400">· ' + esc(w.classification) + '</span>' : '') + '</div>' +
+          '<div class="small ' + (onThis ? '' : 'muted') + '" style="' + (onThis ? 'color:var(--ok,#22c55e)' : '') + '">' + esc(where) + '</div>' +
+        '</div>' + right + '</div>';
+    }
+    function paint() {
+      var list = roster().filter(function (w) { return has((w.name || '') + ' ' + (w.classification || ''), q); });
+      var box = $('#ap-list'); if (!box) return;
+      box.innerHTML = list.length
+        ? list.map(rowHtml).join('')
+        : '<p class="small muted" style="padding:8px 2px">' + (q ? 'No one matches “' + esc(q) + '”.' : 'No people in the roster yet.') + '</p>';
+      $$('[data-apadd]').forEach(function (b) { b.onclick = function () { assign(b.dataset.apadd); }; });
+      $$('[data-aprm]').forEach(function (b) { b.onclick = function () { unassign(b.dataset.aprm); }; });
+    }
+    function workerById(wid) { return (B.workers || []).filter(function (w) { return w.id === wid; })[0]; }
+    function assign(wid) {
+      var w = workerById(wid); if (!w) return;
+      if (w.job_id && w.job_id !== id &&
+          !confirm(w.name + ' is on ' + jobName(w.job_id) + '.\n\nMove them to ' + jobName(id) + '?')) return;
+      var btn = $('[data-apadd="' + wid + '"]'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      post('cs_portal_worker_update', { p_worker_id: wid, p_job_id: id }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        changed = true; toast(w.name + ' added to ' + jobName(id)); paint();
+      }).catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = w.job_id ? 'Move here' : 'Add'; }
+        toast('Could not add — ' + (e.message || 'try again'));
+      });
+    }
+    function unassign(wid) {
+      var w = workerById(wid); if (!w) return;
+      if (!confirm('Remove ' + w.name + ' from ' + jobName(id) + '?\n\nTheir training and history stay — this only takes them off this job.')) return;
+      var btn = $('[data-aprm="' + wid + '"]'); if (btn) { btn.disabled = true; btn.textContent = 'Removing…'; }
+      post('cs_portal_worker_unassign', { p_worker_id: wid }).then(function (res) {
+        if (!res || res.ok === false) throw new Error((res && res.error) || 'save failed');
+        return refreshBundle();
+      }).then(function () {
+        changed = true; toast(w.name + ' removed from ' + jobName(id)); paint();
+      }).catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Remove'; }
+        toast('Could not remove — ' + (e.message || 'try again'));
+      });
+    }
+    var h = '<div class="f"><input type="search" id="ap-q" autocomplete="off" placeholder="Search people by name…" value="' + esc(q) + '" style="width:100%"></div>' +
+      '<div id="ap-list" style="max-height:52vh;overflow:auto;margin-bottom:12px"></div>' +
+      '<button class="btn btn-sm" id="ap-new" style="width:100%;justify-content:center">+ Add a new person to the roster</button>';
+    drawer('Add employee', jobName(id), h);
+    // Refresh the job page (fresh employee list) whenever this picker closes.
+    var closeAndRefresh = function () { closeDrawer(); if (changed) openJob(id); };
+    var scrim = $('.scrim'); if (scrim) scrim.onclick = closeAndRefresh;
+    var xb = $('.drawer .x'); if (xb) xb.onclick = closeAndRefresh;
+    var qi = $('#ap-q'); if (qi) qi.oninput = function () { q = qi.value.trim().toLowerCase(); paint(); };
+    var nb = $('#ap-new'); if (nb) nb.onclick = function () { openAddInternalEmployeeNew(id); };
+    paint();
+    if (qi) qi.focus();
+  }
+
+  function openAddInternalEmployeeNew(id) {
     var picks = [];   // optional training entered at creation time
     var nameVal = '', classVal = '', phoneVal = '';
     var today = new Date().toISOString().slice(0, 10);
