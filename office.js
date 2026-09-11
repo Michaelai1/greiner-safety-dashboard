@@ -4134,7 +4134,7 @@
         var raw = it.response == null ? '' : String(it.response);
         if (/^[a-z]:\\fakepath\\/i.test(raw)) raw = '';   // hide browser file-picker noise
         var resp = docRespLabel(raw);
-        var col = it.flagged ? 'var(--fail,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete)$/i.test(resp) ? 'var(--ok,#1e7d34)' : 'inherit');
+        var col = it.flagged ? 'var(--fail,#c0392b)' : (/^(yes|pass|safe|ok|n\/a|complete|checked)$/i.test(resp) ? 'var(--ok,#1e7d34)' : 'inherit');
         var rv = resp ? '<span style="font-weight:700;color:' + col + ';overflow-wrap:anywhere">' + esc(resp) + (it.flagged ? ' — FLAGGED' : '') + '</span>' : '';
         h += '<div class="kv" style="align-items:flex-start"><span class="k" style="overflow-wrap:anywhere">' + esc(it.label) + '</span><span class="v">' + rv + '</span></div>';
         if (it.notes) h += '<div class="small muted" style="margin:-6px 0 8px;padding-left:2px;overflow-wrap:anywhere"><em>' + (it.flagged ? 'Notes / what went wrong: ' : 'Notes: ') + esc(it.notes) + '</em></div>';
@@ -4288,6 +4288,7 @@
   // subcontractor and tied to the subcontractor field.
   var trainView = 'internal';
   var trainExtF = { sub: '', status: '' };
+  var trainF = { q: '' };            // internal training: search people by name
 
   // 90 / 60 / 30-day certification expiration alerts (Tony's explicit ask).
   // The system knows what is expiring; production notification delivery is
@@ -4338,6 +4339,7 @@
     wireSubtabs('tv', function (v) { trainView = v; pgTraining(); });
 
     if (trainView === 'internal') {
+      wireSearch('tr-q', function (v) { trainF.q = v; pgTraining(); });
       var ab = $('#add-training'); if (ab) ab.onclick = function () { openAddTraining(''); };
       massInit({ label: 'Download selected', run: function (ids) {
         combinedPrint('Training Records', ids.map(function (nm) {
@@ -4371,7 +4373,16 @@
     var names = {};
     (B.workers || []).forEach(function (w) { names[w.name] = 1; });
     Object.keys(by).forEach(function (n) { names[n] = 1; });
-    var rows = Object.keys(names).sort().map(function (name) {
+    var allNames = Object.keys(names).sort();
+    var q = trainF.q.trim().toLowerCase();
+    var shownNames = allNames.filter(function (n) { return has(n, q); });
+    html += '<div class="fbar">' +
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+        '<input id="tr-q" placeholder="Search people by name…" value="' + esc(trainF.q) + '"></div>' +
+      (q ? '<span class="small muted" style="align-self:center">' + shownNames.length + ' of ' + allNames.length + '</span>' : '') +
+      '</div>';
+    var rows = shownNames.map(function (name) {
       var list = by[name] || [];
       var w = (B.workers || []).filter(function (x) { return x.name === name; })[0] || {};
       var p = (B.people || []).filter(function (x) { return x.name === name; })[0] || {};
@@ -4391,7 +4402,8 @@
     });
     return html + '<div class="panel"><div class="panel-bd flush">' + tableWrap(
       [{ t: '' }, { t: 'Person' }, { t: 'Classification' }, { t: 'Certs', r: 1 }, { t: 'Next expiry' },
-       { t: 'Status', r: 1 }], rows, 'No workers on the roster yet.') + '</div></div>';
+       { t: 'Status', r: 1 }], rows,
+      q ? 'No people match “' + esc(trainF.q) + '”.' : 'No workers on the roster yet.') + '</div></div>';
   }
 
   // Subcontractor training, grouped by subcontractor. Ties to the subcontractor

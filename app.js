@@ -1852,7 +1852,7 @@
         var resp = docRespLabel(raw);
         // Explicit high-contrast colors (no bare "inherit") so checklist text is
         // never grey-on-grey on a phone: flagged=red, affirmative=green, else bright.
-        var col = it.flagged ? 'var(--bad,#ef4444)' : (/^(yes|pass|safe|ok|n\/a|complete|selected)$/i.test(resp) ? 'var(--ok,#22c55e)' : 'var(--paper,#f8fafc)');
+        var col = it.flagged ? 'var(--bad,#ef4444)' : (/^(yes|pass|safe|ok|n\/a|complete|selected|checked)$/i.test(resp) ? 'var(--ok,#22c55e)' : 'var(--paper,#f8fafc)');
         // A short pass/fail choice sits to the right; anything longer (JHA task /
         // hazard / control text) stacks on its own line and wraps so nothing
         // ever runs outside the card on a phone.
