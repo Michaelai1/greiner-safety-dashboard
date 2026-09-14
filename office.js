@@ -7679,6 +7679,20 @@
       var want = (location.hash || '').replace('#', '');
       go(PAGES.some(function (p) { return p.id === want; }) ? want : 'overview');
     }).catch(function (e) {
+      // A field/crew code was used on the office dashboard — the company-wide
+      // load is admin-only, so it comes back "insufficient scope". Point them
+      // at the phone app instead of showing a cryptic error.
+      if (/insufficient scope/i.test(e.message || '')) {
+        $('#main').innerHTML = '<div class="empty" style="max-width:460px;margin:12vh auto;line-height:1.5">' +
+          '<div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px">This is the office dashboard</div>' +
+          'Crew codes work on the <b>phone app</b>, not here. Open ' +
+          '<a href="https://greiner.creeksidesafety.com/index.html" style="color:var(--accent);font-weight:600">greiner.creeksidesafety.com/index.html</a> ' +
+          'and sign in with your code.<br><br>' +
+          '<button class="btn btn-sm" id="scope-signout">Back to sign in</button></div>';
+        var so = $('#scope-signout');
+        if (so) so.onclick = function () { try { localStorage.removeItem(SKEY); } catch (x) {} location.reload(); };
+        return;
+      }
       $('#main').innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>';
     });
   }
