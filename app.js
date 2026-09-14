@@ -76,7 +76,13 @@
     if (!sess) { showGate(); return Promise.reject(new Error('signed out')); }
     return post(fn, Object.assign({ p_token: sess }, args || {}))
       .catch(function (e) {
-        if (/invalid token|insufficient scope/i.test(e.message)) {
+        if (/insufficient scope/i.test(e.message)) {
+          // An office/admin (full) code was used on the field phone. Send them
+          // back to sign in with their own crew code — not Tony's/an admin code.
+          clearSession(); showGate();
+          throw new Error('That’s an office/admin code — on the phone, sign in with your own crew code.');
+        }
+        if (/invalid token/i.test(e.message)) {
           clearSession(); showGate();
           throw new Error('Session expired — sign in again');
         }
