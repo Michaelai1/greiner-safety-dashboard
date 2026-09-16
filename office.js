@@ -5147,6 +5147,62 @@
     else if (kind === 'inc') { var i = (B.incidents || []).filter(function (x) { return x.id === rid; })[0];
       if (i) printRecord(CLASS[i.classification], fmtDate(i.date) + ' · ' + jobName(i.job_id), incidentPBody(i)); }
   }
+  // Field form-permission editor for a job. Display labels -> canonical keys.
+  // Standard JHA and the Job Site Analysis Checklist are SEPARATE toggles.
+  var FIELD_PERM_FORMS = [
+    { key: 'hotwork',        label: 'Hot Work' },
+    { key: 'aerial',         label: 'Lift Inspection' },
+    { key: 'forklift',       label: 'Forklift' },
+    { key: 'jha',            label: 'JHA' },
+    { key: 'jobsiteanalysis',label: 'Job Site Analysis Checklist' }
+  ];
+  function loadJobFieldAccess(id) {
+    var box = $('#job-fieldaccess'); if (!box) return;
+    post('cs_portal_job_field_users', { p_job_id: id }).then(function (users) {
+      if (!Array.isArray(users)) throw new Error((users && users.error) || 'unavailable');
+      if (!users.length) {
+        box.innerHTML = '<p class="small muted" style="padding:6px 2px">No field-login users assigned to this job yet.</p>';
+        return;
+      }
+      box.innerHTML = users.map(function (u) {
+        // form_keys null = all default forms; [] = none; [..] = that subset.
+        var fk = Array.isArray(u.form_keys) ? u.form_keys : null;
+        var boxes = FIELD_PERM_FORMS.map(function (f) {
+          var on = (fk === null) || (fk.indexOf(f.key) !== -1);
+          return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px">' +
+            '<input type="checkbox" data-perm="' + esc(u.id) + '" data-key="' + f.key + '"' + (on ? ' checked' : '') + '> ' +
+            esc(f.label) + '</label>';
+        }).join('');
+        return '<div class="panel" style="margin:0 0 8px"><div class="panel-bd">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+            '<div style="flex:1;font-weight:600">' + esc(u.name) +
+              (u.title ? ' <span class="small muted" style="font-weight:400">· ' + esc(u.title) + '</span>' : '') + '</div>' +
+            pill('p-ok', 'Field access') + '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:9px 18px;margin-bottom:10px">' + boxes + '</div>' +
+          '<button class="btn btn-sm btn-gold" data-permsave="' + esc(u.id) + '">Save</button>' +
+          '<span class="small" data-permmsg="' + esc(u.id) + '" style="margin-left:10px"></span>' +
+          '</div></div>';
+      }).join('');
+      $$('[data-permsave]').forEach(function (b) {
+        b.onclick = function () {
+          var uid = b.dataset.permsave, msg = $('[data-permmsg="' + uid + '"]');
+          var keys = $$('[data-perm="' + uid + '"]').filter(function (c) { return c.checked; })
+            .map(function (c) { return c.dataset.key; });
+          b.disabled = true; if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--ink-4)'; }
+          post('cs_portal_user_forms_set', { p_user_id: uid, p_job_id: id, p_form_keys: keys }).then(function (r) {
+            if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed');
+            b.disabled = false; if (msg) { msg.textContent = 'Saved'; msg.style.color = 'var(--ok)'; }
+          }).catch(function (e) {
+            b.disabled = false; if (msg) { msg.textContent = 'Could not save — ' + (e.message || 'try again'); msg.style.color = 'var(--fail)'; }
+          });
+        };
+      });
+    }).catch(function (e) {
+      box.innerHTML = '<p class="small muted" style="padding:6px 2px">Field permissions become available once the ' +
+        'permissions update is applied' + (/(function|scope|not found|schema)/i.test(e.message || '') ? '' : ' (' + esc(e.message || '') + ')') + '.</p>';
+    });
+  }
+
   function openJob(id) {
     var j = (B.jobs || []).filter(function (x) { return x.id === id; })[0];
     if (!j) return pgJobs();
@@ -5246,6 +5302,15 @@
       }), 'No internal employees on this job yet.',
       '<button class="btn btn-gold btn-sm" id="ice-add">+ Add employee</button>');
 
+    // Field access & form permissions — which forms each field-login user may
+    // open on THIS job. Loaded async (cs_portal_job_field_users) and saved per
+    // person (cs_portal_user_forms_set). Effective = job-enabled ∩ user-allowed.
+    html += '<div class="panel"><div class="panel-hd"><div>' +
+      '<h3>Field access &amp; form permissions</h3>' +
+      '<div class="small muted">Field-login users on this job. Check the forms each person may open — saved per person. Job-level rules still apply.</div>' +
+      '</div></div><div class="panel-bd" id="job-fieldaccess">' +
+      '<p class="small muted" style="padding:6px 2px">Loading field users…</p></div></div>';
+
     // Safety reports
     html += jobSection('Safety reports', reps.length + ' filed',
       [{ t: 'Date' }, { t: 'Inspector' }, { t: 'Result', r: 1 }, { t: '', r: 1 }],
@@ -5322,6 +5387,7 @@
     var da = $('#job-dlall'); if (da) da.onclick = function () { downloadJobAll(id); };
     var je = $('#je-add'); if (je) je.onclick = function () { openAddJobEmployee(id); };
     var ic = $('#ice-add'); if (ic) ic.onclick = function () { openAddInternalEmployee(id); };
+    loadJobFieldAccess(id);
     $$('[data-ice]').forEach(function (tr) { tr.onclick = function () { openInternalEmp(id, tr.dataset.ice); }; });
     $$('[data-emp]').forEach(function (tr) {
       tr.onclick = function () { var p = tr.dataset.emp.split('|'); openEmployee(p[0], p[1]); };

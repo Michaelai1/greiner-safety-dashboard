@@ -2012,9 +2012,13 @@
     // enabled_forms, when present, is the explicit allow-list for the job;
     // absent = all default Greiner forms. No config => current behavior.
     var allowed = (job.enabled_forms && job.enabled_forms.length) ? job.enabled_forms : null;
+    // Per-user allow-list for this job (null/absent = all default forms). The
+    // server enforces this too on submit — the UI just hides what they can't use.
+    var userForms = Array.isArray(job.user_forms) ? job.user_forms : null;
     FIELD_FORMS.forEach(function (f) {
       if (job.external_hotwork && f.key === 'hotwork') return;
       if (allowed && allowed.indexOf(f.key) === -1) return;
+      if (userForms && userForms.indexOf(f.key) === -1) return;
       h += '<button class="btn btn-gold" style="width:100%;margin-bottom:.5rem" data-ngform="' + f.key + '">' + esc(f.label) + '</button>';
     });
     if (job.external_hotwork) {
