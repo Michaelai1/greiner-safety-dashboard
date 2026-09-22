@@ -6258,8 +6258,9 @@
      OSHA 300/300A recordkeeping, written programs, insurance. Stored here so
      the answer to "send me your..." is a download, not a search. */
   var docYear = new Date().getFullYear();
-  var DOC_CATS = ['Safety Program', 'Training Records', 'Insurance / COI', 'SDS',
-    'Permits', 'Jobsite Documentation', 'Other'];
+  var DOC_CATS = ['Greiner Brothers Safety Manual', 'Safety Program', 'Inspection Forms',
+    'Permits', 'Training Records', 'Insurance / COI', 'SDS', 'Jobsite Documentation',
+    'Turner - GC reference', 'Other'];
   function docsEdge(body) {
     var sess = getSession();
     return fetch(C.creekside.url + '/functions/v1/' + (C.docsFunction || 'company-docs'), {
@@ -6279,55 +6280,127 @@
     if (n < 1048576) return Math.round(n / 1024) + ' KB';
     return (n / 1048576).toFixed(1) + ' MB';
   }
-  var docF = { q: '', cat: '' };            // Documents search/filter state
+  var docF = { q: '', folder: null, sub: null };   // Documents: search + folder navigation
+
+  /* The library arrived with the folder encoded in the filename, e.g.
+     "Turner - Go-Packets - OSHA Inspection.pdf". Parse it so the UI can show
+     real folders and clean names without rewriting any stored data. */
+  function docSegs(d) { return String(d.filename || '').split(' - ').map(function (s) { return s.trim(); }); }
+  function docSub(d)  { var p = docSegs(d); return p.length >= 3 ? p[1] : null; }
+  function docName(d) { var p = docSegs(d); return p.length >= 3 ? p.slice(2).join(' - ') : (d.filename || ''); }
+  function docFolder(d) { return d.category || 'Uncategorized'; }
+  function prettyFolder(s) { return String(s || '').replace(/-/g, ' '); }
+  var DOC_SVG_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
+  function docRow(d, showWhere) {
+    return '<tr>' +
+      '<td><span class="t-main" style="overflow-wrap:anywhere">' + esc(docName(d)) + '</span>' +
+        (showWhere ? '<div class="t-sub">' + esc(docFolder(d)) +
+          (docSub(d) ? ' · ' + esc(prettyFolder(docSub(d))) : '') + '</div>' : '') + '</td>' +
+      '<td>' + esc(fmtWhen(d.created_at)) + '</td>' +
+      '<td class="r num">' + fmtBytes(d.size_bytes) + '</td>' +
+      '<td class="r" style="white-space:nowrap">' +
+        '<button class="btn btn-sm" data-docdl="' + esc(d.id) + '">Download</button> ' +
+        '<button class="linklike" data-docdel="' + esc(d.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
+  }
+  function docTable(list, showWhere, empty) {
+    return '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Document' }, { t: 'Uploaded' }, { t: 'Size', r: 1 }, { t: '', r: 1 }],
+      list.map(function (d) { return docRow(d, showWhere); }), empty) + '</div></div>';
+  }
+
   function pgDocs() {
     var all = B.docs || [];
     var q = docF.q.trim().toLowerCase();
-    var docs = all.filter(function (d) {
-      return (has(d.filename, q) || has(d.category, q)) &&
-             (!docF.cat || (d.category || '') === docF.cat);
-    });
-    var html = head('Documents',
-      'Company safety documents \u2014 stored privately and available from any signed-in device.',
-      '<button class="btn btn-gold" id="doc-new">Upload document</button>');
+    var searching = !!q;
+
+    var style = '<style>' +
+      '.dfold{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:13px;margin:2px 0 16px}' +
+      '.dcard{display:flex;align-items:center;gap:12px;padding:14px 15px;border:1px solid var(--line);border-radius:12px;' +
+        'background:var(--card);box-shadow:var(--shadow);cursor:pointer;text-align:left;width:100%;font:inherit;' +
+        'transition:box-shadow .12s,border-color .12s,transform .06s}' +
+      '.dcard:hover{box-shadow:var(--shadow-lg);border-color:var(--line-2)}' +
+      '.dcard:active{transform:scale(.995)}' +
+      '.dcard svg{width:26px;height:26px;color:var(--accent);flex:0 0 auto}' +
+      '.dcard .nm{font-weight:700;color:var(--ink);font-size:14px;line-height:1.25;overflow-wrap:anywhere}' +
+      '.dcard .ct{font-size:12px;color:var(--ink-4);margin-top:2px}' +
+      '.dcrumb{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 12px;font-size:13px}' +
+      '.dcrumb button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:0}' +
+      '.dcrumb button:hover{text-decoration:underline}' +
+      '.dcrumb .sep{color:var(--ink-5)}.dcrumb .cur{color:var(--ink-3);font-weight:700}' +
+      '</style>';
+
+    var right = '<button class="btn btn-gold" id="doc-new">Upload document</button>';
+    var html = style + head('Documents',
+      'Company safety documents — stored privately and available from any signed-in device.', right);
+
+    var folders = {};
+    all.forEach(function (d) { folders[docFolder(d)] = (folders[docFolder(d)] || 0) + 1; });
     var fresh = all.filter(function (d) { return (new Date() - new Date(d.created_at)) < 90 * 86400000; }).length;
     html += '<div class="cards">' +
       kpi(String(all.length), 'documents on file', 'stored in private company storage', 'c-grey') +
+      kpi(String(Object.keys(folders).length), 'folders', 'grouped by category', 'c-grey') +
       kpi(String(fresh), 'added this quarter', 'recent uploads', 'c-grey') +
       '</div>';
-    var cats = {};
-    all.forEach(function (d) { if (d.category) cats[d.category] = 1; });
+
     html += '<div class="fbar">' +
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-        '<input id="doc-q" placeholder="Search documents\u2026" value="' + esc(docF.q) + '"></div>' +
-      '<select id="doc-cat"><option value="">All categories</option>' +
-        Object.keys(cats).sort().map(function (c) {
-          return '<option value="' + esc(c) + '"' + (docF.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>';
-        }).join('') + '</select>' +
-      (q || docF.cat ? '<span class="small muted" style="align-self:center">' + docs.length + ' of ' + all.length + '</span>' : '') +
+        '<input id="doc-q" placeholder="Search all documents…" value="' + esc(docF.q) + '"></div>' +
       '</div>';
-    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-      [{ t: 'Document' }, { t: 'Category' }, { t: 'Uploaded' }, { t: 'Size', r: 1 }, { t: '', r: 1 }],
-      docs.map(function (d) {
-        return '<tr>' +
-          '<td><span class="t-main" style="overflow-wrap:anywhere">' + esc(d.filename) + '</span></td>' +
-          '<td>' + esc(d.category || '\u2014') + '</td>' +
-          '<td>' + esc(fmtWhen(d.created_at)) + '</td>' +
-          '<td class="r num">' + fmtBytes(d.size_bytes) + '</td>' +
-          '<td class="r" style="white-space:nowrap">' +
-            '<button class="btn btn-sm" data-docview2="' + esc(d.id) + '">View</button> ' +
-            '<button class="btn btn-sm" data-docdl="' + esc(d.id) + '">Download</button> ' +
-            '<button class="btn btn-sm" data-docshare="' + esc(d.id) + '">Share</button> ' +
-            '<button class="linklike" data-docdel="' + esc(d.id) + '" style="color:var(--fail)">Delete</button></td></tr>';
-      }), (q || docF.cat)
-        ? 'No documents match your search.'
-        : 'No documents yet. Upload the first one \u2014 it will be here from any device, any session.') +
-      '</div></div>';
+
+    if (searching) {
+      var hits = all.filter(function (d) { return has(d.filename, q) || has(d.category, q); });
+      html += '<p class="small muted" style="margin:0 0 8px">' + hits.length + ' of ' + all.length + ' documents</p>';
+      html += docTable(hits, true, 'No documents match your search.');
+    } else if (!docF.folder) {
+      html += '<div class="dfold">' + Object.keys(folders).sort().map(function (f) {
+        return '<button type="button" class="dcard" data-docfolder="' + esc(f) + '">' + DOC_SVG_FOLDER +
+          '<div style="min-width:0"><div class="nm">' + esc(f) + '</div>' +
+          '<div class="ct">' + folders[f] + ' document' + (folders[f] === 1 ? '' : 's') + '</div></div></button>';
+      }).join('') + '</div>';
+      if (!all.length) html += '<div class="empty">No documents yet — upload the first one.</div>';
+    } else {
+      var inF = all.filter(function (d) { return docFolder(d) === docF.folder; });
+      html += '<div class="dcrumb"><button type="button" data-docroot="1">All documents</button><span class="sep">/</span>' +
+        (docF.sub
+          ? '<button type="button" data-docfolder="' + esc(docF.folder) + '">' + esc(docF.folder) + '</button>' +
+            '<span class="sep">/</span><span class="cur">' + esc(prettyFolder(docF.sub)) + '</span>'
+          : '<span class="cur">' + esc(docF.folder) + '</span>') + '</div>';
+
+      if (!docF.sub) {
+        var subs = {};
+        inF.forEach(function (d) { var s = docSub(d); if (s) subs[s] = (subs[s] || 0) + 1; });
+        var loose = inF.filter(function (d) { return !docSub(d); });
+        var subKeys = Object.keys(subs).sort();
+        if (subKeys.length) {
+          html += '<div class="dfold">' + subKeys.map(function (s) {
+            return '<button type="button" class="dcard" data-docsub="' + esc(s) + '">' + DOC_SVG_FOLDER +
+              '<div style="min-width:0"><div class="nm">' + esc(prettyFolder(s)) + '</div>' +
+              '<div class="ct">' + subs[s] + ' document' + (subs[s] === 1 ? '' : 's') + '</div></div></button>';
+          }).join('') + '</div>';
+        }
+        if (loose.length || !subKeys.length) {
+          html += docTable(loose, false, 'Nothing filed directly in this folder.');
+        }
+      } else {
+        html += docTable(inF.filter(function (d) { return docSub(d) === docF.sub; }), false, 'This folder is empty.');
+      }
+    }
+
     paint(html);
     wireSearch('doc-q', function (v) { docF.q = v; pgDocs(); });
-    var cs2 = $('#doc-cat'); if (cs2) cs2.onchange = function () { docF.cat = cs2.value; pgDocs(); };
     var nb = $('#doc-new'); if (nb) nb.onclick = openDocUpload;
+    $$('[data-docfolder]').forEach(function (b) {
+      b.onclick = function () { docF.folder = b.dataset.docfolder; docF.sub = null; pgDocs(); };
+    });
+    $$('[data-docsub]').forEach(function (b) {
+      b.onclick = function () { docF.sub = b.dataset.docsub; pgDocs(); };
+    });
+    $$('[data-docroot]').forEach(function (b) {
+      b.onclick = function () { docF.folder = null; docF.sub = null; pgDocs(); };
+    });
+
     function docBlob(id) {
       return docsEdge({ action: 'url', id: id }).then(function (j) {
         return fetch(j.url).then(function (r2) { return r2.blob(); }).then(function (b2) {
@@ -6335,62 +6408,41 @@
         });
       });
     }
-    $$('[data-docview2]').forEach(function (b) {
-      b.onclick = function () {
-        var w = window.open('', '_blank');   // in the click, popup-safe
-        docBlob(b.dataset.docview2).then(function (res) {
-          var u = URL.createObjectURL(res.blob);
-          if (w && !w.closed) w.location = u; else window.open(u, '_blank', 'noopener');
-        }).catch(function (e) { if (w && !w.closed) w.close(); toast('Could not open \u2014 ' + e.message); });
-      };
-    });
     $$('[data-docdl]').forEach(function (b) {
       b.onclick = function () {
-        docBlob(b.dataset.docdl).then(function (res) {
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(res.blob); a.download = res.filename;
-          document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
-        }).catch(function (e) { toast('Could not download \u2014 ' + e.message); });
-      };
-    });
-    $$('[data-docshare]').forEach(function (b) {
-      b.onclick = function () {
         b.disabled = true;
-        docBlob(b.dataset.docshare).then(function (res) {
+        docBlob(b.dataset.docdl).then(function (res) {
           b.disabled = false;
-          var file = new File([res.blob], res.filename,
-            { type: res.blob.type || 'application/octet-stream' });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            // System share sheet with the actual file — Mail, Messages, AirDrop…
-            return navigator.share({ files: [file], title: res.filename }).catch(function (e) {
-              if (e && e.name === 'AbortError') return;   // they closed the sheet
-              throw e;
-            });
-          }
-          // This browser has no share sheet: hand them the file to attach themselves.
           var a = document.createElement('a');
           a.href = URL.createObjectURL(res.blob); a.download = res.filename;
           document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 100);
-          toast('No share sheet in this browser — downloaded the file so you can attach it yourself.');
-        }).catch(function (e) { b.disabled = false; toast('Could not share — ' + e.message); });
+        }).catch(function (e) { b.disabled = false; toast('Could not download — ' + e.message); });
       };
     });
     $$('[data-docdel]').forEach(function (b) {
       b.onclick = function () {
         var d = (B.docs || []).filter(function (x) { return x.id === b.dataset.docdel; })[0];
-        if (!confirm('Delete "' + (d ? d.filename : 'this document') + '" permanently?')) return;
+        if (!confirm('Delete "' + (d ? docName(d) : 'this document') + '" permanently?')) return;
         docsEdge({ action: 'delete', id: b.dataset.docdel }).then(refreshBundle).then(function () {
           toast('Deleted'); pgDocs();
-        }).catch(function (e) { toast('Could not delete \u2014 ' + e.message); });
+        }).catch(function (e) { toast('Could not delete — ' + e.message); });
       };
     });
   }
-
   function openDocUpload() {
     var h = '<div class="f"><label for="du-file">File <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 PDF, image, Office or CSV \u00b7 15 MB max</span></label>' +
         '<input type="file" id="du-file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv"></div>' +
-      '<div class="f"><label for="du-cat">Category</label><select id="du-cat">' +
-        DOC_CATS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div class="f"><label for="du-cat">Folder</label><select id="du-cat">' +
+        // offer every known category plus any folder already in use, and
+        // pre-select the folder you are standing in
+        (function () {
+          var seen = {}, list = [];
+          DOC_CATS.concat((B.docs || []).map(function (d) { return d.category; }))
+            .forEach(function (c) { if (c && !seen[c]) { seen[c] = 1; list.push(c); } });
+          return list.map(function (c) {
+            return '<option' + (c === docF.folder ? ' selected' : '') + '>' + esc(c) + '</option>';
+          }).join('');
+        })() + '</select></div>' +
       '<div class="f"><label for="du-title">Document name <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">\u00b7 optional, defaults to the file name</span></label>' +
         '<input type="text" id="du-title" placeholder=""></div>' +
       '<p class="small" id="du-err" style="color:var(--fail);min-height:1em"></p>' +
