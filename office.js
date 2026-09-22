@@ -6280,7 +6280,7 @@
     if (n < 1048576) return Math.round(n / 1024) + ' KB';
     return (n / 1048576).toFixed(1) + ' MB';
   }
-  var docF = { q: '', folder: null, sub: null };   // Documents: search + folder navigation
+  var docF = { q: '', open: {} };   // Documents: search + which folders are expanded
 
   /* The library arrived with the folder encoded in the filename, e.g.
      "Turner - Go-Packets - OSHA Inspection.pdf". Parse it so the UI can show
@@ -6315,27 +6315,39 @@
     var searching = !!q;
 
     var style = '<style>' +
-      '.dfold{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:13px;margin:2px 0 16px}' +
-      '.dcard{display:flex;align-items:center;gap:12px;padding:14px 15px;border:1px solid var(--line);border-radius:12px;' +
-        'background:var(--card);box-shadow:var(--shadow);cursor:pointer;text-align:left;width:100%;font:inherit;' +
-        'transition:box-shadow .12s,border-color .12s,transform .06s}' +
-      '.dcard:hover{box-shadow:var(--shadow-lg);border-color:var(--line-2)}' +
-      '.dcard:active{transform:scale(.995)}' +
-      '.dcard svg{width:26px;height:26px;color:var(--accent);flex:0 0 auto}' +
-      '.dcard .nm{font-weight:700;color:var(--ink);font-size:14px;line-height:1.25;overflow-wrap:anywhere}' +
-      '.dcard .ct{font-size:12px;color:var(--ink-4);margin-top:2px}' +
-      '.dcrumb{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 12px;font-size:13px}' +
-      '.dcrumb button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:0}' +
-      '.dcrumb button:hover{text-decoration:underline}' +
-      '.dcrumb .sep{color:var(--ink-5)}.dcrumb .cur{color:var(--ink-3);font-weight:700}' +
+      '.dsec{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);' +
+        'margin-bottom:11px;overflow:hidden}' +
+      '.dsec-h{display:flex;align-items:center;gap:11px;width:100%;padding:14px 16px;background:transparent;' +
+        'border:0;font:inherit;cursor:pointer;text-align:left;transition:background .12s}' +
+      '.dsec-h:hover{background:var(--accent-tt)}' +
+      '.dsec-h .fi{width:22px;height:22px;color:var(--accent);flex:0 0 auto}' +
+      '.dsec-h .nm{font-weight:700;color:var(--ink);font-size:14.5px;flex:1;min-width:0;overflow-wrap:anywhere}' +
+      '.dsec-h .ct{font-size:12px;color:var(--ink-3);background:var(--bg);border:1px solid var(--line);' +
+        'border-radius:999px;padding:2px 10px;font-weight:600;white-space:nowrap}' +
+      '.dsec-h .chev{width:15px;height:15px;color:var(--ink-5);flex:0 0 auto;transition:transform .15s}' +
+      '.dsec-h.open .chev{transform:rotate(90deg)}' +
+      '.dsec-b{border-top:1px solid var(--line);background:var(--bg)}' +
+      '.dsub{border-bottom:1px solid var(--line)}.dsub:last-child{border-bottom:0}' +
+      '.dsub-h{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px 11px 30px;background:transparent;' +
+        'border:0;font:inherit;cursor:pointer;text-align:left;transition:background .12s}' +
+      '.dsub-h:hover{background:var(--card)}' +
+      '.dsub-h .fi{width:18px;height:18px;color:var(--ink-4);flex:0 0 auto}' +
+      '.dsub-h .nm{font-weight:600;color:var(--ink-2);font-size:13.5px;flex:1;min-width:0}' +
+      '.dsub-h .ct{font-size:11.5px;color:var(--ink-4);white-space:nowrap}' +
+      '.dsub-h .chev{width:14px;height:14px;color:var(--ink-5);flex:0 0 auto;transition:transform .15s}' +
+      '.dsub-h.open .chev{transform:rotate(90deg)}' +
+      '.dsec-b .panel{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent}' +
       '</style>';
+
+    var CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+    var FI = '<svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 
     var right = '<button class="btn btn-gold" id="doc-new">Upload document</button>';
     var html = style + head('Documents',
       'Company safety documents — stored privately and available from any signed-in device.', right);
 
     var folders = {};
-    all.forEach(function (d) { folders[docFolder(d)] = (folders[docFolder(d)] || 0) + 1; });
+    all.forEach(function (d) { (folders[docFolder(d)] = folders[docFolder(d)] || []).push(d); });
     var fresh = all.filter(function (d) { return (new Date() - new Date(d.created_at)) < 90 * 86400000; }).length;
     html += '<div class="cards">' +
       kpi(String(all.length), 'documents on file', 'stored in private company storage', 'c-grey') +
@@ -6347,59 +6359,68 @@
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
         '<input id="doc-q" placeholder="Search all documents…" value="' + esc(docF.q) + '"></div>' +
+      (Object.keys(folders).length > 1 && !searching
+        ? '<button class="btn btn-sm" id="doc-expand">Expand all</button>' +
+          '<button class="btn btn-sm" id="doc-collapse">Collapse all</button>' : '') +
       '</div>';
 
     if (searching) {
       var hits = all.filter(function (d) { return has(d.filename, q) || has(d.category, q); });
       html += '<p class="small muted" style="margin:0 0 8px">' + hits.length + ' of ' + all.length + ' documents</p>';
       html += docTable(hits, true, 'No documents match your search.');
-    } else if (!docF.folder) {
-      html += '<div class="dfold">' + Object.keys(folders).sort().map(function (f) {
-        return '<button type="button" class="dcard" data-docfolder="' + esc(f) + '">' + DOC_SVG_FOLDER +
-          '<div style="min-width:0"><div class="nm">' + esc(f) + '</div>' +
-          '<div class="ct">' + folders[f] + ' document' + (folders[f] === 1 ? '' : 's') + '</div></div></button>';
-      }).join('') + '</div>';
-      if (!all.length) html += '<div class="empty">No documents yet — upload the first one.</div>';
+    } else if (!all.length) {
+      html += '<div class="empty">No documents yet — upload the first one.</div>';
     } else {
-      var inF = all.filter(function (d) { return docFolder(d) === docF.folder; });
-      html += '<div class="dcrumb"><button type="button" data-docroot="1">All documents</button><span class="sep">/</span>' +
-        (docF.sub
-          ? '<button type="button" data-docfolder="' + esc(docF.folder) + '">' + esc(docF.folder) + '</button>' +
-            '<span class="sep">/</span><span class="cur">' + esc(prettyFolder(docF.sub)) + '</span>'
-          : '<span class="cur">' + esc(docF.folder) + '</span>') + '</div>';
-
-      if (!docF.sub) {
-        var subs = {};
-        inF.forEach(function (d) { var s = docSub(d); if (s) subs[s] = (subs[s] || 0) + 1; });
-        var loose = inF.filter(function (d) { return !docSub(d); });
-        var subKeys = Object.keys(subs).sort();
-        if (subKeys.length) {
-          html += '<div class="dfold">' + subKeys.map(function (s) {
-            return '<button type="button" class="dcard" data-docsub="' + esc(s) + '">' + DOC_SVG_FOLDER +
-              '<div style="min-width:0"><div class="nm">' + esc(prettyFolder(s)) + '</div>' +
-              '<div class="ct">' + subs[s] + ' document' + (subs[s] === 1 ? '' : 's') + '</div></div></button>';
-          }).join('') + '</div>';
+      Object.keys(folders).sort().forEach(function (cat) {
+        var list = folders[cat], openKey = 'c:' + cat, isOpen = !!docF.open[openKey];
+        html += '<div class="dsec">' +
+          '<button type="button" class="dsec-h' + (isOpen ? ' open' : '') + '" data-dtog="' + esc(openKey) + '">' +
+            CHEV + FI + '<span class="nm">' + esc(cat) + '</span>' +
+            '<span class="ct">' + list.length + ' document' + (list.length === 1 ? '' : 's') + '</span>' +
+          '</button>';
+        if (isOpen) {
+          var subs = {}, loose = [];
+          list.forEach(function (d) { var s = docSub(d); if (s) (subs[s] = subs[s] || []).push(d); else loose.push(d); });
+          var subKeys = Object.keys(subs).sort();
+          html += '<div class="dsec-b">';
+          subKeys.forEach(function (s) {
+            var sKey = 's:' + cat + '|' + s, sOpen = !!docF.open[sKey];
+            html += '<div class="dsub">' +
+              '<button type="button" class="dsub-h' + (sOpen ? ' open' : '') + '" data-dtog="' + esc(sKey) + '">' +
+                CHEV + FI + '<span class="nm">' + esc(prettyFolder(s)) + '</span>' +
+                '<span class="ct">' + subs[s].length + '</span>' +
+              '</button>' +
+              (sOpen ? docTable(subs[s], false, 'This folder is empty.') : '') +
+              '</div>';
+          });
+          if (loose.length) html += docTable(loose, false, '');
+          else if (!subKeys.length) html += docTable([], false, 'Nothing filed in this folder.');
+          html += '</div>';
         }
-        if (loose.length || !subKeys.length) {
-          html += docTable(loose, false, 'Nothing filed directly in this folder.');
-        }
-      } else {
-        html += docTable(inF.filter(function (d) { return docSub(d) === docF.sub; }), false, 'This folder is empty.');
-      }
+        html += '</div>';
+      });
     }
 
     paint(html);
     wireSearch('doc-q', function (v) { docF.q = v; pgDocs(); });
     var nb = $('#doc-new'); if (nb) nb.onclick = openDocUpload;
-    $$('[data-docfolder]').forEach(function (b) {
-      b.onclick = function () { docF.folder = b.dataset.docfolder; docF.sub = null; pgDocs(); };
+    $$('[data-dtog]').forEach(function (b) {
+      b.onclick = function () {
+        var k = b.dataset.dtog;
+        if (docF.open[k]) delete docF.open[k]; else docF.open[k] = true;
+        pgDocs();
+      };
     });
-    $$('[data-docsub]').forEach(function (b) {
-      b.onclick = function () { docF.sub = b.dataset.docsub; pgDocs(); };
-    });
-    $$('[data-docroot]').forEach(function (b) {
-      b.onclick = function () { docF.folder = null; docF.sub = null; pgDocs(); };
-    });
+    var xa = $('#doc-expand');
+    if (xa) xa.onclick = function () {
+      (B.docs || []).forEach(function (d) {
+        docF.open['c:' + docFolder(d)] = true;
+        var s = docSub(d); if (s) docF.open['s:' + docFolder(d) + '|' + s] = true;
+      });
+      pgDocs();
+    };
+    var xc = $('#doc-collapse');
+    if (xc) xc.onclick = function () { docF.open = {}; pgDocs(); };
 
     function docBlob(id) {
       return docsEdge({ action: 'url', id: id }).then(function (j) {
