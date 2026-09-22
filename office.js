@@ -6371,7 +6371,12 @@
     } else if (!all.length) {
       html += '<div class="empty">No documents yet — upload the first one.</div>';
     } else {
-      Object.keys(folders).sort().forEach(function (cat) {
+      // Alphabetical, but the catch-all folders always sink to the bottom.
+      Object.keys(folders).sort(function (a, b) {
+        var ra = (a === 'Other' || a === 'Uncategorized') ? 1 : 0;
+        var rb = (b === 'Other' || b === 'Uncategorized') ? 1 : 0;
+        return ra !== rb ? ra - rb : a.localeCompare(b);
+      }).forEach(function (cat) {
         var list = folders[cat], openKey = 'c:' + cat, isOpen = !!docF.open[openKey];
         html += '<div class="dsec">' +
           '<button type="button" class="dsec-h' + (isOpen ? ' open' : '') + '" data-dtog="' + esc(openKey) + '">' +
