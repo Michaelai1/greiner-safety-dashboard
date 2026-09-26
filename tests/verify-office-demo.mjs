@@ -65,7 +65,19 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
   ${slice('anlJobs', 'anlCompliance')}
   ${slice('anlCompliance', 'anlJhaActivity')}
   ${slice('anlJhaActivity', 'anlToolbox')}
-  ${slice('anlToolbox', 'pgAnalyticsDemo')}
+  ${slice('anlToolbox', 'anlFieldForms')}
+  ${slice('anlFieldForms', 'anlHotWork')}
+  ${slice('anlHotWork', 'anlLifts')}
+  ${slice('anlLifts', 'anlCorrective')}
+  ${slice('anlCorrective', 'anlIncidents')}
+  ${slice('anlIncidents', 'pgAnalyticsDemo')}
+  ${slice('allCorrective', 'reportPBody')}
+  function jobName(id){ var j=(window.DEMO.jobs||[]).filter(function(x){return x.id===id;})[0]; return j?j.name:id; }
+  function subName(){ return ''; }
+  function repDateDisp(){ return ''; }
+  var B = { findings: window.DEMO.findings, incidents: window.DEMO.incidents,
+            near_misses: window.DEMO.nearMisses, reports: [] };
+  var ANL_DATA_NEEDED_REF = ANL_DATA_NEEDED;
   var jhaF = { job:'', from:'', to:'', by:'', kind:'', revs:'' };
   var anF = { company:'greiner', job:'', from:'', to:'', form:'', status:'' };
   function reload(){ TBT = null; return tbtLoad(); }
@@ -76,6 +88,8 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
            tbtGuidedOf, tbtFormatFor,
            jhaFamilies, jhaFilteredFamilies,
            anlRangeDays, anlJobs, anlCompliance, anlJhaActivity, anlToolbox,
+           anlFieldForms, anlHotWork, anlLifts, anlCorrective, anlIncidents,
+           allCorrective, ANL_DATA_NEEDED: ANL_DATA_NEEDED_REF,
            reload, setCompany,
            getJhaF: function(){ return jhaF; }, getAnF: function(){ return anF; },
            getTBT: function(){ return TBT; } };
@@ -402,6 +416,199 @@ assert.equal(M.TBT_LIB.filter((d) => M.tbtGuidedOf(d.i)).length, 1,
   assert.match(M.tbtFormatFor(co, other).note, /not prepared/i,
     'the office must say the guided version is not prepared');
 }
+
+/* ------------------------------------------------------------------ *
+ * 12b. The Incidents page no longer throws
+ *
+ * pgIncidents() read incTab and incF before either was declared, so the page
+ * threw ReferenceError on its first line and rendered nothing — on main too.
+ * ------------------------------------------------------------------ */
+includes(js, "var incTab = 'incidents';", 'incTab must be declared');
+includes(js, "var incF = { job: '', cls: '', status: '', range: '' };", 'incF must be declared');
+// Declared before the page that reads them.
+assert.ok(js.indexOf("var incTab = 'incidents';") < js.indexOf('function pgIncidents()'),
+  'incTab must be declared before pgIncidents');
+assert.ok(js.indexOf("var incF = { job:") < js.indexOf('function pgIncidents()'),
+  'incF must be declared before pgIncidents');
+
+// Run pgIncidents for real against the fixtures and prove it does not throw.
+{
+  const painted = [];
+  const page = new Function('window', 'localStorage', 'document', `
+    var TBT_DEMO = true;
+    function esc(s){ return String(s == null ? '' : s); }
+    function pill(c, t){ return '<span>' + t + '</span>'; }
+    function kpi(v, l, s, c){ return '<div>' + v + ' ' + l + '</div>'; }
+    function actionKpi(v, l, s){ return '<div>' + v + ' ' + l + '</div>'; }
+    function head(t, n, r){ return '<h2>' + t + '</h2>'; }
+    function subtabs(cur, items, k){ return '<div>' + cur + '</div>'; }
+    function tableWrap(cols, rows, empty){ return rows.length ? rows.join('') : '<div>' + empty + '</div>'; }
+    function paint(h){ PAINTED.push(h); }
+    function toast(){}
+    function has(hay, q){ return !q || String(hay).toLowerCase().indexOf(q) !== -1; }
+    function jobName(id){ var j=(B.jobs||[]).filter(function(x){return x.id===id;})[0]; return j?j.name:id; }
+    function subName(){ return ''; }
+    function fmtDate(d){ return String(d || ''); }
+    function $(){ return null; }
+    function $$(){ return []; }
+    function wireSubtabs(){}
+    function wireSearch(){}
+    function pgRegVisits(){ PAINTED.push('regvisits'); }
+    function openIncident(){}
+    function openNewIncident(){}
+    var CLASS = { first_aid: 'First aid', recordable: 'Recordable', property: 'Property damage', near_miss: 'Near miss' };
+    var subQ = {};
+    var PAINTED = [];
+    var B = { incidents: window.DEMO.incidents, near_misses: window.DEMO.nearMisses,
+              jobs: window.DEMO.jobs, findings: window.DEMO.findings, reports: [] };
+    ${js.slice(js.indexOf("  var incTab = 'incidents';"), js.indexOf('  function pgNearMiss()'))}
+    return { run: function(){ pgIncidents(); return PAINTED; } };
+  `);
+  const inst = page(win, localStorage, {});
+  let out;
+  assert.doesNotThrow(() => { out = inst.run(); },
+    'pgIncidents() must not throw — this is the incTab/incF regression');
+  assert.ok(out.length > 0, 'pgIncidents() must paint something');
+  const painted0 = out.join(' ');
+  assert.match(painted0, /Incidents &amp; Injuries|Incidents & Injuries/,
+    'the Incidents page must render its heading');
+  // With zero incidents it must show the empty state, not fabricated rows.
+  assert.match(painted0, /No Greiner incidents recorded/,
+    'an empty incident table must render its zero-data state');
+  assert.match(painted0, /0 incidents this year/, 'the zero count must be shown');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12c. Field form / hot work / lift activity
+ * ------------------------------------------------------------------ */
+{
+  store.clear(); M.reload(); M.setCompany('greiner');
+  const ff = M.anlFieldForms();
+  // A JHA family counts once here too, exactly as it does for compliance.
+  const jhaType = ff.types.find((t) => t.type === 'jha');
+  assert.equal(jhaType.rows.length, 7, 'seven raw JHA revision rows are in range');
+  assert.equal(jhaType.count, 3, 'they count as three submissions');
+  assert.equal(ff.total, ff.types.reduce((n, t) => n + t.count, 0),
+    'the total must be the sum of the per-type counts');
+  assert.equal(ff.total, 10, '3 JHAs + 3 hot work + 2 aerial + 2 forklift');
+  // The drilldown list must be exactly as long as the card total.
+  assert.equal(ff.counted.length, ff.total,
+    'the field-form drilldown must list exactly what the card counted');
+  assert.equal(ff.counted.filter((r) => r.form_type === 'jha').length, 3,
+    'each JHA family appears once in the drilldown');
+
+  const hw = M.anlHotWork();
+  assert.equal(hw.count, 3, 'three hot work permits');
+  assert.equal(hw.flagged.length, 1, 'one flagged for follow-up');
+  assert.equal(Object.keys(hw.jobs).length, 2, 'across two jobs');
+  assert.ok(hw.rows.every((r) => r.form_type === 'hotwork'), 'only hot work permits');
+
+  const lf = M.anlLifts();
+  assert.equal(lf.count, 4, 'four lift inspections');
+  assert.equal(lf.aerial.length, 2, 'two aerial');
+  assert.equal(lf.forklift.length, 2, 'two forklift');
+  assert.equal(lf.aerial.length + lf.forklift.length, lf.count, 'the split must total the count');
+  assert.equal(lf.units.length, 3, 'three distinct units — one forklift inspected twice');
+  assert.equal(lf.flagged.length, 1, 'one failed inspection');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12d. Corrective actions come from real records only
+ * ------------------------------------------------------------------ */
+{
+  const ca = M.anlCorrective();
+  assert.equal(ca.all.length, 3, 'three corrective actions on record');
+  assert.equal(ca.open.length, 2, 'two open');
+  assert.equal(ca.closed.length, 1, 'one closed');
+  assert.equal(ca.overdue.length, 1, 'one overdue');
+  assert.equal(ca.open.length + ca.closed.length, ca.all.length,
+    'open plus closed must equal the total');
+  // Overdue is a subset of open, never counted separately.
+  assert.ok(ca.overdue.every((c) => ca.open.includes(c)), 'overdue must be a subset of open');
+  // Every action traces to a fixture finding — none are invented.
+  assert.equal(ca.all.length, DEMO.findings.length,
+    'every corrective action must come from a fixture record');
+  // With no incidents there are no incident corrective actions.
+  assert.equal(ca.all.filter((c) => c.src === 'Incident').length, 0,
+    'no incident corrective actions can exist while there are no incidents');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12e. Incidents: a real zero-data state, and never a fake baseline
+ * ------------------------------------------------------------------ */
+{
+  const ic = M.anlIncidents();
+  assert.equal(DEMO.incidents.length, 0, 'the fixture contains no incidents');
+  assert.equal(DEMO.nearMisses.length, 0, 'the fixture contains no near misses');
+  assert.equal(ic.incidents.length, 0, 'incidents YTD is zero');
+  assert.equal(ic.nearMisses.length, 0, 'near misses YTD is zero');
+
+  // The critical rule: with no baseline there is NO number, not zero.
+  assert.equal(ic.baseline.last_recordable, null, 'no recordable baseline has been supplied');
+  assert.equal(ic.daysSinceRecordable, null,
+    'days since last recordable must be null, never 0, when no baseline exists');
+  assert.notEqual(ic.daysSinceRecordable, 0,
+    'a missing baseline must never render as 0 days');
+
+  // The page must say so in words.
+  includes(js, 'No baseline recorded', 'the missing baseline must be stated');
+  includes(js, 'Needs the date of Greiner’s last recordable incident',
+    'the page must say which date is required');
+  includes(js, 'No incidents recorded during this reporting period',
+    'zero incidents must be qualified by the period');
+  includes(js, 'Zero does not mean Greiner has never had an incident.',
+    'the page must not imply Greiner has never had an incident');
+  includes(js, 'No near misses recorded during this reporting period',
+    'zero near misses must be qualified by the period');
+
+  // Once a baseline exists the number is computed from it, not stored.
+  const probe = JSON.parse(JSON.stringify(DEMO.baseline));
+  probe.last_recordable = DEMO.isoDay(DEMO.dayOffset(-30));
+  const days = Math.floor((Date.now() - new Date(probe.last_recordable + 'T00:00:00').getTime()) / 86400000);
+  assert.ok(days >= 29 && days <= 31, 'the baseline maths must be a real date difference');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12f. Nothing fabricated: the banned metrics are not rendered
+ * ------------------------------------------------------------------ */
+{
+  // These may be NAMED in "Data needed" as things that cannot be calculated,
+  // but must never appear as a computed metric.
+  const analytics = js.slice(js.indexOf('function pgAnalyticsDemo()'),
+    js.indexOf('function anCard('));
+  for (const banned of ['trirValue', 'dartValue', 'ltirValue', 'incidentRate',
+    'trainingCompliance', 'ppeCompliance', 'injuryTrend', 'incidentStreak']) {
+    assert.ok(!analytics.includes(banned), `no fabricated metric: ${banned}`);
+  }
+  // No incident is ever manufactured.
+  assert.ok(!/incidents\s*=\s*\[\s*\{/.test(demoSrc),
+    'the fixtures must not contain a fabricated incident');
+  assert.equal(DEMO.incidents.length, 0, 'the incident fixture stays empty');
+
+  // The data-needed list names every outstanding input.
+  const needed = M.ANL_DATA_NEEDED.map((d) => d[0]);
+  for (const want of ['Date of last OSHA-recordable incident', 'Date of last lost-time incident',
+    'Incident recordkeeping start date', 'Hours worked', 'Training requirements by role',
+    'Employee training records', 'Approved high-risk scoring criteria']) {
+    assert.ok(needed.includes(want), `"Data needed" must list: ${want}`);
+  }
+  assert.equal(needed.length, 7, 'seven outstanding inputs');
+  assert.ok(M.ANL_DATA_NEEDED.every((d) => d[1] && d[1].length > 20),
+    'each data-needed row must explain why it is needed');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12g. pilotHold is intact and incident intake is not released
+ * ------------------------------------------------------------------ */
+includes(js, "$('#in-save').onclick = pilotHold('Incident records');",
+  'incident intake must stay held');
+includes(js, "$('#nn-save').onclick = pilotHold('Near-miss records');",
+  'near-miss intake must stay held');
+assert.equal((js.match(/pilotHold\(/g) || []).length >= 12, true,
+  'every pilotHold must remain in place');
+// The investigation editor still only toasts — the demo must not claim otherwise.
+includes(js, "sv.onclick = function () { toast('Incident details saved.'); openIncident(id); };",
+  'the investigation editor must be left exactly as it was');
 
 /* ------------------------------------------------------------------ *
  * 13. Production behaviour is unchanged

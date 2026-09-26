@@ -1942,6 +1942,13 @@
       tr.onclick = function () { openCrewInsp(tr.dataset.hotwork); };
     });
   }
+  /* Both of these were read by pgIncidents() but never declared, so the page
+     threw ReferenceError on its first line and rendered nothing. Declared here
+     alongside the page that uses them, matching how the other tabs do it
+     (see `var talkTab` and `var nmF`). */
+  var incTab = 'incidents';                                  // Incidents | Regulatory Visits
+  var incF = { job: '', cls: '', status: '', range: '' };    // Incidents table filters
+
   function pgIncidents() {
     var right = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
       subtabs(incTab, [['incidents', 'Incidents'], ['reg', 'Regulatory Visits']], 'ic') +
@@ -3142,6 +3149,143 @@
              auto: !!(wk0 && wk0.auto), company: key };
   }
 
+  /* ---- D. field form activity ------------------------------------------
+     Every field submission in range, by form type. Counted from the same
+     records the Inspections page lists. */
+  function anlFieldForms() {
+    var days = anlRangeDays(), jobIds = anlJobs().map(function (j) { return j.id; });
+    var rows = (window.DEMO.field || []).filter(function (r) {
+      if (jobIds.indexOf(r.job_id) === -1) return false;
+      return days.indexOf(window.DEMO.isoDay(new Date(r.submitted_at))) !== -1;
+    });
+    // JHAs are counted as families so a revised JHA is one submission here too.
+    var jhaFams = {};
+    rows.forEach(function (r) { if (r.form_type === 'jha' && r.root_jha_id) jhaFams[r.root_jha_id] = 1; });
+    var byType = {};
+    rows.forEach(function (r) {
+      var k = r.form_type;
+      if (!byType[k]) byType[k] = { type: k, title: r.form_title || k, rows: [], defects: 0 };
+      byType[k].rows.push(r);
+      if (r.has_defects) byType[k].defects++;
+    });
+    var types = Object.keys(byType).map(function (k) {
+      var t = byType[k];
+      // a JHA family counts once, every other form counts per submission
+      t.count = k === 'jha' ? Object.keys(jhaFams).length : t.rows.length;
+      return t;
+    }).sort(function (a, b) { return b.count - a.count; });
+    var total = types.reduce(function (n, t) { return n + t.count; }, 0);
+
+    /* The list the drilldown shows must be the list the card counted: one row
+       per JHA family (its latest version), one row per other submission. */
+    var seenFam = {}, counted = [];
+    rows.forEach(function (r) {
+      if (r.form_type === 'jha' && r.root_jha_id) {
+        if (seenFam[r.root_jha_id]) return;
+        seenFam[r.root_jha_id] = 1;
+        var fam = rows.filter(function (x) { return x.root_jha_id === r.root_jha_id; })
+          .sort(function (a, b) { return (a.revision_number || 0) - (b.revision_number || 0); });
+        var latest = fam[fam.length - 1];
+        counted.push(Object.assign({}, latest, {
+          revisions: fam.length - 1,
+          form_title: (latest.form_title || 'Job Hazard Analysis') +
+            (fam.length > 1 ? ' (+' + (fam.length - 1) + ' revisions)' : '')
+        }));
+        return;
+      }
+      counted.push(r);
+    });
+    return { rows: rows, counted: counted, types: types, total: total,
+             withDefects: counted.filter(function (r) { return r.has_defects; }) };
+  }
+
+  /* ---- E. hot work ------------------------------------------------------ */
+  function anlHotWork() {
+    var f = anlFieldForms();
+    var rows = f.rows.filter(function (r) { return r.form_type === 'hotwork'; });
+    return { rows: rows, count: rows.length,
+             flagged: rows.filter(function (r) { return r.has_defects; }),
+             jobs: rows.reduce(function (o, r) { o[r.job_id] = 1; return o; }, {}) };
+  }
+
+  /* ---- F. lift inspections (aerial + forklift) -------------------------- */
+  function anlLifts() {
+    var f = anlFieldForms();
+    var rows = f.rows.filter(function (r) { return r.form_type === 'aerial' || r.form_type === 'forklift'; });
+    var units = {};
+    rows.forEach(function (r) { if (r.asset_id) units[r.asset_id] = 1; });
+    return { rows: rows, count: rows.length,
+             aerial: rows.filter(function (r) { return r.form_type === 'aerial'; }),
+             forklift: rows.filter(function (r) { return r.form_type === 'forklift'; }),
+             flagged: rows.filter(function (r) { return r.has_defects; }),
+             units: Object.keys(units) };
+  }
+
+  /* ---- G. corrective actions -------------------------------------------
+     Uses the dashboard's own allCorrective() aggregation, filtered to the
+     selected job. Only sources that actually carry records contribute — with
+     no incidents there are no incident corrective actions, and none are
+     invented to fill the gap. */
+  function anlCorrective() {
+    var jobIds = anlJobs().map(function (j) { return j.id; });
+    var all = allCorrective().filter(function (c) { return jobIds.indexOf(c.job) !== -1; });
+    var open = all.filter(function (c) { return c.status !== 'closed'; });
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var overdue = open.filter(function (c) { return c.due && c.due < today; });
+    var bySource = {};
+    all.forEach(function (c) { bySource[c.src] = (bySource[c.src] || 0) + 1; });
+    return { all: all, open: open, overdue: overdue,
+             closed: all.filter(function (c) { return c.status === 'closed'; }),
+             bySource: bySource };
+  }
+
+  /* ---- H. incidents and near misses -------------------------------------
+     Greiner's incident workflow exists — schema, intake form, witnesses,
+     documents and corrective actions are all built — but no incident has been
+     submitted, so there is nothing to count. These read the real (empty)
+     arrays; nothing is fabricated to fill the cards. */
+  function anlIncidents() {
+    var jobIds = anlJobs().map(function (j) { return j.id; });
+    var year = new Date().getFullYear();
+    var inScope = function (r) {
+      return jobIds.indexOf(r.job_id) !== -1 && r.date &&
+             new Date(r.date).getFullYear() === year;
+    };
+    var inc = ((window.DEMO.incidents) || []).filter(inScope);
+    var nm = ((window.DEMO.nearMisses) || []).filter(inScope);
+    var base = window.DEMO.baseline || {};
+    // Days since last recordable is only computable from a supplied baseline.
+    // With no baseline and no incidents there is no number — and 0 would be a
+    // lie in both directions, so it is never shown.
+    var days = null;
+    if (base.last_recordable) {
+      var d0 = new Date(base.last_recordable + 'T00:00:00');
+      days = Math.floor((Date.now() - d0.getTime()) / 86400000);
+    }
+    return { incidents: inc, nearMisses: nm, baseline: base,
+             daysSinceRecordable: days, year: year,
+             recordkeepingStart: base.recordkeeping_start || null };
+  }
+
+  /* ---- what the office still needs before these numbers mean anything --- */
+  var ANL_DATA_NEEDED = [
+    ['Date of last OSHA-recordable incident',
+     'Required before "Days Since Last Recordable" can show a number at all.'],
+    ['Date of last lost-time incident',
+     'Tracked separately from recordable; needed for a lost-time counter.'],
+    ['Incident recordkeeping start date',
+     'So that zero incidents reads as "none in this period", not "none ever".'],
+    ['Hours worked',
+     'OSHA rates (TRIR, DART, LTIR) cannot be calculated without hours. ' +
+     'The subcontractor scorecard has hours; Greiner\'s own workforce does not.'],
+    ['Training requirements by role',
+     'No role-to-requirement mapping exists, so training compliance cannot be computed.'],
+    ['Employee training records',
+     'Certificates are not stored at scale; expiry cannot be measured yet.'],
+    ['Approved high-risk scoring criteria',
+     'Any risk ranking needs criteria Greiner has signed off on, not invented weights.']
+  ];
+
   function pgAnalyticsDemo() {
     var comp = anlCompliance();
     var jha = anlJhaActivity();
@@ -3162,6 +3306,20 @@
       '.an-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
       '.an-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}' +
       '.an-bar i{display:block;height:100%;background:var(--ok)}' +
+      // a card with nothing to drill into: no hover, no pointer
+      '.an-card.an-static{cursor:default}.an-card.an-static:hover{border-color:var(--line)}' +
+      '.an-card.an-needs{border-style:dashed;border-color:var(--warn-br,#fcd34d);background:#fffbeb}' +
+      '.an-nobase{font-size:15px!important;line-height:1.3;color:#92400e!important}' +
+      '.an-ask{color:#b45309!important;font-weight:600}' +
+      '.an-zero{color:var(--ink-5)!important;font-weight:500;font-style:normal}' +
+      '.an-empty{padding:14px;border:1px dashed var(--line-2);border-radius:10px;' +
+        'color:var(--ink-4);font-size:13px;text-align:center;margin-top:4px}' +
+      '.an-note{margin-top:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;' +
+        'background:var(--bg);font-size:12.5px;color:var(--ink-4);line-height:1.55}' +
+      '.an-need{display:grid;gap:8px}' +
+      '.an-needrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}' +
+      '.an-needrow .t{font-weight:650;font-size:13.5px;color:var(--ink)}' +
+      '.an-needrow .w{font-size:12.5px;color:var(--ink-4);margin-top:2px;line-height:1.5}' +
       '</style>';
 
     var right = '<select id="an-company" style="min-width:150px">' +
@@ -3187,14 +3345,24 @@
       '<input type="date" id="an-to" value="' + esc(anF.to || window.DEMO.isoDay(window.DEMO.dayOffset(0))) + '">' +
       '<select id="an-form"><option value="">All form types</option>' +
         '<option value="jha"' + (anF.form === 'jha' ? ' selected' : '') + '>Job Hazard Analysis</option>' +
-        '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option></select>' +
+        '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option>' +
+        '<option value="hotwork"' + (anF.form === 'hotwork' ? ' selected' : '') + '>Hot Work Permit</option>' +
+        '<option value="lift"' + (anF.form === 'lift' ? ' selected' : '') + '>Lift Inspection</option>' +
+        '<option value="incident"' + (anF.form === 'incident' ? ' selected' : '') + '>Incidents</option>' +
+        '<option value="nearmiss"' + (anF.form === 'nearmiss' ? ' selected' : '') + '>Near Misses</option></select>' +
       '<select id="an-status"><option value="">All statuses</option>' +
         '<option value="done"' + (anF.status === 'done' ? ' selected' : '') + '>Completed</option>' +
         '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding / missed</option></select>' +
       '</div>';
 
-    var showJha = anF.form !== 'toolbox';
-    var showTb = anF.form !== 'jha';
+    var showJha = !anF.form || anF.form === 'jha';
+    var showTb = !anF.form || anF.form === 'toolbox';
+    var showForms = !anF.form;
+    var showHot = !anF.form || anF.form === 'hotwork';
+    var showLifts = !anF.form || anF.form === 'lift';
+    var showCA = !anF.form;
+    var showInc = !anF.form || anF.form === 'incident';
+    var showNm = !anF.form || anF.form === 'nearmiss';
 
     /* A — daily safety compliance */
     if (showJha) {
@@ -3256,6 +3424,147 @@
           : '') +
         '</div>';
     }
+
+    /* D — field form activity */
+    if (showForms) {
+      var ff = anlFieldForms();
+      html += '<div class="an-sec"><h3>Field form activity</h3>' +
+        '<div class="an-sub">Every field submission in range. A JHA and its revisions count as ' +
+        'one submission here, the same way they do for compliance.</div>' +
+        '<div class="an-kpi">' +
+          anCard(ff.total, 'submissions', 'forms', 'See every submission') +
+          anCard(ff.types.length, 'form types used', '', '') +
+          anCard(ff.withDefects.length, 'flagged with defects', 'forms-flagged', 'See the flagged forms') +
+        '</div>' +
+        (ff.types.length
+          ? '<div class="small muted" style="margin-top:6px">' + ff.types.map(function (t) {
+              return esc(t.title) + ' <b>' + t.count + '</b>'; }).join(' · ') + '</div>'
+          : '<div class="an-empty">No field submissions in this range.</div>') +
+        '</div>';
+    }
+
+    /* E — hot work */
+    if (showHot) {
+      var hw = anlHotWork();
+      html += '<div class="an-sec"><h3>Hot work activity</h3>' +
+        '<div class="an-sub">Hot work permits submitted from the field.</div>' +
+        '<div class="an-kpi">' +
+          anCard(hw.count, 'permits submitted', 'hot-all', 'See the permits') +
+          anCard(Object.keys(hw.jobs).length, 'jobs with hot work', '', '') +
+          anCard(hw.flagged.length, 'flagged for follow-up', 'hot-flagged', 'See the flagged permits') +
+        '</div>' +
+        (hw.count ? '' : '<div class="an-empty">No hot work permits in this range.</div>') +
+        '</div>';
+    }
+
+    /* F — lift inspections */
+    if (showLifts) {
+      var lf = anlLifts();
+      html += '<div class="an-sec"><h3>Lift inspection activity</h3>' +
+        '<div class="an-sub">Aerial lift and forklift pre-use inspections.</div>' +
+        '<div class="an-kpi">' +
+          anCard(lf.count, 'inspections', 'lift-all', 'See the inspections') +
+          anCard(lf.aerial.length, 'aerial lift', '', '') +
+          anCard(lf.forklift.length, 'forklift', '', '') +
+          anCard(lf.units.length, 'units inspected', '', '') +
+          anCard(lf.flagged.length, 'failed / defects found', 'lift-flagged', 'See the failures') +
+        '</div>' +
+        (lf.count ? '' : '<div class="an-empty">No lift inspections in this range.</div>') +
+        '</div>';
+    }
+
+    /* G — corrective actions */
+    if (showCA) {
+      var ca = anlCorrective();
+      html += '<div class="an-sec"><h3>Open corrective actions</h3>' +
+        '<div class="an-sub">Every corrective action that has a record behind it, from ' +
+        'inspection findings and report fixes. There are no incident corrective actions ' +
+        'because there are no incidents.</div>' +
+        '<div class="an-kpi">' +
+          anCard(ca.open.length, 'open', 'ca-open', 'See the open actions') +
+          anCard(ca.overdue.length, 'overdue', 'ca-overdue', 'See what is late') +
+          anCard(ca.closed.length, 'closed', 'ca-closed', 'See the closed actions') +
+        '</div>' +
+        (ca.all.length
+          ? '<div class="small muted" style="margin-top:6px">Source: ' +
+            Object.keys(ca.bySource).map(function (k) {
+              return esc(k) + ' <b>' + ca.bySource[k] + '</b>'; }).join(' · ') + '</div>'
+          : '<div class="an-empty">No corrective actions on record.</div>') +
+        '</div>';
+    }
+
+    /* H — incidents: real zero-data state, never invented */
+    if (showInc) {
+      var ic = anlIncidents();
+      html += '<div class="an-sec"><h3>Incidents</h3>' +
+        '<div class="an-sub">Greiner’s incident workflow is built — intake form, witnesses, ' +
+        'documents and corrective actions all exist. No incident has been submitted yet, so there ' +
+        'is nothing to count. Nothing below is estimated or filled in.</div>' +
+        '<div class="an-kpi">' +
+
+          // Days since last recordable — never 0 without a baseline
+          '<div class="an-card an-static' + (ic.daysSinceRecordable === null ? ' an-needs' : '') + '">' +
+            (ic.daysSinceRecordable === null
+              ? '<b class="an-nobase">No baseline recorded</b>' +
+                '<span>days since last recordable incident</span>' +
+                '<em class="an-ask">Needs the date of Greiner’s last recordable incident</em>'
+              : '<b>' + ic.daysSinceRecordable + '</b><span>days since last recordable incident</span>') +
+          '</div>' +
+
+          // Incidents YTD — zero, with the period stated
+          '<div class="an-card an-static"><b>' + ic.incidents.length + '</b>' +
+            '<span>incidents recorded ' + ic.year + '</span>' +
+            (ic.incidents.length === 0
+              ? '<em class="an-zero">No incidents recorded during this reporting period</em>'
+              : '') +
+          '</div>' +
+
+        '</div>' +
+        '<div class="an-note">' +
+          '<b>Zero does not mean Greiner has never had an incident.</b> It means no incident has ' +
+          'been entered into this system' +
+          (ic.recordkeepingStart
+            ? ' since ' + esc(ic.recordkeepingStart) + '.'
+            : ', and the recordkeeping start date has not been supplied.') +
+          ' Incident intake is still held in this pilot, so submissions are not being accepted yet.' +
+        '</div>' +
+        '</div>';
+    }
+
+    /* I — near misses: separate from incidents, real zero-state */
+    if (showNm) {
+      var nm = anlIncidents();
+      html += '<div class="an-sec"><h3>Near misses</h3>' +
+        '<div class="an-sub">Close calls with no injury — the early warning. Reported from the ' +
+        'field and closed out here.</div>' +
+        '<div class="an-kpi">' +
+          '<div class="an-card an-static"><b>' + nm.nearMisses.length + '</b>' +
+            '<span>near misses recorded ' + nm.year + '</span>' +
+            (nm.nearMisses.length === 0
+              ? '<em class="an-zero">No near misses recorded during this reporting period</em>'
+              : '') + '</div>' +
+          '<div class="an-card an-static"><b>' +
+            nm.nearMisses.filter(function (n) { return n.status !== 'closed'; }).length + '</b>' +
+            '<span>open / under review</span></div>' +
+          '<div class="an-card an-static"><b>' +
+            nm.nearMisses.filter(function (n) { return n.severity === 'high'; }).length + '</b>' +
+            '<span>high potential</span></div>' +
+        '</div>' +
+        (nm.nearMisses.length ? '' :
+          '<div class="an-note">Near-miss reporting is built, but no near miss has been entered ' +
+          'into this system yet. Zero here means nothing has been reported, not that no close ' +
+          'call has happened.</div>') +
+        '</div>';
+    }
+
+    /* Data needed before any of the missing metrics can be built */
+    html += '<div class="an-sec"><h3>Data needed</h3>' +
+      '<div class="an-sub">These metrics are deliberately absent rather than estimated. ' +
+      'Each one needs a value from Greiner before it can be calculated.</div>' +
+      '<div class="an-need">' + ANL_DATA_NEEDED.map(function (d) {
+        return '<div class="an-needrow"><div class="t">' + esc(d[0]) + '</div>' +
+          '<div class="w">' + esc(d[1]) + '</div></div>';
+      }).join('') + '</div></div>';
 
     paint(html);
     anlWire();
@@ -3404,6 +3713,55 @@
         body = tableWrap([{ t: 'Name' }, { t: 'Job / meeting group' }, { t: 'How counted' }, { t: 'Submitted' }],
           attRows, 'Nobody recorded.');
       }
+    }
+    else if (which.indexOf('forms-') === 0 || which === 'forms' ||
+             which.indexOf('hot-') === 0 || which.indexOf('lift-') === 0) {
+      var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts();
+      var list =
+        which === 'forms' ? ff.counted :
+        which === 'forms-flagged' ? ff.withDefects :
+        which === 'hot-all' ? hw.rows :
+        which === 'hot-flagged' ? hw.flagged :
+        which === 'lift-all' ? lf.rows : lf.flagged;
+      title =
+        which === 'forms' ? 'Field submissions' :
+        which === 'forms-flagged' ? 'Submissions flagged with defects' :
+        which === 'hot-all' ? 'Hot work permits' :
+        which === 'hot-flagged' ? 'Hot work flagged for follow-up' :
+        which === 'lift-all' ? 'Lift inspections' : 'Lift inspections with defects';
+      sub = list.length + ' record' + (list.length === 1 ? '' : 's');
+      body = tableWrap([{ t: 'Form' }, { t: 'Job' }, { t: 'Submitted by' }, { t: 'When' },
+                        { t: 'Result', r: 1 }],
+        list.map(function (r) {
+          return '<tr><td><span class="t-main">' + esc(r.form_title || r.form_type) + '</span>' +
+            (r.asset_id ? '<div class="small muted">' + esc(r.asset_id) + '</div>' : '') + '</td>' +
+            '<td>' + esc(r.job_name) + '</td><td>' + esc(r.inspector_name) + '</td>' +
+            '<td>' + esc(fmtWhen(r.submitted_at)) + '</td>' +
+            '<td class="r">' + (r.has_defects
+              ? pill('p-warn', r.defect_count + ' defect' + (r.defect_count === 1 ? '' : 's'))
+              : pill('p-ok', 'Pass')) + '</td></tr>';
+        }), 'No records.');
+    } else if (which.indexOf('ca-') === 0) {
+      var cc = anlCorrective();
+      var cl = which === 'ca-open' ? cc.open : which === 'ca-overdue' ? cc.overdue : cc.closed;
+      title = which === 'ca-open' ? 'Open corrective actions'
+            : which === 'ca-overdue' ? 'Overdue corrective actions' : 'Closed corrective actions';
+      sub = cl.length + ' action' + (cl.length === 1 ? '' : 's') +
+        ' — from inspection findings and report fixes';
+      var todayStr = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+      body = tableWrap([{ t: 'Corrective action' }, { t: 'Source' }, { t: 'Job' },
+                        { t: 'Owner' }, { t: 'Due' }, { t: 'Status', r: 1 }],
+        cl.map(function (c) {
+          var late = c.status !== 'closed' && c.due && c.due < todayStr;
+          return '<tr><td><span class="t-main">' + esc(c.text || '—') + '</span>' +
+            (c.detail ? '<div class="small muted">' + esc(c.detail) + '</div>' : '') + '</td>' +
+            '<td>' + esc(c.src) + '</td>' +
+            '<td>' + esc(jobName(c.job)) + '</td>' +
+            '<td>' + esc(c.owner || '—') + '</td>' +
+            '<td>' + esc(c.due || '—') + '</td>' +
+            '<td class="r">' + (c.status === 'closed' ? pill('p-ok', 'Closed')
+              : late ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td></tr>';
+        }), 'No corrective actions.');
     }
     drawer(title, sub, body + '<p class="small muted" style="margin-top:12px">Demo fixture records — ' +
       'this is exactly what the card counted.</p>');

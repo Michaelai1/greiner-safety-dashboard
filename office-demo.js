@@ -158,10 +158,11 @@
   ];
 
   /* ---------- other field submissions ------------------------------------
-     Enough non-JHA submissions that the daily compliance table has something
-     other than JHAs in it. Hot Work on Job B today; Job C submitted nothing,
-     which is what makes it show as missed.                                 */
+     Enough non-JHA submissions that Field Form Activity, Hot Work Activity and
+     Lift Inspection Activity all have something real to count. Demo Job C
+     submits nothing, which is what makes it show as missed.                */
   var OTHER_SUBS = [
+    /* --- hot work permits --- */
     { id: 'hw-1', form_type: 'hotwork', form_title: 'Hot Work Permit',
       job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
       inspector_name: 'Morgan Ellis (Demo)', submitted_at: at(0, 11, 30),
@@ -169,8 +170,74 @@
     { id: 'hw-2', form_type: 'hotwork', form_title: 'Hot Work Permit',
       job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
       inspector_name: 'Demo Foreman', submitted_at: at(-1, 8, 5),
-      has_defects: true, defect_count: 1 }
+      has_defects: true, defect_count: 1 },
+    { id: 'hw-3', form_type: 'hotwork', form_title: 'Hot Work Permit',
+      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
+      inspector_name: 'Casey Nolan (Demo)', submitted_at: at(-1, 13, 10),
+      has_defects: false, defect_count: 0 },
+
+    /* --- lift inspections: aerial and forklift --- */
+    { id: 'lift-1', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
+      inspector_name: 'Alex Rivera (Demo)', submitted_at: at(0, 6, 50),
+      has_defects: false, defect_count: 0, asset_id: 'DEMO-SL-1930-01' },
+    { id: 'lift-2', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
+      inspector_name: 'Jordan Blake (Demo)', submitted_at: at(-1, 6, 45),
+      has_defects: true, defect_count: 2, asset_id: 'DEMO-SL-1930-02' },
+    { id: 'lift-3', form_type: 'forklift', form_title: 'Forklift Inspection',
+      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
+      inspector_name: 'Taylor Reed (Demo)', submitted_at: at(0, 7, 5),
+      has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' },
+    { id: 'lift-4', form_type: 'forklift', form_title: 'Forklift Inspection',
+      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
+      inspector_name: 'Taylor Reed (Demo)', submitted_at: at(-1, 7, 0),
+      has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' }
   ];
+
+  /* ---------- corrective actions ------------------------------------------
+     These come from inspection findings, which is the one corrective-action
+     source that carries real records today. They are NOT incident corrective
+     actions: there are no incidents, so there are none of those.
+
+     One is overdue (due yesterday, still open), one is open and not yet due,
+     one is closed. The dashboard counts these; nothing is written down twice.
+     ---------------------------------------------------------------------- */
+  var FINDINGS = [
+    { id: 'find-1', job_id: 'demo-job-a', sub_id: null,
+      description: 'Aerial lift 1930-02 failed pre-use: horn inoperative and one guardrail pin missing.',
+      corrective: 'Tag out of service, replace pin and repair horn before next use.',
+      due: isoDay(dayOffset(-1)), status: 'open', imported: false,
+      source: 'Aerial Lift Inspection', photos_list: [] },
+    { id: 'find-2', job_id: 'demo-job-a', sub_id: null,
+      description: 'Hot work on Level 2 east: fire watch left the area before the 30-minute watch ended.',
+      corrective: 'Re-brief crew on fire watch duration; foreman to confirm at next hot work permit.',
+      due: isoDay(dayOffset(3)), status: 'open', imported: false,
+      source: 'Hot Work Permit', photos_list: [] },
+    { id: 'find-3', job_id: 'demo-job-b', sub_id: null,
+      description: 'Housekeeping: offcuts and banding left in the mechanical room walkway.',
+      corrective: 'Area cleared and daily clean-up assigned to the plant crew.',
+      due: isoDay(dayOffset(-3)), status: 'closed', imported: false,
+      source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-2)) }
+  ];
+
+  /* ---------- incidents and near misses -----------------------------------
+     Deliberately empty. Greiner has an incident workflow — schema, intake form,
+     witnesses, documents and corrective actions all exist — but there have been
+     no submissions, so there are no records to show. Nothing is invented here;
+     the dashboard renders a zero-data state instead.
+
+     INCIDENT_BASELINE is the date of the last OSHA-recordable incident. It is
+     null because nobody has supplied it yet, and "Days Since Last Recordable"
+     must say so rather than showing 0 days.
+     ---------------------------------------------------------------------- */
+  var INCIDENTS = [];
+  var NEAR_MISSES = [];
+  var INCIDENT_BASELINE = {
+    last_recordable: null,        // date of Greiner's last OSHA-recordable incident
+    last_lost_time: null,         // date of Greiner's last lost-time incident
+    recordkeeping_start: null     // when incident recordkeeping began in this system
+  };
 
   /* ---------- Toolbox Talk completions ------------------------------------
      Week keys are this week's Monday, so the demo always looks current.
@@ -222,11 +289,12 @@
     jobs: JOBS,
     workers: [],
     reports: [], certs: [], stats: [], docs: [], subs: [], permits: [],
-    permit_types: [], permit_checklists: [], near_misses: [], incidents: [],
+    permit_types: [], permit_checklists: [],
+    near_misses: NEAR_MISSES, incidents: INCIDENTS,
     talks: [], templates: [], people: [], invites: [], talk_sends: [],
     permit_sends: [], doc_folders: [], hazcats: [], reg_visits: [], schedules: [],
     send_log: [], equipment: [], talk_templates: [], job_orientations: [],
-    orientation_sends: [], worker_pdfs: [], internal_crew: [], findings: [],
+    orientation_sends: [], worker_pdfs: [], internal_crew: [], findings: FINDINGS,
     cjsc: null, scorecard: [], gc_templates: []
   };
 
@@ -247,8 +315,8 @@
     },
     cs_portal_bundle: function () { return BUNDLE; },
     cs_portal_field_inspections: function () { return FIELD; },
-    cs_portal_findings: function () { return []; },
-    cs_portal_incidents: function () { return []; }
+    cs_portal_findings: function () { return FINDINGS; },
+    cs_portal_incidents: function () { return INCIDENTS; }
   };
 
   window.DEMO = {
@@ -257,6 +325,10 @@
     jobs: JOBS,
     jha: JHA,
     other: OTHER_SUBS,
+    findings: FINDINGS,
+    incidents: INCIDENTS,
+    nearMisses: NEAR_MISSES,
+    baseline: INCIDENT_BASELINE,
     completions: COMPLETIONS,
     field: FIELD,
     isoDay: isoDay,
