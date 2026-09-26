@@ -383,6 +383,7 @@
     { id: 'equipment', label: 'Equipment',       group: 'Field work', badge: 'equipDue', warn: true },
     { id: 'permits',   label: 'Permits',         group: 'Field work', badge: 'permitsSoon' },
     { id: 'talks',     label: 'Toolbox Talks',   group: 'Field work' },
+    { id: 'jha',       label: 'JHA Submissions', group: 'Field work', demoOnly: true },
     { id: 'incidents', label: 'Incidents',       group: 'Safety program', badge: 'incOpen', warn: true },
     { id: 'nearmiss',  label: 'Near Misses',     group: 'Safety program' },
     { id: 'subs',      label: 'Subcontractors',  group: 'Safety program', badge: 'subsBlocked' },
@@ -1539,10 +1540,12 @@
   function renderNav() {
     var c = counts(), nav = $('#nav');
     nav.innerHTML = '';
+    // Demo-only pages never appear in the production sidebar.
+    var VISIBLE = PAGES.filter(function (p) { return !p.demoOnly || TBT_DEMO; });
     var order = [];
-    PAGES.forEach(function (p) { var g = p.group || ''; if (order.indexOf(g) === -1) order.push(g); });
+    VISIBLE.forEach(function (p) { var g = p.group || ''; if (order.indexOf(g) === -1) order.push(g); });
     order.forEach(function (g) {
-      var items = PAGES.filter(function (p) { return (p.group || '') === g; });
+      var items = VISIBLE.filter(function (p) { return (p.group || '') === g; });
       if (!g) { items.forEach(function (p) { nav.appendChild(navLink(p, c)); }); return; }
       var collapsed = !!navGroupsCollapsed[g];
       var hd = el('button', 'nav-sec' + (collapsed ? ' collapsed' : ''));
@@ -1568,10 +1571,11 @@
     page = id;
     if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
     renderNav();
-    ({ overview: pgOverview, analytics: pgAnalytics, permits: pgPermits, incidents: pgIncidents, obs: pgObs,
+    ({ overview: pgOverview, analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics), permits: pgPermits, incidents: pgIncidents, obs: pgObs,
        insp: pgInsp, equipment: pgEquipment, corrective: pgCorrective, talks: pgTalks, nearmiss: pgNearMiss,
        subs: pgSubs, training: pgTraining, templates: pgTemplates, jobs: pgJobs, docs: pgDocs,
-       automations: pgAutomations, orient: pgOrient, assign: pgAssign }[id] || pgOverview)();
+       automations: pgAutomations, orient: pgOrient, assign: pgAssign,
+       jha: (TBT_DEMO ? pgJhaDemo : pgOverview) }[id] || pgOverview)();
     window.scrollTo(0, 0);
   }
 
@@ -3062,6 +3066,585 @@
   /* ====================== TOOLBOX TALKS ================================= */
   var talkTab = 'log';
   var talkF = { q: '', job: '' };
+  /* ==================== ANALYTICS — DEMO ONLY ==========================
+     Reached with office.html?demo=1. Production analytics stays locked (see
+     pgAnalytics) because Greiner does not have enough real history yet; this
+     page is fixtures and says so on every screen.
+
+     Every number below is computed from the fixture records and every card
+     can be opened to show exactly the records it counted. No total is stored
+     separately from the records that produce it.
+     ==================================================================== */
+  var anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '' };
+
+  function anlRangeDays() {
+    // Default window: the fixture days (yesterday and today).
+    var from = anF.from || window.DEMO.isoDay(window.DEMO.dayOffset(-1));
+    var to = anF.to || window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var out = [], d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
+    while (d <= end) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
+    return out;
+  }
+  function anlJobs() {
+    // Only Greiner has demo jobs; Choice and Peine are Toolbox-Talk-only in
+    // this fixture set, and the page says so rather than borrowing job data.
+    if (anF.company !== 'greiner') return [];
+    return (window.DEMO.jobs || []).filter(function (j) { return !anF.job || j.id === anF.job; });
+  }
+
+  /* ---- A. daily safety compliance -------------------------------------
+     One required daily JHA per active job per day in range. A JHA family
+     (original + every revision) satisfies it exactly once. */
+  function anlCompliance() {
+    var days = anlRangeDays(), jobs = anlJobs();
+    var fams = jhaFamilies();
+    var required = [], completed = [], missed = [];
+    days.forEach(function (day) {
+      jobs.forEach(function (job) {
+        var hit = fams.filter(function (f) { return f.job_id === job.id && f.work_date === day; });
+        var row = { day: day, job_id: job.id, job: job.name, form: 'Job Hazard Analysis',
+                    families: hit, done: hit.length > 0 };
+        required.push(row);
+        (row.done ? completed : missed).push(row);
+      });
+    });
+    if (anF.status === 'done') { /* filter applies to the drilldown lists only */ }
+    return { required: required, completed: completed, missed: missed,
+             pct: required.length ? Math.round(completed.length / required.length * 100) : 0 };
+  }
+
+  /* ---- B. JHA activity -------------------------------------------------- */
+  function anlJhaActivity() {
+    var days = anlRangeDays(), jobIds = anlJobs().map(function (j) { return j.id; });
+    var fams = jhaFamilies().filter(function (f) {
+      return jobIds.indexOf(f.job_id) !== -1 && days.indexOf(f.work_date) !== -1;
+    });
+    var revised = fams.filter(function (f) { return f.revisionCount > 0; });
+    var events = fams.reduce(function (n, f) { return n + f.revisionCount; }, 0);
+    return {
+      families: fams, unique: fams.length, revised: revised, events: events,
+      pctRevised: fams.length ? Math.round(revised.length / fams.length * 100) : 0,
+      avgPerRevised: revised.length ? Math.round(events / revised.length * 10) / 10 : 0,
+      recent: revised.slice().sort(function (a, b) {
+        return String(b.latest_revised_at).localeCompare(String(a.latest_revised_at)); })
+    };
+  }
+
+  /* ---- C. Toolbox Talk participation ----------------------------------- */
+  function anlToolbox() {
+    var key = anF.company;
+    var co = tbtLoad().companies[key], def = TBT_COMPANIES[key];
+    var week = tbtMondayISO(0);
+    var stats = tbtCompletionStats(co, def, week);
+    var wk0 = tbtTalkForWeek(co, 0);
+    var talk = wk0 ? tbtById(wk0.id) : null;
+    return { co: co, def: def, week: week, stats: stats, talk: talk,
+             auto: !!(wk0 && wk0.auto), company: key };
+  }
+
+  function pgAnalyticsDemo() {
+    var comp = anlCompliance();
+    var jha = anlJhaActivity();
+    var tb = anlToolbox();
+    var jobs = (window.DEMO.jobs || []);
+
+    var style = '<style>' +
+      '.an-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:8px}' +
+      '.an-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);' +
+        'text-align:left;cursor:pointer;font:inherit}' +
+      '.an-card:hover{border-color:var(--accent)}' +
+      '.an-card b{display:block;font-size:24px;color:var(--ink);line-height:1.15}' +
+      '.an-card span{font-size:11.5px;color:var(--ink-4)}' +
+      '.an-card em{display:block;font-style:normal;font-size:10.5px;color:var(--accent);margin-top:5px;font-weight:650}' +
+      '.an-sec{border:1px solid var(--line);border-radius:12px;background:var(--card);' +
+        'box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
+      '.an-sec h3{margin:0 0 2px;font-size:15px}' +
+      '.an-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
+      '.an-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}' +
+      '.an-bar i{display:block;height:100%;background:var(--ok)}' +
+      '</style>';
+
+    var right = '<select id="an-company" style="min-width:150px">' +
+      Object.keys(TBT_COMPANIES).map(function (k) {
+        return '<option value="' + k + '"' + (anF.company === k ? ' selected' : '') + '>' + esc(TBT_COMPANIES[k].name) + '</option>';
+      }).join('') + '</select>';
+
+    var html = style + head('Analytics',
+      'Demo — daily compliance, JHA activity and Toolbox Talk participation, all computed from demo fixtures.', right);
+
+    html += '<div class="an-sec" style="border-color:#fdba74;background:#fff7ed">' +
+      '<b style="color:#7c2d12">Demo Data</b> <span class="small" style="color:#7c2d12">' +
+      'Every figure on this page comes from demo fixture records. These are not actual Greiner results.</span></div>';
+
+    /* filters */
+    html += '<div class="fbar" style="margin-bottom:14px">' +
+      '<select id="an-job"' + (anF.company === 'greiner' ? '' : ' disabled') + '>' +
+        '<option value="">All jobs</option>' +
+        jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (anF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<input type="date" id="an-from" value="' + esc(anF.from || window.DEMO.isoDay(window.DEMO.dayOffset(-1))) + '">' +
+      '<input type="date" id="an-to" value="' + esc(anF.to || window.DEMO.isoDay(window.DEMO.dayOffset(0))) + '">' +
+      '<select id="an-form"><option value="">All form types</option>' +
+        '<option value="jha"' + (anF.form === 'jha' ? ' selected' : '') + '>Job Hazard Analysis</option>' +
+        '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option></select>' +
+      '<select id="an-status"><option value="">All statuses</option>' +
+        '<option value="done"' + (anF.status === 'done' ? ' selected' : '') + '>Completed</option>' +
+        '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding / missed</option></select>' +
+      '</div>';
+
+    var showJha = anF.form !== 'toolbox';
+    var showTb = anF.form !== 'jha';
+
+    /* A — daily safety compliance */
+    if (showJha) {
+      html += '<div class="an-sec"><h3>Daily safety compliance</h3>' +
+        '<div class="an-sub">One daily JHA is required per active job per day. ' +
+        '<b>One original JHA plus any number of revisions counts as one completed submission</b> — ' +
+        'revisions never inflate this.' +
+        (anF.company === 'greiner' ? '' : ' ' + esc(TBT_COMPANIES[anF.company].name) +
+          ' has no demo job records, so there is nothing to require here.') + '</div>' +
+        '<div class="an-kpi">' +
+          anCard(comp.required.length, 'required submissions', 'required', 'See the job/day list') +
+          anCard(comp.completed.length, 'completed', 'completed', 'See what was submitted') +
+          anCard(comp.missed.length, 'missed', 'missed', 'See the missing job/date/form') +
+          anCard(comp.pct + '%', 'compliance', '', '', comp.pct) +
+        '</div></div>';
+    }
+
+    /* B — JHA activity */
+    if (showJha) {
+      html += '<div class="an-sec"><h3>JHA activity</h3>' +
+        '<div class="an-sub">Unique JHAs and what happened to them after the original submission.</div>' +
+        '<div class="an-kpi">' +
+          anCard(jha.unique, 'unique JHAs submitted', 'jha-unique', 'See the JHAs') +
+          anCard(jha.revised.length, 'JHAs later revised', 'jha-revised', 'See the revised JHAs') +
+          anCard(jha.events, 'total revision events', 'jha-events', 'See every revision') +
+          anCard(jha.pctRevised + '%', 'of JHAs revised', '', '') +
+          anCard(jha.avgPerRevised, 'avg revisions per revised JHA', '', '') +
+        '</div>';
+      if (jha.recent.length) {
+        html += '<div class="small muted" style="margin-top:6px"><b>Most recently revised:</b> ' +
+          jha.recent.slice(0, 3).map(function (f) {
+            return esc(f.job_name) + ' (' + f.revisionCount + ') ' + esc(fmtWhen(f.latest_revised_at));
+          }).join(' · ') + '</div>';
+      }
+      html += '</div>';
+    }
+
+    /* C — Toolbox Talk participation */
+    if (showTb) {
+      var s = tb.stats;
+      html += '<div class="an-sec"><h3>Toolbox Talk participation</h3>' +
+        '<div class="an-sub">' + esc(TBT_COMPANIES[tb.company].name) + ' · week of ' + esc(tbtMondayLabel(0)) +
+        ' · <b>' + (tb.talk ? esc(tb.talk.t) : '—') + '</b>' + (tb.auto ? ' (auto-selected)' : '') +
+        ' · ' + (s.mode === 'group' ? 'foreman-led group — counted by job / meeting group'
+                                    : 'individual — counted by assigned employee') + '</div>' +
+        '<div class="an-kpi">' +
+          anCard(s.total, s.unitLabel + ' assigned', 'tb-assigned', 'See who is assigned') +
+          anCard(s.completed.length, 'completed', 'tb-done', 'See the submissions') +
+          anCard(s.outstanding.length, 'outstanding', 'tb-out', 'See who still owes it') +
+          anCard(s.pct + '%', 'completion', '', '', s.pct) +
+          (s.mode === 'group'
+            ? anCard(s.attendance, 'total attendance', 'tb-att', 'See the attendance') +
+              anCard(s.manualCount, 'manual attendance', 'tb-manual', 'See the manual entries')
+            : '') +
+        '</div>' +
+        (s.mode === 'group'
+          ? '<div class="small muted" style="margin-top:6px">Total attendance counts each roster employee ' +
+            'once for the week plus every manual entry. Manual entries never change the number of groups assigned.</div>'
+          : '') +
+        '</div>';
+    }
+
+    paint(html);
+    anlWire();
+  }
+
+  function anCard(value, label, drill, hint, bar) {
+    return '<button type="button" class="an-card"' + (drill ? ' data-an-drill="' + drill + '"' : '') + '>' +
+      '<b>' + esc(String(value)) + '</b><span>' + esc(label) + '</span>' +
+      (bar !== undefined ? '<div class="an-bar"><i style="width:' + bar + '%"></i></div>' : '') +
+      (drill && hint ? '<em>' + esc(hint) + ' →</em>' : '') + '</button>';
+  }
+
+  function anlWire() {
+    var c = $('#an-company');
+    if (c) c.onchange = function () { anF.company = c.value; anF.job = ''; pgAnalyticsDemo(); };
+    var j = $('#an-job'); if (j) j.onchange = function () { anF.job = j.value; pgAnalyticsDemo(); };
+    var f = $('#an-from'); if (f) f.onchange = function () { anF.from = f.value; pgAnalyticsDemo(); };
+    var t = $('#an-to'); if (t) t.onchange = function () { anF.to = t.value; pgAnalyticsDemo(); };
+    var fm = $('#an-form'); if (fm) fm.onchange = function () { anF.form = fm.value; pgAnalyticsDemo(); };
+    var st = $('#an-status'); if (st) st.onchange = function () { anF.status = st.value; pgAnalyticsDemo(); };
+    $$('[data-an-drill]').forEach(function (b) {
+      b.onclick = function () { anlDrill(b.getAttribute('data-an-drill')); };
+    });
+  }
+
+  /* Every drilldown renders the exact records the card counted. */
+  function anlDrill(which) {
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    var title = '', sub = '', body = '';
+
+    function famRows(list) {
+      return list.map(function (f) {
+        return '<tr><td><span class="t-main">' + esc(f.job_name) + '</span>' +
+          '<div class="small muted">' + esc(f.description || '—') + '</div></td>' +
+          '<td>' + esc(f.work_date) + '</td>' +
+          '<td>' + esc(fmtWhen(f.original_submitted_at)) + '</td>' +
+          '<td>' + f.revisionCount + '</td>' +
+          '<td class="r">' + jhaBadge(f.revisionCount) + '</td></tr>';
+      });
+    }
+    function famTable(list) {
+      return tableWrap([{ t: 'Job / description' }, { t: 'Work date' }, { t: 'Original submitted' },
+                        { t: 'Revisions' }, { t: 'Status', r: 1 }], famRows(list), 'No records.');
+    }
+
+    if (which === 'required' || which === 'completed' || which === 'missed') {
+      var list = which === 'required' ? comp.required : which === 'completed' ? comp.completed : comp.missed;
+      title = which === 'missed' ? 'Missed daily submissions'
+            : which === 'completed' ? 'Completed daily submissions' : 'Required daily submissions';
+      sub = list.length + ' job/date/form combination' + (list.length === 1 ? '' : 's');
+      body = tableWrap([{ t: 'Job' }, { t: 'Date' }, { t: 'Form' }, { t: 'JHAs' }, { t: 'Status', r: 1 }],
+        list.map(function (r) {
+          return '<tr><td><span class="t-main">' + esc(r.job) + '</span></td>' +
+            '<td>' + esc(r.day) + '</td><td>' + esc(r.form) + '</td>' +
+            '<td>' + (r.families.length
+              ? r.families.map(function (f) {
+                  return esc(fmtWhen(f.original_submitted_at)) +
+                    (f.revisionCount ? ' <span class="small muted">(+' + f.revisionCount + ' revisions, still 1 JHA)</span>' : '');
+                }).join('<br>')
+              : '<span class="muted">none</span>') + '</td>' +
+            '<td class="r">' + (r.done ? pill('p-ok', 'Completed') : pill('p-bad', 'Missed')) + '</td></tr>';
+        }), 'Nothing in this range.');
+    } else if (which === 'jha-unique') {
+      title = 'Unique JHAs submitted'; sub = jha.unique + ' JHAs (originals, not revisions)';
+      body = famTable(jha.families);
+    } else if (which === 'jha-revised') {
+      title = 'JHAs later revised'; sub = jha.revised.length + ' of ' + jha.unique + ' JHAs';
+      body = famTable(jha.recent);
+    } else if (which === 'jha-events') {
+      title = 'Revision events'; sub = jha.events + ' revisions across ' + jha.revised.length + ' JHAs';
+      var evRows = [];
+      jha.families.forEach(function (f) {
+        f.revisions.forEach(function (r) {
+          if (r.revision_number === 1) return;   // the original is not a revision event
+          evRows.push('<tr><td><span class="t-main">' + esc(f.job_name) + '</span>' +
+            '<div class="small muted">' + esc(f.work_date) + '</div></td>' +
+            '<td>Revision ' + (r.revision_number - 1) + '</td>' +
+            '<td>' + esc(fmtWhen(r.revised_at)) + '</td>' +
+            '<td>' + esc(r.revised_by) + '</td></tr>');
+        });
+      });
+      body = tableWrap([{ t: 'JHA' }, { t: 'Revision' }, { t: 'When' }, { t: 'By' }], evRows, 'No revisions.');
+    } else if (which.indexOf('tb-') === 0) {
+      var s = tb.stats, def = tb.def, co = tb.co;
+      var coName = TBT_COMPANIES[tb.company].name;
+      if (which === 'tb-assigned' || which === 'tb-done' || which === 'tb-out') {
+        var wantDone = which === 'tb-done', wantOut = which === 'tb-out';
+        title = which === 'tb-assigned' ? 'Assigned' : wantDone ? 'Completed' : 'Outstanding';
+        if (s.mode === 'group') {
+          var groups = (co.groupsIncluded || def.groups).filter(function (g) {
+            var done = s.completed.indexOf(g) !== -1;
+            return which === 'tb-assigned' || (wantDone ? done : !done);
+          });
+          sub = coName + ' · ' + groups.length + ' job / meeting group' + (groups.length === 1 ? '' : 's');
+          body = tableWrap([{ t: 'Job / meeting group' }, { t: 'Presenter' }, { t: 'Submitted' },
+                            { t: 'Attendance' }, { t: 'Status', r: 1 }],
+            groups.map(function (g) {
+              var rec = s.records.filter(function (c) { return c.kind === 'group' && c.group === g; })[0];
+              return '<tr><td><span class="t-main">' + esc(g) + '</span></td>' +
+                '<td>' + (rec ? esc(rec.presenter) : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (rec ? esc(fmtWhen(rec.at)) : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (rec ? (rec.roster || []).length + ' roster' +
+                  ((rec.manual || []).length ? ' + ' + rec.manual.length + ' manual' : '') : '<span class="muted">—</span>') + '</td>' +
+                '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>';
+            }), 'Nothing here.');
+        } else {
+          var emps = (def.employees || []).filter(function (e) {
+            if ((co.groupsIncluded || def.groups).indexOf(e.g) === -1) return false;
+            var done = !!s.byName[e.n];
+            return which === 'tb-assigned' || (wantDone ? done : !done);
+          });
+          sub = coName + ' · ' + emps.length + ' employee' + (emps.length === 1 ? '' : 's');
+          body = tableWrap([{ t: 'Employee' }, { t: 'Job assignment' }, { t: 'Completed' }, { t: 'Status', r: 1 }],
+            emps.map(function (e) {
+              var rec = s.byName[e.n];
+              return '<tr><td><span class="t-main">' + esc(e.n) + '</span></td>' +
+                '<td>' + esc(e.g) + '</td>' +
+                '<td>' + (rec ? esc(fmtWhen(rec.at)) : '<span class="muted">—</span>') + '</td>' +
+                '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>';
+            }), 'Nothing here.');
+        }
+      } else if (which === 'tb-att' || which === 'tb-manual') {
+        var onlyManual = which === 'tb-manual';
+        title = onlyManual ? 'Manual attendance' : 'Total attendance';
+        var seen = {}, attRows = [];
+        s.records.forEach(function (rec) {
+          if (rec.kind !== 'group') return;
+          if (!onlyManual) {
+            (rec.roster || []).forEach(function (n) {
+              if (seen[n]) return;            // one credit per employee per week
+              seen[n] = 1;
+              attRows.push('<tr><td><span class="t-main">' + esc(n) + '</span></td>' +
+                '<td>' + esc(rec.group) + '</td><td>Roster</td>' +
+                '<td>' + esc(fmtWhen(rec.at)) + '</td></tr>');
+            });
+          }
+          (rec.manual || []).forEach(function (n) {
+            attRows.push('<tr><td><span class="t-main">' + esc(n) + '</span></td>' +
+              '<td>' + esc(rec.group) + '</td>' +
+              '<td><span class="tbt-manual">Manual entry</span></td>' +
+              '<td>' + esc(fmtWhen(rec.at)) + '</td></tr>');
+          });
+        });
+        sub = coName + ' · ' + attRows.length + ' attendee' + (attRows.length === 1 ? '' : 's') +
+          (onlyManual ? '' : ' (each roster employee counted once)');
+        body = tableWrap([{ t: 'Name' }, { t: 'Job / meeting group' }, { t: 'How counted' }, { t: 'Submitted' }],
+          attRows, 'Nobody recorded.');
+      }
+    }
+    drawer(title, sub, body + '<p class="small muted" style="margin-top:12px">Demo fixture records — ' +
+      'this is exactly what the card counted.</p>');
+  }
+
+  /* ==================== JHA SUBMISSIONS — DEMO ONLY ====================
+     A JHA and its revisions are ONE record. The table lists families, not
+     revisions, and defaults to showing the latest version of each. The
+     original is never overwritten or hidden — it is always the first entry in
+     the revision history.
+
+     Reached with office.html?demo=1. Without the flag this page is not in the
+     sidebar and nothing here runs.
+     ==================================================================== */
+  var jhaF = { job: '', from: '', to: '', by: '', kind: '', revs: '' };
+
+  // Group the flat revision rows into families keyed by root_jha_id.
+  function jhaFamilies() {
+    var rows = (window.DEMO && window.DEMO.jha) || [];
+    var by = {};
+    rows.forEach(function (r) { (by[r.root_jha_id] = by[r.root_jha_id] || []).push(r); });
+    return Object.keys(by).map(function (root) {
+      var revs = by[root].slice().sort(function (a, b) { return a.revision_number - b.revision_number; });
+      var first = revs[0], latest = revs[revs.length - 1];
+      return {
+        root: root,
+        revisions: revs,
+        original: first,
+        latest: latest,
+        // revision COUNT is the number of edits after the original
+        revisionCount: revs.length - 1,
+        job_id: latest.job_id,
+        job_name: latest.job_name,
+        work_date: latest.work_date,
+        original_submitted_at: first.original_submitted_at || first.revised_at,
+        latest_revised_at: latest.revised_at,
+        original_submitter: first.submitted_by || first.revised_by,
+        latest_editor: latest.revised_by,
+        employee_count: (latest.employees || []).length,
+        description: latest.description_of_work || '',
+        status: latest.status || 'submitted'
+      };
+    }).sort(function (a, b) {
+      return String(b.latest_revised_at).localeCompare(String(a.latest_revised_at));
+    });
+  }
+  function jhaBadge(n) {
+    if (!n) return pill('p-ok', 'Original');
+    return pill('p-warn', 'Revised ' + n + ' Time' + (n === 1 ? '' : 's'));
+  }
+  function jhaFilteredFamilies() {
+    return jhaFamilies().filter(function (f) {
+      if (jhaF.job && f.job_id !== jhaF.job) return false;
+      if (jhaF.from && f.work_date < jhaF.from) return false;
+      if (jhaF.to && f.work_date > jhaF.to) return false;
+      if (jhaF.by && f.original_submitter !== jhaF.by && f.latest_editor !== jhaF.by) return false;
+      if (jhaF.kind === 'original' && f.revisionCount > 0) return false;
+      if (jhaF.kind === 'revised' && f.revisionCount === 0) return false;
+      if (jhaF.revs && String(f.revisionCount) !== jhaF.revs) return false;
+      return true;
+    });
+  }
+
+  function pgJhaDemo() {
+    var fams = jhaFilteredFamilies();
+    var all = jhaFamilies();
+    var people = {};
+    all.forEach(function (f) { people[f.original_submitter] = 1; people[f.latest_editor] = 1; });
+    var jobs = {};
+    all.forEach(function (f) { jobs[f.job_id] = f.job_name; });
+
+    var revised = fams.filter(function (f) { return f.revisionCount > 0; });
+    var revEvents = fams.reduce(function (n, f) { return n + f.revisionCount; }, 0);
+
+    var style = '<style>' +
+      '.jha-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}' +
+      '.jha-kpi div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}' +
+      '.jha-kpi b{display:block;font-size:22px;color:var(--ink)}' +
+      '.jha-kpi span{font-size:11.5px;color:var(--ink-4)}' +
+      '.jha-tl{list-style:none;margin:0;padding:0}' +
+      '.jha-tl li{position:relative;padding:0 0 18px 22px;border-left:2px solid var(--line)}' +
+      '.jha-tl li:last-child{border-left-color:transparent;padding-bottom:0}' +
+      '.jha-tl li::before{content:"";position:absolute;left:-7px;top:2px;width:12px;height:12px;' +
+        'border-radius:50%;background:var(--card);border:2px solid var(--accent)}' +
+      '.jha-tl li.orig::before{background:var(--accent)}' +
+      '.jha-tl .when{font-size:11.5px;color:var(--ink-4)}' +
+      '.jha-tl .who{font-weight:650;font-size:13.5px}' +
+      '.jha-chg{font-size:12.5px;margin-top:5px}' +
+      '.jha-chg b{font-weight:650}' +
+      '.jha-add{color:#047857}.jha-rem{color:#b91c1c}' +
+      '.jha-na{color:var(--ink-5);font-style:italic}' +
+      '</style>';
+
+    var html = style + head('JHA Submissions',
+      'Demo — one original plus its revisions is one JHA. Local fixtures only; nothing is read from or written to production.', '');
+
+    html += '<div class="tbt-card" style="border-color:#fdba74;background:#fff7ed;border-width:1px;border-style:solid;' +
+      'border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+      '<b style="color:#7c2d12">Demo Data</b> <span class="small" style="color:#7c2d12">' +
+      'These are fixture records, not real Greiner submissions.</span></div>';
+
+    html += '<div class="jha-kpi">' +
+      '<div><b>' + fams.length + '</b><span>JHAs submitted (originals, not revisions)</span></div>' +
+      '<div><b>' + revised.length + '</b><span>later revised</span></div>' +
+      '<div><b>' + revEvents + '</b><span>revision events</span></div>' +
+      '<div><b>' + (fams.length ? Math.round(revised.length / fams.length * 100) : 0) + '%</b><span>of JHAs revised</span></div>' +
+      '</div>';
+
+    var rows = fams.map(function (f) {
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(f.job_name) + '</span>' +
+          '<div class="small muted">' + esc(f.description || '—') + '</div></td>' +
+        '<td>' + esc(f.work_date) + '</td>' +
+        '<td>' + esc(fmtWhen(f.original_submitted_at)) + '<div class="small muted">' + esc(f.original_submitter) + '</div></td>' +
+        '<td>' + (f.revisionCount
+          ? esc(fmtWhen(f.latest_revised_at)) + '<div class="small muted">' + esc(f.latest_editor) + '</div>'
+          : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + f.employee_count + '</td>' +
+        '<td>' + f.revisionCount + '</td>' +
+        '<td>' + jhaBadge(f.revisionCount) + '</td>' +
+        '<td class="r"><button class="btn btn-sm" data-jha-hist="' + esc(f.root) + '">View Revision History</button></td>' +
+        '</tr>';
+    });
+
+    html += '<div class="fbar" style="margin-bottom:10px">' +
+      '<select id="jha-job"><option value="">All jobs</option>' +
+        Object.keys(jobs).map(function (id) {
+          return '<option value="' + esc(id) + '"' + (jhaF.job === id ? ' selected' : '') + '>' + esc(jobs[id]) + '</option>'; }).join('') +
+      '</select>' +
+      '<input type="date" id="jha-from" value="' + esc(jhaF.from) + '" title="From date">' +
+      '<input type="date" id="jha-to" value="' + esc(jhaF.to) + '" title="To date">' +
+      '<select id="jha-by"><option value="">Anyone</option>' +
+        Object.keys(people).map(function (p) {
+          return '<option value="' + esc(p) + '"' + (jhaF.by === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="jha-kind"><option value="">Original and revised</option>' +
+        '<option value="original"' + (jhaF.kind === 'original' ? ' selected' : '') + '>Never revised</option>' +
+        '<option value="revised"' + (jhaF.kind === 'revised' ? ' selected' : '') + '>Revised</option></select>' +
+      '<select id="jha-revs"><option value="">Any revision count</option>' +
+        ['0', '1', '2', '3'].map(function (n) {
+          return '<option value="' + n + '"' + (jhaF.revs === n ? ' selected' : '') + '>' + n + ' revision' + (n === '1' ? '' : 's') + '</option>'; }).join('') +
+      '</select>' +
+      '<span class="small muted" style="align-self:center">' + fams.length + ' of ' + all.length + ' shown</span></div>';
+
+    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Job / description of work' }, { t: 'Work date' }, { t: 'Original submission' },
+       { t: 'Latest revision' }, { t: 'Employees' }, { t: 'Revisions' }, { t: 'Status' }, { t: '', r: 1 }],
+      rows, 'No JHAs match these filters.') + '</div></div>';
+
+    html += '<p class="small muted" style="margin-top:10px">The table shows the latest version of each JHA. ' +
+      'Originals are never overwritten — open the revision history to see every version.</p>';
+
+    paint(html);
+    jhaWire();
+  }
+
+  function fmtWhen(iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-US',
+        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return String(iso); }
+  }
+
+  function jhaWire() {
+    var j = $('#jha-job'); if (j) j.onchange = function () { jhaF.job = j.value; pgJhaDemo(); };
+    var f = $('#jha-from'); if (f) f.onchange = function () { jhaF.from = f.value; pgJhaDemo(); };
+    var t = $('#jha-to'); if (t) t.onchange = function () { jhaF.to = t.value; pgJhaDemo(); };
+    var b = $('#jha-by'); if (b) b.onchange = function () { jhaF.by = b.value; pgJhaDemo(); };
+    var k = $('#jha-kind'); if (k) k.onchange = function () { jhaF.kind = k.value; pgJhaDemo(); };
+    var r = $('#jha-revs'); if (r) r.onchange = function () { jhaF.revs = r.value; pgJhaDemo(); };
+    $$('[data-jha-hist]').forEach(function (btn) {
+      btn.onclick = function () { jhaHistory(btn.getAttribute('data-jha-hist')); };
+    });
+  }
+
+  /* A list of changes between one revision and the one before it. Where the
+     fixture cannot support a real comparison the entry says so rather than
+     inventing a diff. */
+  function jhaChangeHtml(rev) {
+    if (rev.revision_number === 1) return '';
+    var c = rev.changes;
+    if (!c) {
+      return '<div class="jha-chg jha-na">Field-by-field comparison is not available for this revision ' +
+        'in the demo data.</div>';
+    }
+    var bits = [];
+    function line(label, added, removed) {
+      var parts = [];
+      if (added && added.length) parts.push('<span class="jha-add">+ ' + esc(added.join(', ')) + '</span>');
+      if (removed && removed.length) parts.push('<span class="jha-rem">− ' + esc(removed.join(', ')) + '</span>');
+      if (parts.length) bits.push('<div class="jha-chg"><b>' + label + ':</b> ' + parts.join(' &nbsp; ') + '</div>');
+    }
+    line('Tasks', c.tasks_added, c.tasks_removed);
+    line('Hazards', c.hazards_added, c.hazards_removed);
+    line('Actions', c.actions_added, c.actions_removed);
+    line('Employees', c.employees_added, c.employees_removed);
+    if (c.ladder_changed) {
+      bits.push('<div class="jha-chg"><b>Ladder use:</b> changed to <b>' + esc(rev.ladder_use) + '</b></div>');
+    }
+    if (c.photos_added) {
+      bits.push('<div class="jha-chg"><b>Photos:</b> <span class="jha-add">+' + c.photos_added + '</span></div>');
+    }
+    if (!bits.length) bits.push('<div class="jha-chg jha-na">No tracked field changed in this revision.</div>');
+    return bits.join('');
+  }
+
+  function jhaHistory(root) {
+    var fam = jhaFamilies().filter(function (f) { return f.root === root; })[0];
+    if (!fam) { toast('JHA not found.'); return; }
+    var h = '<div class="sec-h">This JHA</div>' +
+      kv('Job', fam.job_name) +
+      kv('Work date', fam.work_date) +
+      kv('Description of work', fam.description || '—') +
+      kv('Original submitted', fmtWhen(fam.original_submitted_at) + ' by ' + fam.original_submitter) +
+      kv('Latest version', fam.revisionCount
+        ? fmtWhen(fam.latest_revised_at) + ' by ' + fam.latest_editor
+        : 'Original — never revised') +
+      kv('Revisions', String(fam.revisionCount)) +
+      kv('Counts toward daily compliance as', '1 JHA');
+
+    h += '<div class="sec-h">Revision history</div><ul class="jha-tl">' +
+      fam.revisions.map(function (r) {
+        var isOrig = r.revision_number === 1;
+        return '<li' + (isOrig ? ' class="orig"' : '') + '>' +
+          '<div class="who">' + (isOrig ? 'Original submission' : 'Revision ' + (r.revision_number - 1)) + '</div>' +
+          '<div class="when">' + esc(fmtWhen(r.revised_at)) + ' · ' + esc(r.revised_by) + '</div>' +
+          (isOrig
+            ? '<div class="jha-chg"><b>Employees:</b> ' + esc((r.employees || []).join(', ') || '—') + '</div>' +
+              '<div class="jha-chg"><b>Tasks:</b> ' + esc((r.tasks || []).join(', ') || '—') + '</div>' +
+              '<div class="jha-chg"><b>Hazards:</b> ' + esc((r.hazards || []).join(', ') || '—') + '</div>' +
+              '<div class="jha-chg"><b>Ladder use:</b> ' + esc(r.ladder_use || '—') + '</div>'
+            : jhaChangeHtml(r)) +
+          '</li>';
+      }).join('') + '</ul>' +
+      '<p class="small muted" style="margin-top:12px">The original submission is kept in full and is never ' +
+      'overwritten by a revision. Demo record — nothing was saved to production.</p>';
+
+    drawer('Revision history', fam.job_name + ' · ' + fam.work_date, h);
+  }
+
   /* ==================== TOOLBOX TALKS — DEMO ONLY ======================
      Reached with office.html?demo=1. Everything below is local: state lives
      in localStorage, documents are never uploaded, nothing is written to
@@ -3284,7 +3867,7 @@
 
   function tbtBlank(companyKey) {
     var c = TBT_COMPANIES[companyKey];
-    return { queue: [], mode: c.defaultMode, history: [], completions: [],
+    return { queue: [], mode: c.defaultMode, format: 'doc', history: [], completions: [],
              groupsIncluded: c.groups.slice(), rotation: [] };
   }
   function tbtDefaultState() {
@@ -3295,18 +3878,17 @@
       return (TBT_LIB.filter(function (d) { return d.f === fn && d.s === 'Ready'; })[0] || {}).i;
     }).filter(Boolean);
     Object.keys(s.companies).forEach(function (k) { s.companies[k].queue = seeds.slice(); });
-    // a little completion history so the dashboard has something to show
-    s.companies.choice.completions = [{
-      week: tbtMondayISO(0), talkId: seeds[0], kind: 'group', group: 'Monday Group Meeting',
-      presenter: 'Alex Fyffe', at: new Date().toISOString(),
-      roster: ['Alex Fyffe', 'Angel Garcia', 'Zach France', 'Bobby Douthit', 'Cian McGarr',
-               'Darvelle White', 'Joe Mikalouski', 'Kyle Palmer'],
-      manual: ['Ronnie Vasquez'] }];
-    var pe = TBT_COMPANIES.peine.employees.slice(0, 7);
-    s.companies.peine.completions = pe.map(function (e, i) {
-      return { week: tbtMondayISO(0), talkId: seeds[0], kind: 'individual',
-               employee: e.n, group: e.g, at: new Date(Date.now() - i * 36e5).toISOString() };
-    });
+    /* Completion fixtures come from office-demo.js so that the Toolbox Talk
+       page, the JHA page and Analytics all read the same records and no total
+       is written down twice. talkId is stamped on once the page knows which
+       talk is actually scheduled. */
+    if (window.DEMO && window.DEMO.completions) {
+      Object.keys(s.companies).forEach(function (k) {
+        s.companies[k].completions = (window.DEMO.completions[k] || []).map(function (c) {
+          return JSON.parse(JSON.stringify(c));
+        });
+      });
+    }
     return s;
   }
   var TBT = null;
@@ -3400,16 +3982,26 @@
     var done = tbtWeekCompletions(co, week);
     if (co.mode === 'group') {
       var groups = co.groupsIncluded || def.groups;
-      var submitted = {}, attendance = 0;
+      var submitted = {};
+      // Attendance counts DISTINCT roster employees plus every manual entry:
+      // an employee named on two submissions in the same week is one person,
+      // and manual entries are people who are not on the assigned roster at
+      // all, so they add to attendance without changing the denominator.
+      var rosterSeen = {}, manualCount = 0;
       done.forEach(function (c) {
         if (c.kind !== 'group') return;
-        submitted[c.group] = c;
-        attendance += ((c.roster || []).length + (c.manual || []).length);
+        if (groups.indexOf(c.group) === -1) return;     // not an assigned group
+        if (!submitted[c.group]) submitted[c.group] = c;  // first submission wins
+        (c.roster || []).forEach(function (n) { rosterSeen[n] = true; });
+        manualCount += (c.manual || []).length;
       });
+      var rosterCount = Object.keys(rosterSeen).length;
       var completed = groups.filter(function (g) { return submitted[g]; });
       var outstanding = groups.filter(function (g) { return !submitted[g]; });
       return { mode: 'group', unitLabel: 'jobs / groups', total: groups.length,
-               completed: completed, outstanding: outstanding, attendance: attendance,
+               completed: completed, outstanding: outstanding,
+               rosterCount: rosterCount, manualCount: manualCount,
+               attendance: rosterCount + manualCount,
                pct: groups.length ? Math.round(completed.length / groups.length * 100) : 0,
                records: done };
     }
@@ -3421,6 +4013,7 @@
     var out = people.filter(function (e) { return !byName[e.n]; });
     return { mode: 'individual', unitLabel: 'employees', total: people.length,
              completed: comp, outstanding: out, attendance: comp.length,
+             rosterCount: comp.length, manualCount: 0,
              pct: people.length ? Math.round(comp.length / people.length * 100) : 0,
              records: done, byName: byName };
   }
@@ -3428,12 +4021,49 @@
   /* ---------------- the page ---------------- */
   var tbtF = { q: '', status: '', week: '', group: '', cstatus: '', method: '' };
 
+  /* ---------------- guided-talk availability ----------------
+     Only Fall Protection has been converted to a Guided Talk so far (the
+     phone build carries the verbatim sections). Everything else is Original
+     Document only, and the library says so rather than implying all 124 are
+     prepared. Keyed by talk id; sections is the real section count. */
+  var TBT_GUIDED = {
+    '151f1940e4918d98': { sections: 8, converted: '2026-09-26' }   // Fall Protection.pdf
+  };
+  function tbtGuidedOf(id) { return TBT_GUIDED[id] || null; }
+
+  /* The "Topic:" line printed inside the document. Only read for the talks
+     that have been opened and extracted; the rest say so instead of guessing. */
+  var TBT_TOPIC = {
+    '151f1940e4918d98': 'Fall Protection',
+    'bc92ceacd9f67c8e': '4 Rules for Ladder Safety Part 1',
+    'b1bc7e719cb3b36b': 'Excavation Safety'
+  };
+
+  var TBT_FORMATS = [['doc', 'Original Document'], ['guided', 'Guided Talk'], ['both', 'Both Options']];
+  function tbtFormatLabel(k) {
+    for (var i = 0; i < TBT_FORMATS.length; i++) if (TBT_FORMATS[i][0] === k) return TBT_FORMATS[i][1];
+    return 'Original Document';
+  }
+  // What a company's chosen format can actually deliver for a given talk.
+  function tbtFormatFor(co, talk) {
+    var want = co.format || 'doc';
+    var g = talk ? tbtGuidedOf(talk.i) : null;
+    if (want === 'doc') return { doc: true, guided: false, note: '' };
+    if (!g) return { doc: true, guided: false, note: 'Guided Talk not prepared for this talk' };
+    if (want === 'guided') return { doc: true, guided: true, note: '' };
+    return { doc: true, guided: true, note: '' };
+  }
+
+  var tbtTab = 'schedule';
+
   function pgTalksDemo() {
     var co = tbtCo(), def = tbtCoDef();
     var week = tbtF.week || tbtMondayISO(0);
     var stats = tbtCompletionStats(co, def, week);
     var next = tbtTalkForWeek(co, 0);
     var nextDoc = next ? tbtById(next.id) : null;
+    // The demo fixtures are stamped with whichever talk is actually scheduled.
+    if (window.DEMO && nextDoc) window.DEMO.setTalkId(nextDoc.i);
 
     var style = '<style>' +
       '.tbt-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}' +
@@ -3441,7 +4071,7 @@
       '.tbt-card{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
       '.tbt-card h3{margin:0 0 2px;font-size:15px}' +
       '.tbt-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
-      '.tbt-lib{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}' +
+      '.tbt-lib{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px}' +
       '.tbt-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid var(--line);background:var(--card)}' +
       '.tbt-row:last-child{border-bottom:0}.tbt-row[draggable=true]{cursor:grab}' +
       '.tbt-row .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px;color:var(--ink);overflow-wrap:anywhere}' +
@@ -3451,6 +4081,8 @@
       '.tbt-coll{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}' +
       '.tbt-rev{background:#fffbeb;color:#b45309;border:1px solid #fde68a}' +
       '.tbt-exc{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb}' +
+      '.tbt-g-yes{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}' +
+      '.tbt-g-no{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0}' +
       '.tbt-queue{min-height:80px;border:2px dashed var(--line-2);border-radius:10px;padding:8px;background:var(--bg)}' +
       '.tbt-queue.over{border-color:var(--accent);background:var(--accent-tt)}' +
       '.tbt-qrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:7px;cursor:grab}' +
@@ -3466,6 +4098,13 @@
       '.tbt-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}' +
       '.tbt-bar i{display:block;height:100%;background:var(--ok)}' +
       '.tbt-miss{font-size:12.5px;color:var(--fail)}' +
+      '.tbt-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}' +
+      '.tbt-tab{padding:8px 16px;border-radius:9px;border:1px solid var(--line);background:var(--card);' +
+        'font-size:13.5px;font-weight:650;color:var(--ink-4);cursor:pointer}' +
+      '.tbt-tab.on{background:var(--accent);border-color:var(--accent);color:#fff}' +
+      '.tbt-fmtnote{font-size:12px;color:var(--ink-4);margin-top:6px}' +
+      '.tbt-manual{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:999px;' +
+        'padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}' +
       '</style>';
 
     var right = '<select id="tbt-company" style="min-width:170px">' +
@@ -3474,30 +4113,43 @@
       }).join('') + '</select>';
 
     var html = style + head('Toolbox Talks',
-      'Demo — library, weekly schedule and completion. Local only: nothing is uploaded, sent or saved to production.', right);
+      'Demo — schedule, completion and library. Local only: nothing is uploaded, sent or saved to production.', right);
 
     html += '<div class="tbt-card" style="border-color:#fdba74;background:#fff7ed">' +
-      '<b style="color:#7c2d12">Greiner Review Demo</b> ' +
-      '<span class="small" style="color:#7c2d12">' + esc(def.note) + '</span></div>';
+      '<b style="color:#7c2d12">Demo Data</b> ' +
+      '<span class="small" style="color:#7c2d12">' + esc(def.note) +
+      ' Figures on this page are calculated from demo fixtures, not real Greiner results.</span></div>';
 
-    // next talk + stats
-    html += '<div class="tbt-next"><div class="lbl">NEXT SCHEDULED TALK · ' + esc(TBT_COMPANIES[TBT.company].name) + '</div>' +
-      '<div class="ttl">' + (nextDoc ? esc(nextDoc.t) : 'Nothing eligible') + '</div>' +
-      '<div style="font-size:12.5px;opacity:.9;margin-top:4px">Monday ' + esc(tbtMondayLabel(0)) +
-      (next && next.auto ? ' · auto-selected (queue empty)' : '') +
-      ' · ' + co.queue.length + ' week' + (co.queue.length === 1 ? '' : 's') + ' scheduled' + '</div></div>';
+    html += '<div class="tbt-tabs">' +
+      [['schedule', 'Schedule'], ['completion', 'Completion'], ['library', 'Library']].map(function (t) {
+        return '<button type="button" class="tbt-tab' + (tbtTab === t[0] ? ' on' : '') +
+          '" data-tbt-tab="' + t[0] + '">' + t[1] + '</button>';
+      }).join('') + '</div>';
 
-    html += '<div class="tbt-kpi">' +
-      '<div><b>' + stats.completed.length + '</b><span>completed ' + stats.unitLabel + '</span></div>' +
-      '<div><b>' + stats.outstanding.length + '</b><span>outstanding</span></div>' +
-      '<div><b>' + stats.pct + '%</b><span>completion<div class="tbt-bar"><i style="width:' + stats.pct + '%"></i></div></span></div>' +
-      (stats.mode === 'group' ? '<div><b>' + stats.attendance + '</b><span>total attendance</span></div>' : '') +
-      '<div><b>' + (co.mode === 'group' ? 'Group' : 'Individual') + '</b><span>completion method</span></div>' +
-      '</div>';
-
-    html += '<div class="tbt-grid"><div>' + tbtLibraryHtml() + '</div><div>' +
-      tbtQueueHtml(co) + tbtConfigHtml(co, def) + '</div></div>';
-    html += tbtCompletionHtml(co, def, week, stats);
+    if (tbtTab === 'schedule') {
+      html += '<div class="tbt-next"><div class="lbl">THIS WEEK · ' + esc(TBT_COMPANIES[TBT.company].name) + '</div>' +
+        '<div class="ttl">' + (nextDoc ? esc(nextDoc.t) : 'Nothing eligible') + '</div>' +
+        '<div style="font-size:12.5px;opacity:.9;margin-top:4px">Monday ' + esc(tbtMondayLabel(0)) +
+        (next && next.auto ? ' · auto-selected (queue empty)' : '') +
+        ' · ' + co.queue.length + ' week' + (co.queue.length === 1 ? '' : 's') + ' remaining in the queue</div></div>';
+      html += '<div class="tbt-grid"><div>' + tbtQueueHtml(co) + '</div><div>' +
+        tbtConfigHtml(co, def, nextDoc) + '</div></div>';
+    } else if (tbtTab === 'completion') {
+      html += '<div class="tbt-kpi">' +
+        '<div><b>' + stats.total + '</b><span>' + esc(stats.unitLabel) + ' assigned</span></div>' +
+        '<div><b>' + stats.completed.length + '</b><span>completed</span></div>' +
+        '<div><b>' + stats.outstanding.length + '</b><span>outstanding</span></div>' +
+        '<div><b>' + stats.pct + '%</b><span>completion<div class="tbt-bar"><i style="width:' + stats.pct + '%"></i></div></span></div>' +
+        (stats.mode === 'group'
+          ? '<div><b>' + stats.attendance + '</b><span>total attendance</span></div>' +
+            '<div><b>' + stats.manualCount + '</b><span>manual attendance</span></div>'
+          : '') +
+        '<div><b>' + (co.mode === 'group' ? 'Group' : 'Individual') + '</b><span>completion method</span></div>' +
+        '</div>';
+      html += tbtCompletionHtml(co, def, week, stats);
+    } else {
+      html += tbtLibraryHtml(co);
+    }
 
     paint(html);
     tbtWire();
@@ -3507,38 +4159,86 @@
     var c = s === 'Ready' ? 'tbt-ready' : s === 'Collection' ? 'tbt-coll' : s === 'Needs Review' ? 'tbt-rev' : 'tbt-exc';
     return '<span class="tbt-pill ' + c + '">' + esc(s) + '</span>';
   }
-  function tbtLibraryHtml() {
+  function tbtGuidedPill(id) {
+    var g = tbtGuidedOf(id);
+    return g
+      ? '<span class="tbt-pill tbt-g-yes">Guided · ' + g.sections + ' sections</span>'
+      : '<span class="tbt-pill tbt-g-no">Not Prepared</span>';
+  }
+
+  function tbtLibraryHtml(co) {
     var q = (tbtF.q || '').toLowerCase();
+    // Filters span classification AND guided availability, so "which talks can
+    // I actually run as a Guided Talk" is one click.
+    var VIEWS = [['', 'All talks'], ['Ready', 'Ready'], ['guided', 'Guided Available'],
+                 ['doconly', 'Original Only'], ['Collection', 'Collection'],
+                 ['Needs Review', 'Needs Review'], ['Excluded', 'Excluded']];
+    function passes(d) {
+      var f = tbtF.status;
+      if (!f) return true;
+      if (f === 'guided') return !!tbtGuidedOf(d.i);
+      if (f === 'doconly') return d.s === 'Ready' && !tbtGuidedOf(d.i);
+      return d.s === f;
+    }
     var list = TBT_LIB.filter(function (d) {
-      if (tbtF.status && d.s !== tbtF.status) return false;
-      return !q || (d.t + ' ' + d.f + ' ' + (d.src || '')).toLowerCase().indexOf(q) !== -1;
+      if (!passes(d)) return false;
+      return !q || (d.t + ' ' + d.f + ' ' + (d.src || '') + ' ' + (TBT_TOPIC[d.i] || '')).toLowerCase().indexOf(q) !== -1;
     });
     var counts = {};
     TBT_LIB.forEach(function (d) { counts[d.s] = (counts[d.s] || 0) + 1; });
-    return '<div class="tbt-card"><h3>A · Toolbox Talk Library</h3>' +
+    var guidedCount = TBT_LIB.filter(function (d) { return tbtGuidedOf(d.i); }).length;
+
+    // Last used / next scheduled come from this company's own history and queue.
+    var lastUsed = {};
+    (co.history || []).forEach(function (h) {
+      if (!lastUsed[h.talkId] || h.week > lastUsed[h.talkId]) lastUsed[h.talkId] = h.week;
+    });
+    (co.completions || []).forEach(function (c) {
+      if (!c.talkId) return;
+      if (!lastUsed[c.talkId] || c.week > lastUsed[c.talkId]) lastUsed[c.talkId] = c.week;
+    });
+    var nextSched = {};
+    (co.queue || []).forEach(function (id, i) { if (nextSched[id] === undefined) nextSched[id] = i; });
+
+    var rows = list.map(function (d) {
+      var g = tbtGuidedOf(d.i);
+      var ready = d.s === 'Ready';
+      var sched = nextSched[d.i];
+      return '<tr data-tbt-librow="' + esc(d.i) + '"' + (ready ? ' draggable="true" data-tbt-lib="' + esc(d.i) + '"' : '') + '>' +
+        '<td><span class="t-main">' + esc(d.t) + '</span>' +
+          '<div class="small muted" style="overflow-wrap:anywhere">' + esc(d.f) + '</div></td>' +
+        '<td>' + tbtStatusPill(d.s) + (d.note ? '<div class="small muted">' + esc(d.note) + '</div>' : '') + '</td>' +
+        '<td>' + (d.p ? d.p + (d.p === 1 ? ' page' : ' pages') : '<span class="muted">—</span>') + '</td>' +
+        '<td><span class="tbt-pill tbt-ready">Available</span></td>' +
+        '<td>' + tbtGuidedPill(d.i) + '</td>' +
+        '<td>' + (TBT_TOPIC[d.i] ? esc(TBT_TOPIC[d.i])
+          : '<span class="muted small">Not extracted</span>') + '</td>' +
+        '<td>' + (lastUsed[d.i] ? esc(lastUsed[d.i]) : '<span class="muted">Never</span>') + '</td>' +
+        '<td>' + (sched === undefined ? '<span class="muted">—</span>'
+          : esc(tbtMondayLabel(sched))) + '</td>' +
+        '<td class="r"><button class="btn btn-sm" data-tbt-preview="' + esc(d.i) + '">Preview</button>' +
+          (ready ? ' <button class="btn btn-sm btn-gold" data-tbt-add="' + esc(d.i) + '">Queue</button>' : '') + '</td></tr>';
+    });
+
+    return '<div class="tbt-card"><h3>Library</h3>' +
       '<div class="tbt-sub">' + TBT_LIB.length + ' files from Tony’s email batches · ' +
         (counts['Ready'] || 0) + ' ready · ' + (counts['Collection'] || 0) + ' collections · ' +
-        (counts['Needs Review'] || 0) + ' need review · ' + (counts['Excluded'] || 0) + ' excluded. ' +
-        'Drag a <b>Ready</b> talk into the weekly queue.</div>' +
+        (counts['Needs Review'] || 0) + ' need review · ' + (counts['Excluded'] || 0) + ' excluded · ' +
+        guidedCount + ' with a Guided Talk prepared. ' +
+        'Every talk can be shown as its original document; Guided Talk is prepared one talk at a time.</div>' +
       '<div class="fbar" style="margin-bottom:10px">' +
         '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
         '<input id="tbt-q" placeholder="Search talks…" value="' + esc(tbtF.q) + '"></div>' +
-        '<select id="tbt-status"><option value="">All statuses</option>' +
-        ['Ready', 'Collection', 'Needs Review', 'Excluded'].map(function (s) {
-          return '<option value="' + s + '"' + (tbtF.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
-        '</select><span class="small muted" style="align-self:center">' + list.length + ' shown</span></div>' +
-      '<div class="tbt-lib">' + (list.length ? list.map(function (d) {
-        var ready = d.s === 'Ready';
-        return '<div class="tbt-row"' + (ready ? ' draggable="true"' : '') + ' data-tbt-lib="' + esc(d.i) + '">' +
-          '<div class="nm">' + esc(d.t) +
-            '<div class="fn">' + esc(d.f) + ' · ' + esc(d.n) + (d.p ? ' · ' + d.p + 'p' : '') +
-            (d.src ? ' · ' + esc(d.src) : '') + (d.note ? ' · ' + esc(d.note) : '') + '</div></div>' +
-          tbtStatusPill(d.s) +
-          '<button class="btn btn-sm" data-tbt-preview="' + esc(d.i) + '">Preview</button>' +
-          (ready ? '<button class="btn btn-sm btn-gold" data-tbt-add="' + esc(d.i) + '">Queue</button>' : '') +
-          '</div>';
-      }).join('') : '<div class="empty">No talks match.</div>') + '</div></div>';
+        '<select id="tbt-status">' + VIEWS.map(function (v) {
+          return '<option value="' + v[0] + '"' + (tbtF.status === v[0] ? ' selected' : '') + '>' + v[1] + '</option>';
+        }).join('') + '</select>' +
+        '<span class="small muted" style="align-self:center">' + list.length + ' shown</span></div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Talk' }, { t: 'Classification' }, { t: 'Pages' }, { t: 'Original Document' },
+         { t: 'Guided Talk' }, { t: 'Topic (from document)' }, { t: 'Last used' },
+         { t: 'Next scheduled' }, { t: '', r: 1 }],
+        rows, 'No talks match.') + '</div></div></div>';
   }
 
   function tbtQueueHtml(co) {
@@ -3581,20 +4281,39 @@
         '<button class="btn btn-sm" id="tbt-reset" style="margin-left:auto">Reset Demo Schedule</button></div></div>';
   }
 
-  function tbtConfigHtml(co, def) {
-    return '<div class="tbt-card"><h3>C · Company &amp; Completion</h3>' +
-      '<div class="tbt-sub">Greiner, Choice and Peine each keep their own queue, method, history, roster and settings.</div>' +
-      '<div class="f"><label for="tbt-mode">How will employees complete this Toolbox Talk?</label>' +
+  function tbtConfigHtml(co, def, talk) {
+    var fmt = tbtFormatFor(co, talk);
+    var g = talk ? tbtGuidedOf(talk.i) : null;
+    return '<div class="tbt-card"><h3>Settings</h3>' +
+      '<div class="tbt-sub">Greiner, Choice and Peine each keep their own queue, method, format, history, roster and settings.</div>' +
+      '<div class="f"><label for="tbt-mode">Completion method</label>' +
         '<select id="tbt-mode"' + (def.modeConfigurable ? '' : ' disabled') + '>' +
-        '<option value="group"' + (co.mode === 'group' ? ' selected' : '') + '>Foreman-led group talk (one submission per job/group)</option>' +
-        '<option value="individual"' + (co.mode === 'individual' ? ' selected' : '') + '>Individual employee completion (each employee submits)</option>' +
+        '<option value="group"' + (co.mode === 'group' ? ' selected' : '') + '>Foreman-led group (one submission per job/group)</option>' +
+        '<option value="individual"' + (co.mode === 'individual' ? ' selected' : '') + '>Individual employee (each employee submits)</option>' +
         '</select>' + (def.modeConfigurable ? '' :
           '<p class="small muted" style="margin:.35rem 0 0">Fixed for this company by the confirmed pilot workflow.</p>') + '</div>' +
+      '<div class="f"><label for="tbt-format">Content format</label>' +
+        '<select id="tbt-format">' + TBT_FORMATS.map(function (f) {
+          return '<option value="' + f[0] + '"' + ((co.format || 'doc') === f[0] ? ' selected' : '') + '>' + f[1] + '</option>';
+        }).join('') + '</select>' +
+        '<p class="tbt-fmtnote">' +
+          (talk
+            ? 'This week — <b>' + esc(talk.t) + '</b>: Original Document available' +
+              (g ? ', Guided Talk available (' + g.sections + ' sections)'
+                 : ', Guided Talk <b>Not Prepared</b>')
+            : 'No talk scheduled.') +
+          (fmt.note ? '<br><span style="color:#b45309">' + esc(fmt.note) +
+            ' — employees will get the original document.</span>' : '') +
+        '</p></div>' +
+      '<div class="f"><label>Automatic fallback</label>' +
+        '<p class="small muted" style="margin:.2rem 0 0">When the queue runs out, a talk is chosen ' +
+        'automatically from the least recently used eligible talks, never repeating one used in the ' +
+        'last ' + TBT_WEEKS_NO_REPEAT + ' weeks. ' + tbtEligible().length + ' talks are eligible.</p></div>' +
       '<div class="f"><label>Jobs / groups included in the weekly talk</label>' +
-        def.groups.map(function (g) {
-          var on = (co.groupsIncluded || []).indexOf(g) !== -1;
+        def.groups.map(function (gp) {
+          var on = (co.groupsIncluded || []).indexOf(gp) !== -1;
           return '<label class="check" style="display:flex;gap:8px;align-items:center;margin:4px 0">' +
-            '<input type="checkbox" data-tbt-grp="' + esc(g) + '"' + (on ? ' checked' : '') + '><span>' + esc(g) + '</span></label>';
+            '<input type="checkbox" data-tbt-grp="' + esc(gp) + '"' + (on ? ' checked' : '') + '><span>' + esc(gp) + '</span></label>';
         }).join('') + '</div>' +
       '<div class="small muted">Roster: ' + def.employees.length + ' employees</div></div>';
   }
@@ -3609,11 +4328,16 @@
         if (tbtF.cstatus === 'done' && !rec) return;
         if (tbtF.cstatus === 'out' && rec) return;
         if (tbtF.group && tbtF.group !== g) return;
+        var rN = rec ? (rec.roster || []).length : 0;
+        var mN = rec ? (rec.manual || []).length : 0;
         rows.push('<tr><td><span class="t-main">' + esc(g) + '</span></td>' +
           '<td>' + (rec ? esc(rec.presenter) : '<span class="muted">—</span>') + '</td>' +
           '<td>' + (rec ? esc(new Date(rec.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : '<span class="muted">—</span>') + '</td>' +
-          '<td>' + (rec ? (rec.roster || []).length + ' roster' + ((rec.manual || []).length ? ' + ' + rec.manual.length + ' manual' : '') : '<span class="muted">—</span>') + '</td>' +
-          '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>');
+          '<td>' + (rec ? rN : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + (rec ? (mN ? '<span class="tbt-manual">' + mN + ' manual</span>' : '<span class="muted">0</span>') : '<span class="muted">—</span>') + '</td>' +
+          '<td><b>' + (rec ? (rN + mN) : '<span class="muted">—</span>') + '</b></td>' +
+          '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) +
+            (rec ? ' <button class="btn btn-sm" data-tbt-view="' + esc(g) + '">View submission</button>' : '') + '</td></tr>');
       });
     } else {
       (def.employees || []).filter(function (e) { return (co.groupsIncluded || def.groups).indexOf(e.g) !== -1; })
@@ -3625,17 +4349,22 @@
           rows.push('<tr><td><span class="t-main">' + esc(e.n) + '</span></td>' +
             '<td>' + esc(e.g) + '</td>' +
             '<td>' + (rec ? esc(new Date(rec.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : '<span class="muted">—</span>') + '</td>' +
-            '<td>' + (rec ? 'Individual' : '<span class="muted">—</span>') + '</td>' +
-            '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>');
+            '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) +
+              (rec ? ' <button class="btn btn-sm" data-tbt-view="' + esc(e.n) + '">View submission</button>' : '') + '</td></tr>');
         });
     }
     var wk0 = tbtTalkForWeek(co, 0);
     var talk = tbtById((wk0 && wk0.id) || (stats.records[0] || {}).talkId);
-    return '<div class="tbt-card"><h3>D · Completion — week of ' + esc(tbtMondayLabel(0)) + '</h3>' +
+    return '<div class="tbt-card"><h3>Completion — week of ' + esc(tbtMondayLabel(0)) + '</h3>' +
       '<div class="tbt-sub">' + esc(TBT_COMPANIES[TBT.company].name) + ' · ' +
         (talk ? esc(talk.t) + (wk0 && wk0.auto ? ' <em style="font-style:normal;color:var(--ink-5)">(auto-selected)</em>' : '') : '—') +
         ' · ' + (co.mode === 'group' ? 'Foreman-led group' : 'Individual') +
         ' · due Monday ' + esc(tbtMondayLabel(0)) + '</div>' +
+      (stats.mode === 'group'
+        ? '<div class="small muted" style="margin-bottom:8px">Manual attendees are people who were at the ' +
+          'talk but are not on the assigned roster. They add to total attendance and are listed separately; ' +
+          'they never change the number of groups assigned.</div>'
+        : '') +
       '<div class="fbar" style="margin-bottom:10px">' +
         '<select id="tbt-fweek">' + weeks.map(function (w) {
           return '<option value="' + w + '"' + (week === w ? ' selected' : '') + '>Week of ' + w + '</option>'; }).join('') + '</select>' +
@@ -3644,21 +4373,58 @@
         '<select id="tbt-fstatus"><option value="">All statuses</option>' +
           '<option value="done"' + (tbtF.cstatus === 'done' ? ' selected' : '') + '>Completed</option>' +
           '<option value="out"' + (tbtF.cstatus === 'out' ? ' selected' : '') + '>Outstanding</option></select>' +
-        '<select id="tbt-fmethod"><option value="">All methods</option>' +
-          '<option value="group"' + (tbtF.method === 'group' ? ' selected' : '') + '>Group</option>' +
-          '<option value="individual"' + (tbtF.method === 'individual' ? ' selected' : '') + '>Individual</option></select>' +
       '</div>' +
       '<div class="panel"><div class="panel-bd flush">' + tableWrap(
         stats.mode === 'group'
-          ? [{ t: 'Job / group' }, { t: 'Presenter' }, { t: 'Submitted' }, { t: 'Attendance' }, { t: 'Status', r: 1 }]
-          : [{ t: 'Employee' }, { t: 'Job' }, { t: 'Completed' }, { t: 'Method' }, { t: 'Status', r: 1 }],
+          ? [{ t: 'Job / meeting group' }, { t: 'Presenter' }, { t: 'Submitted' },
+             { t: 'Roster attendance' }, { t: 'Manual attendance' }, { t: 'Total attendance' },
+             { t: 'Status', r: 1 }]
+          : [{ t: 'Employee' }, { t: 'Job assignment' }, { t: 'Completed' }, { t: 'Status', r: 1 }],
         rows, 'Nothing matches these filters.') + '</div></div>' +
-      (stats.outstanding.length ? '<div class="tbt-miss" style="margin-top:8px"><b>Still missing this week:</b> ' +
+      (stats.outstanding.length ? '<div class="tbt-miss" style="margin-top:8px"><b>Still outstanding this week:</b> ' +
         esc(stats.outstanding.map(function (x) { return x.n || x; }).join(', ')) + '</div>' : '') +
       '</div>';
   }
 
-  /* ---------------- interaction ---------------- */
+  /* One submission, in full. Read-only: this is a demo record, not a document. */
+  function tbtViewSubmission(key) {
+    var co = tbtCo(), def = tbtCoDef();
+    var week = tbtF.week || tbtMondayISO(0);
+    var stats = tbtCompletionStats(co, def, week);
+    var rec = stats.mode === 'group'
+      ? stats.records.filter(function (c) { return c.kind === 'group' && c.group === key; })[0]
+      : stats.byName[key];
+    if (!rec) { toast('No submission found.'); return; }
+    var talk = tbtById(rec.talkId) || tbtById((tbtTalkForWeek(co, 0) || {}).id);
+    var h = '';
+    if (rec.kind === 'group') {
+      h += '<div class="sec-h">Group talk</div>' +
+        kv('Job / meeting group', rec.group) +
+        kv('Presenter', rec.presenter) +
+        kv('Submitted', new Date(rec.at).toLocaleString()) +
+        '<div class="sec-h">Attendance</div>' +
+        kv('Roster attendance', String((rec.roster || []).length)) +
+        kv('Manual attendance', String((rec.manual || []).length)) +
+        kv('Total attendance', String((rec.roster || []).length + (rec.manual || []).length)) +
+        '<div class="small muted" style="margin:.4rem 0 .2rem">Roster</div>' +
+        '<div class="small">' + esc((rec.roster || []).join(', ') || 'none') + '</div>' +
+        ((rec.manual || []).length
+          ? '<div class="small muted" style="margin:.6rem 0 .2rem">Manual entries — not on the assigned roster, ' +
+            'so they add to attendance but not to the number of groups assigned</div>' +
+            '<div class="small">' + esc(rec.manual.join(', ')) + '</div>'
+          : '');
+    } else {
+      h += '<div class="sec-h">Individual completion</div>' +
+        kv('Employee', rec.employee) +
+        kv('Job assignment', rec.group || '\u2014') +
+        kv('Completed', new Date(rec.at).toLocaleString()) +
+        kv('Method', 'Individual');
+    }
+    h += '<p class="small muted" style="margin-top:14px">Demo record \u2014 nothing was saved to production.</p>';
+    drawer('Toolbox Talk submission',
+      TBT_COMPANIES[TBT.company].name + ' \u00b7 ' + (talk ? talk.t : '\u2014') + ' \u00b7 week of ' + rec.week, h);
+  }
+
   function tbtQueueAdd(id, atIndex) {
     var co = tbtCo();
     var d = tbtById(id);
@@ -3676,6 +4442,14 @@
     tbtSave(); pgTalksDemo();
   }
   function tbtWire() {
+    $$('[data-tbt-tab]').forEach(function (b) {
+      b.onclick = function () { tbtTab = b.getAttribute('data-tbt-tab'); pgTalksDemo(); };
+    });
+    var fmt = $('#tbt-format');
+    if (fmt) fmt.onchange = function () { tbtCo().format = fmt.value; tbtSave(); pgTalksDemo(); };
+    $$('[data-tbt-view]').forEach(function (b) {
+      b.onclick = function () { tbtViewSubmission(b.getAttribute('data-tbt-view')); };
+    });
     var sel = $('#tbt-company');
     if (sel) sel.onchange = function () { TBT.company = sel.value; tbtF.group = ''; tbtSave(); pgTalksDemo(); };
     wireSearch('tbt-q', function (v) { tbtF.q = v; pgTalksDemo(); });
@@ -8587,6 +9361,15 @@
     if (B && want && want !== page && PAGES.some(function (p) { return p.id === want; })) go(want);
   });
 
-  var s = getSession();
-  if (s) openApp(s);
+  /* Demo review build: office.html?demo=1 serves the whole dashboard from
+     office-demo.js fixtures — no sign-in, no session, no network. Production
+     is untouched: without the flag this block does nothing and the normal
+     stored session opens the app as before. */
+  if (TBT_DEMO && window.DEMO) {
+    C.demo = true;                       // routes post() through DEMO.call
+    openApp(window.DEMO.session);
+  } else {
+    var s = getSession();
+    if (s) openApp(s);
+  }
 })();

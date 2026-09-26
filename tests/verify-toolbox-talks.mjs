@@ -51,7 +51,7 @@ const exported = [
   'getTBT', 'setCompany',
 ];
 
-const factory = new Function('localStorage', 'location', 'URLSearchParams', 'console', `
+const factory = new Function('localStorage', 'location', 'URLSearchParams', 'console', 'window', `
   ${logic}
   ${sliceFn('tbtQueueAdd')}
   ${sliceFn('tbtQueueMove')}
@@ -65,7 +65,10 @@ const factory = new Function('localStorage', 'location', 'URLSearchParams', 'con
   function reload() { TBT = null; return tbtLoad(); }
   return { ${exported.join(', ')}, reload: reload, TOASTS: TOASTS };
 `);
-const M = factory(sandbox.localStorage, sandbox.location, URLSearchParams, console);
+// The office module reads its completion fixtures from window.DEMO when the
+// demo build supplies them. This suite tests the scheduling logic on its own,
+// so it runs with no fixtures present and the module falls back to empty.
+const M = factory(sandbox.localStorage, sandbox.location, URLSearchParams, console, {});
 
 /* ------------------------------------------------------------------ *
  * 1. Library classification
