@@ -3062,7 +3062,693 @@
   /* ====================== TOOLBOX TALKS ================================= */
   var talkTab = 'log';
   var talkF = { q: '', job: '' };
+  /* ==================== TOOLBOX TALKS — DEMO ONLY ======================
+     Reached with office.html?demo=1. Everything below is local: state lives
+     in localStorage, documents are never uploaded, nothing is written to
+     Supabase, n8n or any live system, and no texts/emails are sent.
+     Without ?demo=1 the Toolbox Talks page keeps its existing behaviour.
+     ==================================================================== */
+  var TBT_DEMO = (function () {
+    try { return new URLSearchParams(location.search).get('demo') === '1'; } catch (e) { return false; }
+  })();
+  var TBT_KEY = 'cs_tbt_demo_v1';
+  var TBT_WEEKS_NO_REPEAT = 12;   // a talk may not repeat inside 12 weeks
+
+      /* Toolbox Talk library — built from Tony's 10 email batches.
+         127 attachments, 124 unique by content hash, 3 duplicate copies.
+         i=id(hash) t=display title (cleaned filename) f=original filename
+         p=pages n=type s=status src=publisher note=why path=local source (demo preview only) */
+      var TBT_LIB = [
+  {i:'4fabfd86963a77d7',t:'Reverse Polarity v2',f:'Reverse_Polarity_v2.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Reverse_Polarity_v2.pdf'},
+  {i:'c76e0d100bdbe323',t:'SE79PDF',f:'SE79PDF.pdf',p:17,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'17 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/SE79PDF.pdf'},
+  {i:'7b6311c716ddb7b7',t:'Safety Alert Hand Laceration',f:'Safety Alert - Hand Laceration.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Safety alert',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Safety Alert - Hand Laceration.pdf'},
+  {i:'05df1426939e2139',t:'Screwdrivers',f:'Screwdrivers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Screwdrivers-Toolbox-Talk.pdf'},
+  {i:'cf831d2766e46035',t:'Step Ladder Safety',f:'Step_Ladder_Safety.pdf',p:6,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Step_Ladder_Safety.pdf'},
+  {i:'61a99481f1fdf24d',t:'Stepladders',f:'Stepladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Stepladders-Toolbox-Talk.pdf'},
+  {i:'ca8f89414467ceb4',t:'Storage Of Portable Ladders',f:'Storage_Of_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Storage_Of_Portable_Ladders.pdf'},
+  {i:'1eb4cae0e52ddf22',t:'Suspended Loads',f:'Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Suspended Loads.pdf'},
+  {i:'a79352f49a0e8810',t:'substance abuse',f:'substance-abuse.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/substance-abuse.pdf'},
+  {i:'bc48db6df07a4e8d',t:'suicide warnings',f:'suicide-warnings.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/suicide-warnings.pdf'},
+  {i:'a23d472d25905b79',t:'MCA Tool Box Talks Volume I',f:'MCA Tool Box Talks Volume I.pdf',p:55,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume I.pdf'},
+  {i:'5e588888d0f304fd',t:'MCA Tool Box Talks Volume II',f:'MCA Tool Box Talks Volume II.pdf',p:56,n:'PDF',s:'Collection',src:null,note:'56 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume II.pdf'},
+  {i:'3f9cf5cede12a00d',t:'MCA Tool Box Talks Volume III',f:'MCA Tool Box Talks Volume III.pdf',p:55,n:'PDF',s:'Collection',src:null,note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume III.pdf'},
+  {i:'03ff45871304d403',t:'MCA Tool Box Talks Volume IV',f:'MCA Tool Box Talks Volume IV.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume IV.pdf'},
+  {i:'7f0dd975bc62ace2',t:'MSCA Tool Box Talks Volume I',f:'MSCA Tool Box Talks Volume I.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSCA Tool Box Talks Volume I.pdf'},
+  {i:'3c6e47bcd57ee810',t:'MSCA Tool Box Talks Volume II',f:'MSCA Tool Box Talks Volume II.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSCA Tool Box Talks Volume II.pdf'},
+  {i:'7f0dd975bc62ace2',t:'MSSE2',f:'MSSE2.pdf',p:57,n:'PDF',s:'Excluded',src:null,note:'duplicate copy of MSCA Tool Box Talks Volume I.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSSE2.pdf'},
+  {i:'8957c75667c33851',t:'Mobile Devices While Driving',f:'Mobile-Devices-While-Driving-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Mobile-Devices-While-Driving-Toolbox-Talk.pdf'},
+  {i:'12f355bcfbd20262',t:'Name It Tame It',f:'Name_It_Tame_It.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Name_It_Tame_It.pdf'},
+  {i:'c883132600a845d5',t:'Overhead Power Lines',f:'Overhead_Power_Lines.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Overhead_Power_Lines.pdf'},
+  {i:'e6ec5cfcb10c9fac',t:'Powerline Contact',f:'Powerline-Contact-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Powerline-Contact-Toolbox-Talk.pdf'},
+  {i:'a1b26bfd4ffd6282',t:'PreUse Ladder Inspections',f:'PreUse_Ladder_Inspections.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/PreUse_Ladder_Inspections.pdf'},
+  {i:'30172401ceae8f27',t:'Protecting your hands (PPE)',f:'Protecting your hands (PPE).pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Protecting your hands (PPE).pdf'},
+  {i:'e1776e53ae90c46a',t:'Qualified Signal Person and Rigger Training Courses Offered by SMG',f:'Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Training material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf'},
+  {i:'d2c7f6356c499e9f',t:'Quizzes Engl Mar16 PM 411266',f:'Quizzes Engl Mar16-PM_411266.pdf',p:4,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Quizzes Engl Mar16-PM_411266.pdf'},
+  {i:'35f0155d362c5e7b',t:'Racial discrimination',f:'Racial-discrimination-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Racial-discrimination-Toolbox-Talk-.pdf'},
+  {i:'f0903aae1dd49dd0',t:'mental health routines',f:'mental-health-routines.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/mental-health-routines.pdf'},
+  {i:'4caef110189b0248',t:'narcan naloxone',f:'narcan-naloxone.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/narcan-naloxone.pdf'},
+  {i:'399f36b53d9b7290',t:'Avoiding Distractions',f:'Avoiding Distractions.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Avoiding Distractions.pdf'},
+  {i:'46364d9766f7a08c',t:'Back Injuries Get Your Workers Back in Control',f:'Back Injuries - Get Your Workers Back in Control.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Back Injuries - Get Your Workers Back in Control.pdf'},
+  {i:'06dccc67821ea196',t:'Behavioral Safety Who is Responsible for Safety',f:'Behavioral Safety-Who is Responsible for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Behavioral Safety-Who is Responsible for Safety.pdf'},
+  {i:'229842fcc2ac3029',t:'Blood Borne Pathogens 1 and 2',f:'Blood Borne Pathogens 1 and 2.pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Blood Borne Pathogens 1 and 2.pdf'},
+  {i:'d936e806c7815a3e',t:'Caught In On Between',f:'Caught In-On-Between.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Caught In-On-Between.pdf'},
+  {i:'640e63bd93fb29b4',t:'Cold Weather Driving',f:'Cold Weather Driving.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Cold Weather Driving.pdf'},
+  {i:'71678685e7e376c4',t:'Common Sense Safety',f:'Common Sense Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Common Sense Safety.pdf'},
+  {i:'1faf21e9bafba6bc',t:'Communicating Safely',f:'Communicating Safely.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Communicating Safely.pdf'},
+  {i:'4fc5304859b7104f',t:'Compressed Air Safety',f:'Compressed Air Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Compressed Air Safety.pdf'},
+  {i:'3c0b0a2a220cc530',t:'Confined Space Part 1',f:'Confined Space Part 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Confined Space Part 1.pdf'},
+  {i:'260a70497af07043',t:'Confined Space Part 2',f:'Confined Space Part 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Confined Space Part 2.pdf'},
+  {i:'0071d88f6d86261f',t:'Construction Site Hygiene',f:'Construction Site Hygiene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Construction Site Hygiene.pdf'},
+  {i:'73a438505f05772c',t:'Crystalline Silica Awareness',f:'Crystalline Silica Awareness.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Crystalline Silica Awareness.pdf'},
+  {i:'f00bcce6ef74a47e',t:'Equipment Hazards Safe Operations of Forklifts',f:'Equipment Hazards - Safe Operations of Forklifts.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Equipment Hazards - Safe Operations of Forklifts.pdf'},
+  {i:'e27299abc50d39a9',t:'Ergonomic Breaks, Rest Periods, and Stretches',f:'Ergonomic Breaks, Rest Periods, and Stretches.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Ergonomic Breaks, Rest Periods, and Stretches.pdf'},
+  {i:'b1bc7e719cb3b36b',t:'Excavation Safety',f:'Excavation Safety.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Excavation Safety.pdf'},
+  {i:'8832865a7d67016c',t:'Extension Cord Safety',f:'Extension Cord Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Extension Cord Safety.pdf'},
+  {i:'dee719fec495262b',t:'Eye and Face Protection',f:'Eye and Face Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Eye and Face Protection.pdf'},
+  {i:'151f1940e4918d98',t:'Fall Protection',f:'Fall Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Fall Protection.pdf'},
+  {i:'7c7301f704cb04db',t:'Arc Welding Safety',f:'Arc Welding Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/Arc Welding Safety.pdf'},
+  {i:'a947f4d8b6e6601e',t:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet',f:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf',p:1,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf'},
+  {i:'453560b18cbe70f3',t:'MCA Tool Box Talks Volume V',f:'MCA Tool Box Talks Volume V.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCA Tool Box Talks Volume V.pdf'},
+  {i:'dbbc89f2a9ec6fae',t:'MCAA Toolbox Safety Talks Volume VI',f:'MCAA-Toolbox-Safety-Talks-Volume-VI.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCAA-Toolbox-Safety-Talks-Volume-VI.pdf'},
+  {i:'4d144c7d6daa50d1',t:'PCA Tool Box Talks Volume I',f:'PCA Tool Box Talks Volume I.pdf',p:58,n:'PDF',s:'Collection',src:null,note:'58 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/PCA Tool Box Talks Volume I.pdf'},
+  {i:'1b680099bc73acfd',t:'PWSE1PDF',f:'PWSE1PDF.pdf',p:29,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'29 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/PWSE1PDF.pdf'},
+  {i:'1b680099bc73acfd',t:'Pipe Welding Tool Box Talks',f:'Pipe Welding Tool Box Talks.pdf',p:29,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'duplicate copy of PWSE1PDF.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/Pipe Welding Tool Box Talks.pdf'},
+  {i:'29947aad37fd1d4e',t:'Suspended Loads2',f:'Suspended Loads2.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads2.pdf'},
+  {i:'6a219f2a0abf814d',t:'Suspended Loads Dangers Overhead',f:'Suspended Loads_Dangers Overhead.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads_Dangers Overhead.pdf'},
+  {i:'436eb9659dcd44a4',t:'Suspended Loads Lifting Chains',f:'Suspended Loads_Lifting Chains.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads_Lifting Chains.pdf'},
+  {i:'f6453311d7d62839',t:'Toolbox Talks for Fab Shop',f:'Toolbox Talks for Fab Shop.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Toolbox Talks for Fab Shop.pdf'},
+  {i:'e09bd8b6f81c013e',t:'Weather Effects On Portable Ladders',f:'Weather_Effects_On_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Weather_Effects_On_Portable_Ladders.pdf'},
+  {i:'71bf62cafae7fa1c',t:'Winning the Morning',f:'Winning_the_Morning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Winning_the_Morning.pdf'},
+  {i:'dbd9dd2091be80a3',t:'Wire Rope Inspection',f:'Wire-Rope-Inspection-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Wire-Rope-Inspection-Toolbox-Talk.pdf'},
+  {i:'4f7944e491f6a3e4',t:'Working Around Cranes',f:'Working Around Cranes.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working Around Cranes.pdf'},
+  {i:'116b65639b5d9640',t:'Working Around Suspended Loads',f:'Working Around Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working Around Suspended Loads.pdf'},
+  {i:'d9cff3b213adf58f',t:'Working Near Power On A Ladder',f:'Working_Near_Power_On_A_Ladder.pdf',p:6,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working_Near_Power_On_A_Ladder.pdf'},
+  {i:'575ba96cb74b0694',t:'Fall Protection Hole Covers',f:'Fall Protection- Hole Covers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fall Protection- Hole Covers.pdf'},
+  {i:'053dfbef68c71369',t:'Falling Objects',f:'Falling Objects.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Falling Objects.pdf'},
+  {i:'14048d3c3c31b861',t:'Fatigue',f:'Fatigue.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fatigue.pdf'},
+  {i:'22eaa90603233b6d',t:'Fire Extinguishers and Fire Class Types',f:'Fire Extinguishers and Fire Class Types.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fire Extinguishers and Fire Class Types.pdf'},
+  {i:'0b235e6980502b81',t:'Fire Prevention & Extinguishing Tips and Care',f:'Fire Prevention & Extinguishing - Tips and Care.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fire Prevention & Extinguishing - Tips and Care.pdf'},
+  {i:'2e85012c17c6df06',t:'First Aid',f:'First Aid.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/First Aid.pdf'},
+  {i:'30e03ed1f9f0c8e8',t:'Flammable and Combustible Liquids',f:'Flammable and Combustible Liquids.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Flammable and Combustible Liquids.pdf'},
+  {i:'8916ab6a1998d537',t:'Fork Truck Operation',f:'Fork Truck Operation.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fork Truck Operation.pdf'},
+  {i:'8916ab6a1998d537',t:'Forklift Operation',f:'Forklift Operation.pdf',p:2,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'duplicate copy of Fork Truck Operation.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Forklift Operation.pdf'},
+  {i:'52af1d7dc08a3e11',t:'Healthy Worksite',f:'Healthy Worksite.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Healthy Worksite.pdf'},
+  {i:'a303364391a0bc20',t:'High Pressure Air',f:'High Pressure Air.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/High Pressure Air.pdf'},
+  {i:'8d2c250c4dad473a',t:'Hot Work Procedures',f:'Hot Work Procedures.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Hot Work Procedures.pdf'},
+  {i:'3fe0fab391ccf6df',t:'Housekeeping for Safety',f:'Housekeeping for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Housekeeping for Safety.pdf'},
+  {i:'6b9f0c24064f96a0',t:'How Can Eye Injuries be Prevented',f:'How Can Eye Injuries be Prevented.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How Can Eye Injuries be Prevented.pdf'},
+  {i:'6e82f93a1048d9f6',t:'How To Avoid Respiratory Hazards',f:'How To Avoid Respiratory Hazards.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How To Avoid Respiratory Hazards.pdf'},
+  {i:'8737bd27844462ad',t:'How to Manage Cutting with Oxygen Acetylene',f:'How to Manage Cutting with Oxygen-Acetylene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How to Manage Cutting with Oxygen-Acetylene.pdf'},
+  {i:'c4ff21d936f61a0c',t:'Compressed Gas Cylinders',f:'Compressed-Gas-Cylinders-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Compressed-Gas-Cylinders-Toolbox-Talk-.pdf'},
+  {i:'dd12d5aa540eb06b',t:'Concrete Silica',f:'Concrete-Silica-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Concrete-Silica-Toolbox-Talk-.pdf'},
+  {i:'904942287994ba10',t:'Confined Space',f:'Confined-Space-ToolBox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Confined-Space-ToolBox-Talk-.pdf'},
+  {i:'7da84d7b9405bed1',t:'Construction Equipment Dangers',f:'Construction Equipment Dangers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Construction Equipment Dangers.pdf'},
+  {i:'401374c765ceb632',t:'Dark Side Electricity',f:'Dark_Side_Electricity.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dark_Side_Electricity.pdf'},
+  {i:'0c2bddd703fc0f8b',t:'Double Insulated Tools',f:'Double_Insulated_Tools.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Double_Insulated_Tools.pdf'},
+  {i:'9133d64463992e35',t:'Dump Truck Tipovers',f:'Dump-Truck-Tipovers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dump-Truck-Tipovers-Toolbox-Talk.pdf'},
+  {i:'db8ae17a5650e60e',t:'Dump Trucks',f:'Dump-Trucks-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dump-Trucks-Toolbox-Talk.pdf'},
+  {i:'f3ce5ca5671e9513',t:'Dust',f:'Dust-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dust-Toolbox-Talk-.pdf'},
+  {i:'f929edf32b57ef11',t:'Earplug',f:'Earplug-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Earplug-Toolbox-Talk-.pdf'},
+  {i:'558dac4f19b91fd5',t:'Electric Tools Sabre Saws',f:'Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf'},
+  {i:'224b903151771a19',t:'Electrical Safety',f:'Electrical-Safety-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electrical-Safety-Toolbox-Talk.pdf'},
+  {i:'d98b2100ffaa8454',t:'Electrical Emergencies',f:'Electrical_Emergencies.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electrical_Emergencies.pdf'},
+  {i:'91391baa19c1127f',t:'Extension Cord Misuse',f:'Extension_Cord_Misuse.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Cord_Misuse.pdf'},
+  {i:'31fd05d82ec995eb',t:'Extension Ladder Habits',f:'Extension_Ladder_Habits.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Ladder_Habits.pdf'},
+  {i:'3d1751e5b5751372',t:'Extension Ladder Setup',f:'Extension_Ladder_Setup.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Ladder_Setup.pdf'},
+  {i:'94a554bc87bf5792',t:'culter smarter about mental health',f:'culter-smarter-about-mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/culter-smarter-about-mental-health.pdf'},
+  {i:'5d50c44a1cd4486a',t:'Extension Ladders',f:'Extension-Ladders-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Extension-Ladders-Toolbox-Talk.pdf'},
+  {i:'a87e8c3d55f06eca',t:'Fall Protection 2018',f:'Fall Protection Toolbox Talk 2018.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Fall Protection Toolbox Talk 2018.pdf'},
+  {i:'8c8a9b697e588df4',t:'Finding the Right Glove',f:'Finding the Right Glove....pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Finding the Right Glove....pdf'},
+  {i:'1a868063f0f122b3',t:'GFCIs',f:'GFCIs.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/GFCIs.pdf'},
+  {i:'1625f4473dbcba78',t:'Gin Wheels or Pulley Wheels',f:'Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf'},
+  {i:'c317901db4092d56',t:'Ground Pin',f:'Ground_Pin.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Ground_Pin.pdf'},
+  {i:'dd4fb9800b61b87e',t:'Hand Tools Pliers and Wrenches',f:'Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf'},
+  {i:'287f4426cdea5443',t:'Handling Ladders Safely',f:'Handling_Ladders_Safely.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Handling_Ladders_Safely.pdf'},
+  {i:'5c1b1b14284ad377',t:'Heat Stress Toolbox Talks',f:'Heat Stress Toolbox Talks.pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Heat Stress Toolbox Talks.pdf'},
+  {i:'13602e1ebfdb07e3',t:'Identifying Disconnects',f:'Identifying_Disconnects.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Identifying_Disconnects.pdf'},
+  {i:'aa2db8fbfad0101d',t:'If Then Planning',f:'If_Then_Planning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/If_Then_Planning.pdf'},
+  {i:'8040e57e00a683a7',t:'Ladder Types And Duty Ratings',f:'Ladder_Types_And_Duty_Ratings.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Ladder_Types_And_Duty_Ratings.pdf'},
+  {i:'ea97b6c6778b93d2',t:'Listing Labeling',f:'Listing_Labeling.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Listing_Labeling.pdf'},
+  {i:'72959315b017da3b',t:'Mental Fitness',f:'Mental_Fitness.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Mental_Fitness.pdf'},
+  {i:'0f69cb519fb974eb',t:'Mental Rehearsal',f:'Mental_Rehearsal.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Mental_Rehearsal.pdf'},
+  {i:'707df553b19f81b8',t:'mental health',f:'mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/mental-health.pdf'},
+  {i:'53f06914161dfce7',t:'A Frame Ladders',f:'A-Frame-Ladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/A-Frame-Ladders-Toolbox-Talk.pdf'},
+  {i:'e2ea6b2e4d8f1510',t:'AHA Installation of Trolley Beam and Chainfall Hoist',f:'AHA - Installation of Trolley Beam and Chainfall Hoist.pdf',p:5,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/AHA - Installation of Trolley Beam and Chainfall Hoist.pdf'},
+  {i:'89d8028f7d2c96fb',t:'BAMO',f:'BAMO.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/BAMO.pdf'},
+  {i:'9ffcc1100edcf611',t:'Backing Vehicles',f:'Backing-Vehicles-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Backing-Vehicles-Toolbox-Talk.pdf'},
+  {i:'d8cd976cb48fcf4a',t:'Chainsaws',f:'Chainsaws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Chainsaws-Toolbox-Talk-.pdf'},
+  {i:'65661aab523b054f',t:'Cleaning Concrete Trucks',f:'Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf'},
+  {i:'7e39c86d618436c8',t:'Cold Stress',f:'Cold-Stress-Toolbox-Talk-.pptx',p:null,n:'PPTX',s:'Needs Review',src:null,note:'PowerPoint, not a PDF talk - needs a look',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Cold-Stress-Toolbox-Talk-.pptx'},
+  {i:'6f0190d1dfd0c607',t:'How Workers Get Hurt',f:'How Workers Get Hurt.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/How Workers Get Hurt.pdf'},
+  {i:'ba4b639ad4ef7394',t:'How to Use an Eyewash',f:'How to Use an Eyewash.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/How to Use an Eyewash.pdf'},
+  {i:'bc92ceacd9f67c8e',t:'Ladders 1',f:'Ladders 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 1.pdf'},
+  {i:'11c48aad894ceac8',t:'Ladders 2',f:'Ladders 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 2.pdf'},
+  {i:'faf130f408c2b73a',t:'Ladders 3',f:'Ladders 3.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 3.pdf'},
+  {i:'a365db89779e921b',t:'Ladders Parts 1 thru 3',f:'Ladders Parts 1 thru 3.pdf',p:6,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders Parts 1 thru 3.pdf'},
+  {i:'187b6961ddeac5a1',t:'Sign in sheet',f:'Sign in sheet.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Sign in sheet.pdf'}
+      ];
+
+      /* Company fixtures. Greiner/Choice/Peine are kept completely separate:
+         separate queue, completion mode, history, employees, jobs, settings.
+         Choice roster is the list Tony supplied. Peine's real roster has NOT
+         been received yet, so its people are obvious placeholders. */
+  var TBT_COMPANIES = {
+    greiner: {
+      name: 'Greiner Brothers', defaultMode: 'group', modeConfigurable: true,
+      note: 'Completion mode is configurable for this demo.',
+      groups: ['Demo Job A — Level 2 Fit-out', 'Demo Job B — Central Plant', 'Demo Job C — Service'],
+      employees: [
+        { n: 'Demo Foreman', g: 'Demo Job A — Level 2 Fit-out', lead: true },
+        { n: 'Alex Rivera (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
+        { n: 'Jordan Blake (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
+        { n: 'Sam Whitfield (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
+        { n: 'Casey Nolan (Demo)', g: 'Demo Job B — Central Plant', lead: true },
+        { n: 'Taylor Reed (Demo)', g: 'Demo Job B — Central Plant' },
+        { n: 'Morgan Ellis (Demo)', g: 'Demo Job B — Central Plant' },
+        { n: 'Riley Shaw (Demo)', g: 'Demo Job C — Service', lead: true },
+        { n: 'Quinn Harper (Demo)', g: 'Demo Job C — Service' },
+        { n: 'Drew Baxter (Demo)', g: 'Demo Job C — Service' }
+      ]
+    },
+    choice: {
+      name: 'Choice', defaultMode: 'group', modeConfigurable: false,
+      note: 'Confirmed pilot: one group talk at the Monday morning meeting. ' +
+            'Alex Fyffe, Angel Garcia or Zach France submits the single record.',
+      groups: ['Monday Group Meeting'],
+      employees: [
+        { n: 'Alex Fyffe', g: 'Monday Group Meeting', lead: true },
+        { n: 'Angel Garcia', g: 'Monday Group Meeting', lead: true },
+        { n: 'Zach France', g: 'Monday Group Meeting', lead: true },
+        { n: 'Bobby Douthit', g: 'Monday Group Meeting' },
+        { n: 'Cian McGarr', g: 'Monday Group Meeting' },
+        { n: 'Cenon "T" Heim', g: 'Monday Group Meeting' },
+        { n: 'Darvelle White', g: 'Monday Group Meeting' },
+        { n: 'Joe Mikalouski', g: 'Monday Group Meeting' },
+        { n: 'Jon Wennen', g: 'Monday Group Meeting' },
+        { n: 'Justin Rice', g: 'Monday Group Meeting' },
+        { n: 'Kyle Palmer', g: 'Monday Group Meeting' },
+        { n: 'Nick Barnes', g: 'Monday Group Meeting' }
+      ]
+    },
+    peine: {
+      name: 'Peine', defaultMode: 'individual', modeConfigurable: false,
+      note: 'Every employee completes the same weekly talk individually. ' +
+            'REAL ROSTER NOT YET RECEIVED — the people below are placeholders.',
+      groups: ['Peine Field (Demo)'],
+      employees: [
+        { n: 'Avery Nolan (Demo)', g: 'Peine Field (Demo)', lead: true },
+        { n: 'Bailey Cruz (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Cameron Diaz-Lee (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Devon Marsh (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Emerson Pike (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Finley Ward (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Gray Hollis (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Harper Vance (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Indigo Reese (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Jules Barrett (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Kai Lindstrom (Demo)', g: 'Peine Field (Demo)' },
+        { n: 'Lennox Ayers (Demo)', g: 'Peine Field (Demo)' }
+      ]
+    }
+  };
+
+  /* ---- six clearly-valid standalone talks seeded into the demo queue ---- */
+  var TBT_SEED_FILENAMES = [
+    'Fall Protection.pdf', 'Ladders 1.pdf', 'Excavation Safety.pdf',
+    'Hot Work Procedures.pdf', 'Eye and Face Protection.pdf', 'Housekeeping for Safety.pdf'
+  ];
+
+  /* ---------------- state (localStorage, per company) ---------------- */
+  function tbtEligible() { return TBT_LIB.filter(function (d) { return d.s === 'Ready'; }); }
+  function tbtById(id) { return TBT_LIB.filter(function (d) { return d.i === id; })[0] || null; }
+
+  function tbtBlank(companyKey) {
+    var c = TBT_COMPANIES[companyKey];
+    return { queue: [], mode: c.defaultMode, history: [], completions: [],
+             groupsIncluded: c.groups.slice(), rotation: [] };
+  }
+  function tbtDefaultState() {
+    var s = { company: 'greiner', companies: {} };
+    Object.keys(TBT_COMPANIES).forEach(function (k) { s.companies[k] = tbtBlank(k); });
+    // seed each company's queue with the six sample talks
+    var seeds = TBT_SEED_FILENAMES.map(function (fn) {
+      return (TBT_LIB.filter(function (d) { return d.f === fn && d.s === 'Ready'; })[0] || {}).i;
+    }).filter(Boolean);
+    Object.keys(s.companies).forEach(function (k) { s.companies[k].queue = seeds.slice(); });
+    // a little completion history so the dashboard has something to show
+    s.companies.choice.completions = [{
+      week: tbtMondayISO(0), talkId: seeds[0], kind: 'group', group: 'Monday Group Meeting',
+      presenter: 'Alex Fyffe', at: new Date().toISOString(),
+      roster: ['Alex Fyffe', 'Angel Garcia', 'Zach France', 'Bobby Douthit', 'Cian McGarr',
+               'Darvelle White', 'Joe Mikalouski', 'Kyle Palmer'],
+      manual: ['Ronnie Vasquez'] }];
+    var pe = TBT_COMPANIES.peine.employees.slice(0, 7);
+    s.companies.peine.completions = pe.map(function (e, i) {
+      return { week: tbtMondayISO(0), talkId: seeds[0], kind: 'individual',
+               employee: e.n, group: e.g, at: new Date(Date.now() - i * 36e5).toISOString() };
+    });
+    return s;
+  }
+  var TBT = null;
+  function tbtLoad() {
+    if (TBT) return TBT;
+    try {
+      var raw = localStorage.getItem(TBT_KEY);
+      TBT = raw ? JSON.parse(raw) : tbtDefaultState();
+    } catch (e) { TBT = tbtDefaultState(); }
+    if (!TBT || !TBT.companies) TBT = tbtDefaultState();
+    Object.keys(TBT_COMPANIES).forEach(function (k) { if (!TBT.companies[k]) TBT.companies[k] = tbtBlank(k); });
+    return TBT;
+  }
+  function tbtSave() { try { localStorage.setItem(TBT_KEY, JSON.stringify(TBT)); } catch (e) {} }
+  function tbtCo() { return tbtLoad().companies[TBT.company]; }
+  function tbtCoDef() { return TBT_COMPANIES[TBT.company]; }
+
+  /* ---------------- Monday maths ---------------- */
+  // Monday of the current week, plus n weeks. Returns YYYY-MM-DD.
+  function tbtMonday(n) {
+    var d = new Date(); d.setHours(12, 0, 0, 0);
+    var dow = d.getDay();                 // 0=Sun..6=Sat
+    var delta = (dow === 0 ? -6 : 1 - dow);
+    d.setDate(d.getDate() + delta + (n || 0) * 7);
+    return d;
+  }
+  function tbtMondayISO(n) {
+    var d = tbtMonday(n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function tbtMondayLabel(n) {
+    return tbtMonday(n).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  /* ---------------- automatic fallback selection ----------------
+     Never unrestricted random. Prefer least-recently-used eligible talks and
+     exclude anything used in the previous 12 weeks. With no history at all,
+     shuffle the eligible library once and finish that rotation first. */
+  function tbtRecentIds(co) {
+    var cutoff = tbtMondayISO(-TBT_WEEKS_NO_REPEAT);
+    return co.history.filter(function (h) { return h.week >= cutoff; }).map(function (h) { return h.talkId; });
+  }
+  // Shuffle-once rotation, created lazily and then kept for the life of the demo
+  // so that repeated renders never reshuffle what the office is looking at.
+  function tbtRotation(co) {
+    if (!co.rotation || !co.rotation.length) {
+      var ids = tbtEligible().map(function (d) { return d.i; });
+      for (var i = ids.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1)); var t = ids[i]; ids[i] = ids[j]; ids[j] = t;
+      }
+      co.rotation = ids;
+      tbtSave();
+    }
+    return co.rotation;
+  }
+  // Auto-selection for the week n positions out. Pure with respect to the
+  // schedule: calling it twice for the same n gives the same talk, so it is
+  // safe to call from a render path.
+  function tbtAutoPick(co, n) {
+    n = n || 0;
+    var elig = tbtEligible();
+    if (!elig.length) return null;
+    if (!co.history.length) {
+      var rot = tbtRotation(co);
+      return rot.length ? rot[n % rot.length] : null;
+    }
+    var recent = tbtRecentIds(co);
+    var lastUsed = {};
+    co.history.forEach(function (h) { lastUsed[h.talkId] = h.week; });
+    var pool = elig.filter(function (d) { return recent.indexOf(d.i) === -1; });
+    if (!pool.length) pool = elig.slice();                 // everything is recent: fall back to all
+    pool.sort(function (a, b) {                            // least recently used first
+      var la = lastUsed[a.i] || '', lb = lastUsed[b.i] || '';
+      if (la !== lb) return la < lb ? -1 : 1;
+      return a.i < b.i ? -1 : 1;                           // stable tiebreak
+    });
+    return pool[n % pool.length].i;
+  }
+  // The talk for queue position n: the queue if it reaches, else auto-selected.
+  function tbtTalkForWeek(co, n) {
+    if (co.queue[n]) return { id: co.queue[n], auto: false };
+    var id = tbtAutoPick(co, n - co.queue.length);
+    return id ? { id: id, auto: true } : null;
+  }
+
+  /* ---------------- completion helpers ---------------- */
+  function tbtWeekCompletions(co, week) {
+    return (co.completions || []).filter(function (c) { return c.week === week; });
+  }
+  function tbtCompletionStats(co, def, week) {
+    var done = tbtWeekCompletions(co, week);
+    if (co.mode === 'group') {
+      var groups = co.groupsIncluded || def.groups;
+      var submitted = {}, attendance = 0;
+      done.forEach(function (c) {
+        if (c.kind !== 'group') return;
+        submitted[c.group] = c;
+        attendance += ((c.roster || []).length + (c.manual || []).length);
+      });
+      var completed = groups.filter(function (g) { return submitted[g]; });
+      var outstanding = groups.filter(function (g) { return !submitted[g]; });
+      return { mode: 'group', unitLabel: 'jobs / groups', total: groups.length,
+               completed: completed, outstanding: outstanding, attendance: attendance,
+               pct: groups.length ? Math.round(completed.length / groups.length * 100) : 0,
+               records: done };
+    }
+    var people = (def.employees || []).filter(function (e) {
+      return (co.groupsIncluded || def.groups).indexOf(e.g) !== -1; });
+    var byName = {};
+    done.forEach(function (c) { if (c.kind === 'individual') byName[c.employee] = c; });
+    var comp = people.filter(function (e) { return byName[e.n]; });
+    var out = people.filter(function (e) { return !byName[e.n]; });
+    return { mode: 'individual', unitLabel: 'employees', total: people.length,
+             completed: comp, outstanding: out, attendance: comp.length,
+             pct: people.length ? Math.round(comp.length / people.length * 100) : 0,
+             records: done, byName: byName };
+  }
+
+  /* ---------------- the page ---------------- */
+  var tbtF = { q: '', status: '', week: '', group: '', cstatus: '', method: '' };
+
+  function pgTalksDemo() {
+    var co = tbtCo(), def = tbtCoDef();
+    var week = tbtF.week || tbtMondayISO(0);
+    var stats = tbtCompletionStats(co, def, week);
+    var next = tbtTalkForWeek(co, 0);
+    var nextDoc = next ? tbtById(next.id) : null;
+
+    var style = '<style>' +
+      '.tbt-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}' +
+      '@media (max-width:1100px){.tbt-grid{grid-template-columns:1fr}}' +
+      '.tbt-card{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
+      '.tbt-card h3{margin:0 0 2px;font-size:15px}' +
+      '.tbt-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
+      '.tbt-lib{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}' +
+      '.tbt-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid var(--line);background:var(--card)}' +
+      '.tbt-row:last-child{border-bottom:0}.tbt-row[draggable=true]{cursor:grab}' +
+      '.tbt-row .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px;color:var(--ink);overflow-wrap:anywhere}' +
+      '.tbt-row .fn{font-size:11.5px;color:var(--ink-5);font-weight:400;overflow-wrap:anywhere}' +
+      '.tbt-pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}' +
+      '.tbt-ready{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}' +
+      '.tbt-coll{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}' +
+      '.tbt-rev{background:#fffbeb;color:#b45309;border:1px solid #fde68a}' +
+      '.tbt-exc{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb}' +
+      '.tbt-queue{min-height:80px;border:2px dashed var(--line-2);border-radius:10px;padding:8px;background:var(--bg)}' +
+      '.tbt-queue.over{border-color:var(--accent);background:var(--accent-tt)}' +
+      '.tbt-qrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:7px;cursor:grab}' +
+      '.tbt-qrow.dragging{opacity:.45}' +
+      '.tbt-when{font-size:11.5px;color:var(--ink-4);white-space:nowrap}' +
+      '.tbt-next{background:var(--accent);color:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px}' +
+      '.tbt-next .lbl{font-size:11px;font-weight:800;letter-spacing:.06em;opacity:.85}' +
+      '.tbt-next .ttl{font-size:18px;font-weight:800;margin-top:3px}' +
+      '.tbt-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}' +
+      '.tbt-kpi div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}' +
+      '.tbt-kpi b{display:block;font-size:20px;color:var(--ink)}' +
+      '.tbt-kpi span{font-size:11.5px;color:var(--ink-4)}' +
+      '.tbt-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}' +
+      '.tbt-bar i{display:block;height:100%;background:var(--ok)}' +
+      '.tbt-miss{font-size:12.5px;color:var(--fail)}' +
+      '</style>';
+
+    var right = '<select id="tbt-company" style="min-width:170px">' +
+      Object.keys(TBT_COMPANIES).map(function (k) {
+        return '<option value="' + k + '"' + (TBT.company === k ? ' selected' : '') + '>' + esc(TBT_COMPANIES[k].name) + '</option>';
+      }).join('') + '</select>';
+
+    var html = style + head('Toolbox Talks',
+      'Demo — library, weekly schedule and completion. Local only: nothing is uploaded, sent or saved to production.', right);
+
+    html += '<div class="tbt-card" style="border-color:#fdba74;background:#fff7ed">' +
+      '<b style="color:#7c2d12">Greiner Review Demo</b> ' +
+      '<span class="small" style="color:#7c2d12">' + esc(def.note) + '</span></div>';
+
+    // next talk + stats
+    html += '<div class="tbt-next"><div class="lbl">NEXT SCHEDULED TALK · ' + esc(TBT_COMPANIES[TBT.company].name) + '</div>' +
+      '<div class="ttl">' + (nextDoc ? esc(nextDoc.t) : 'Nothing eligible') + '</div>' +
+      '<div style="font-size:12.5px;opacity:.9;margin-top:4px">Monday ' + esc(tbtMondayLabel(0)) +
+      (next && next.auto ? ' · auto-selected (queue empty)' : '') +
+      ' · ' + co.queue.length + ' week' + (co.queue.length === 1 ? '' : 's') + ' scheduled' + '</div></div>';
+
+    html += '<div class="tbt-kpi">' +
+      '<div><b>' + stats.completed.length + '</b><span>completed ' + stats.unitLabel + '</span></div>' +
+      '<div><b>' + stats.outstanding.length + '</b><span>outstanding</span></div>' +
+      '<div><b>' + stats.pct + '%</b><span>completion<div class="tbt-bar"><i style="width:' + stats.pct + '%"></i></div></span></div>' +
+      (stats.mode === 'group' ? '<div><b>' + stats.attendance + '</b><span>total attendance</span></div>' : '') +
+      '<div><b>' + (co.mode === 'group' ? 'Group' : 'Individual') + '</b><span>completion method</span></div>' +
+      '</div>';
+
+    html += '<div class="tbt-grid"><div>' + tbtLibraryHtml() + '</div><div>' +
+      tbtQueueHtml(co) + tbtConfigHtml(co, def) + '</div></div>';
+    html += tbtCompletionHtml(co, def, week, stats);
+
+    paint(html);
+    tbtWire();
+  }
+
+  function tbtStatusPill(s) {
+    var c = s === 'Ready' ? 'tbt-ready' : s === 'Collection' ? 'tbt-coll' : s === 'Needs Review' ? 'tbt-rev' : 'tbt-exc';
+    return '<span class="tbt-pill ' + c + '">' + esc(s) + '</span>';
+  }
+  function tbtLibraryHtml() {
+    var q = (tbtF.q || '').toLowerCase();
+    var list = TBT_LIB.filter(function (d) {
+      if (tbtF.status && d.s !== tbtF.status) return false;
+      return !q || (d.t + ' ' + d.f + ' ' + (d.src || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    var counts = {};
+    TBT_LIB.forEach(function (d) { counts[d.s] = (counts[d.s] || 0) + 1; });
+    return '<div class="tbt-card"><h3>A · Toolbox Talk Library</h3>' +
+      '<div class="tbt-sub">' + TBT_LIB.length + ' files from Tony’s email batches · ' +
+        (counts['Ready'] || 0) + ' ready · ' + (counts['Collection'] || 0) + ' collections · ' +
+        (counts['Needs Review'] || 0) + ' need review · ' + (counts['Excluded'] || 0) + ' excluded. ' +
+        'Drag a <b>Ready</b> talk into the weekly queue.</div>' +
+      '<div class="fbar" style="margin-bottom:10px">' +
+        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+        '<input id="tbt-q" placeholder="Search talks…" value="' + esc(tbtF.q) + '"></div>' +
+        '<select id="tbt-status"><option value="">All statuses</option>' +
+        ['Ready', 'Collection', 'Needs Review', 'Excluded'].map(function (s) {
+          return '<option value="' + s + '"' + (tbtF.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+        '</select><span class="small muted" style="align-self:center">' + list.length + ' shown</span></div>' +
+      '<div class="tbt-lib">' + (list.length ? list.map(function (d) {
+        var ready = d.s === 'Ready';
+        return '<div class="tbt-row"' + (ready ? ' draggable="true"' : '') + ' data-tbt-lib="' + esc(d.i) + '">' +
+          '<div class="nm">' + esc(d.t) +
+            '<div class="fn">' + esc(d.f) + ' · ' + esc(d.n) + (d.p ? ' · ' + d.p + 'p' : '') +
+            (d.src ? ' · ' + esc(d.src) : '') + (d.note ? ' · ' + esc(d.note) : '') + '</div></div>' +
+          tbtStatusPill(d.s) +
+          '<button class="btn btn-sm" data-tbt-preview="' + esc(d.i) + '">Preview</button>' +
+          (ready ? '<button class="btn btn-sm btn-gold" data-tbt-add="' + esc(d.i) + '">Queue</button>' : '') +
+          '</div>';
+      }).join('') : '<div class="empty">No talks match.</div>') + '</div></div>';
+  }
+
+  function tbtQueueHtml(co) {
+    return '<div class="tbt-card"><h3>B · Weekly Queue</h3>' +
+      '<div class="tbt-sub">Drag to reorder. Each position is the Monday it will be delivered. ' +
+      'When the queue runs out, a talk is chosen automatically from the least recently used eligible talks, ' +
+      'never repeating one used in the last ' + TBT_WEEKS_NO_REPEAT + ' weeks.</div>' +
+      '<div class="tbt-queue" id="tbt-queue">' +
+      (co.queue.length ? co.queue.map(function (id, i) {
+        var d = tbtById(id);
+        return '<div class="tbt-qrow" draggable="true" data-tbt-qi="' + i + '">' +
+          '<span class="tbt-when">' + esc(tbtMondayLabel(i)) + '</span>' +
+          '<div class="nm" style="flex:1;font-weight:600;font-size:13.5px">' + (d ? esc(d.t) : '(missing)') +
+            '<div class="fn" style="font-size:11.5px;color:var(--ink-5)">' + (d ? esc(d.f) : '') + '</div></div>' +
+          (i > 0 ? '<button class="btn btn-sm" data-tbt-top="' + i + '">Move to top</button>' : '') +
+          '<button class="linklike" data-tbt-del="' + i + '" style="color:var(--fail)">Remove</button>' +
+          '</div>';
+      }).join('') : '') +
+      // Show the next few auto-selected weeks so the office can see what the
+      // fallback would deliver, not just that a fallback exists.
+      (function () {
+        var out = '', shown = 0;
+        for (var n = co.queue.length; n < co.queue.length + 3 && shown < 3; n++, shown++) {
+          var a = tbtTalkForWeek(co, n), d = a && tbtById(a.id);
+          if (!d) break;
+          out += '<div class="tbt-qrow" data-tbt-auto="' + n + '" style="opacity:.72">' +
+            '<span class="tbt-when">' + esc(tbtMondayLabel(n)) + '</span>' +
+            '<div class="nm" style="flex:1;font-weight:600;font-size:13.5px">' + esc(d.t) +
+              '<div class="fn" style="font-size:11.5px;color:var(--ink-5)">' + esc(d.f) + '</div></div>' +
+            '<span class="small muted">auto-selected</span></div>';
+        }
+        if (!co.queue.length && !out) {
+          out = '<div class="empty" style="padding:18px">Queue is empty and no eligible talks are available.</div>';
+        }
+        return out;
+      })() +
+      '</div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<span class="small muted" style="align-self:center">' + co.queue.length + ' week' + (co.queue.length === 1 ? '' : 's') + ' scheduled</span>' +
+        '<button class="btn btn-sm" id="tbt-reset" style="margin-left:auto">Reset Demo Schedule</button></div></div>';
+  }
+
+  function tbtConfigHtml(co, def) {
+    return '<div class="tbt-card"><h3>C · Company &amp; Completion</h3>' +
+      '<div class="tbt-sub">Greiner, Choice and Peine each keep their own queue, method, history, roster and settings.</div>' +
+      '<div class="f"><label for="tbt-mode">How will employees complete this Toolbox Talk?</label>' +
+        '<select id="tbt-mode"' + (def.modeConfigurable ? '' : ' disabled') + '>' +
+        '<option value="group"' + (co.mode === 'group' ? ' selected' : '') + '>Foreman-led group talk (one submission per job/group)</option>' +
+        '<option value="individual"' + (co.mode === 'individual' ? ' selected' : '') + '>Individual employee completion (each employee submits)</option>' +
+        '</select>' + (def.modeConfigurable ? '' :
+          '<p class="small muted" style="margin:.35rem 0 0">Fixed for this company by the confirmed pilot workflow.</p>') + '</div>' +
+      '<div class="f"><label>Jobs / groups included in the weekly talk</label>' +
+        def.groups.map(function (g) {
+          var on = (co.groupsIncluded || []).indexOf(g) !== -1;
+          return '<label class="check" style="display:flex;gap:8px;align-items:center;margin:4px 0">' +
+            '<input type="checkbox" data-tbt-grp="' + esc(g) + '"' + (on ? ' checked' : '') + '><span>' + esc(g) + '</span></label>';
+        }).join('') + '</div>' +
+      '<div class="small muted">Roster: ' + def.employees.length + ' employees</div></div>';
+  }
+
+  function tbtCompletionHtml(co, def, week, stats) {
+    var weeks = [];
+    for (var i = -4; i <= 4; i++) weeks.push(tbtMondayISO(i));
+    var rows = [];
+    if (stats.mode === 'group') {
+      (co.groupsIncluded || def.groups).forEach(function (g) {
+        var rec = stats.records.filter(function (c) { return c.kind === 'group' && c.group === g; })[0];
+        if (tbtF.cstatus === 'done' && !rec) return;
+        if (tbtF.cstatus === 'out' && rec) return;
+        if (tbtF.group && tbtF.group !== g) return;
+        rows.push('<tr><td><span class="t-main">' + esc(g) + '</span></td>' +
+          '<td>' + (rec ? esc(rec.presenter) : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + (rec ? esc(new Date(rec.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + (rec ? (rec.roster || []).length + ' roster' + ((rec.manual || []).length ? ' + ' + rec.manual.length + ' manual' : '') : '<span class="muted">—</span>') + '</td>' +
+          '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>');
+      });
+    } else {
+      (def.employees || []).filter(function (e) { return (co.groupsIncluded || def.groups).indexOf(e.g) !== -1; })
+        .forEach(function (e) {
+          var rec = stats.byName[e.n];
+          if (tbtF.cstatus === 'done' && !rec) return;
+          if (tbtF.cstatus === 'out' && rec) return;
+          if (tbtF.group && tbtF.group !== e.g) return;
+          rows.push('<tr><td><span class="t-main">' + esc(e.n) + '</span></td>' +
+            '<td>' + esc(e.g) + '</td>' +
+            '<td>' + (rec ? esc(new Date(rec.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : '<span class="muted">—</span>') + '</td>' +
+            '<td>' + (rec ? 'Individual' : '<span class="muted">—</span>') + '</td>' +
+            '<td class="r">' + (rec ? pill('p-ok', 'Completed') : pill('p-warn', 'Outstanding')) + '</td></tr>');
+        });
+    }
+    var wk0 = tbtTalkForWeek(co, 0);
+    var talk = tbtById((wk0 && wk0.id) || (stats.records[0] || {}).talkId);
+    return '<div class="tbt-card"><h3>D · Completion — week of ' + esc(tbtMondayLabel(0)) + '</h3>' +
+      '<div class="tbt-sub">' + esc(TBT_COMPANIES[TBT.company].name) + ' · ' +
+        (talk ? esc(talk.t) + (wk0 && wk0.auto ? ' <em style="font-style:normal;color:var(--ink-5)">(auto-selected)</em>' : '') : '—') +
+        ' · ' + (co.mode === 'group' ? 'Foreman-led group' : 'Individual') +
+        ' · due Monday ' + esc(tbtMondayLabel(0)) + '</div>' +
+      '<div class="fbar" style="margin-bottom:10px">' +
+        '<select id="tbt-fweek">' + weeks.map(function (w) {
+          return '<option value="' + w + '"' + (week === w ? ' selected' : '') + '>Week of ' + w + '</option>'; }).join('') + '</select>' +
+        '<select id="tbt-fgroup"><option value="">All jobs / groups</option>' +
+          def.groups.map(function (g) { return '<option value="' + esc(g) + '"' + (tbtF.group === g ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '</select>' +
+        '<select id="tbt-fstatus"><option value="">All statuses</option>' +
+          '<option value="done"' + (tbtF.cstatus === 'done' ? ' selected' : '') + '>Completed</option>' +
+          '<option value="out"' + (tbtF.cstatus === 'out' ? ' selected' : '') + '>Outstanding</option></select>' +
+        '<select id="tbt-fmethod"><option value="">All methods</option>' +
+          '<option value="group"' + (tbtF.method === 'group' ? ' selected' : '') + '>Group</option>' +
+          '<option value="individual"' + (tbtF.method === 'individual' ? ' selected' : '') + '>Individual</option></select>' +
+      '</div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        stats.mode === 'group'
+          ? [{ t: 'Job / group' }, { t: 'Presenter' }, { t: 'Submitted' }, { t: 'Attendance' }, { t: 'Status', r: 1 }]
+          : [{ t: 'Employee' }, { t: 'Job' }, { t: 'Completed' }, { t: 'Method' }, { t: 'Status', r: 1 }],
+        rows, 'Nothing matches these filters.') + '</div></div>' +
+      (stats.outstanding.length ? '<div class="tbt-miss" style="margin-top:8px"><b>Still missing this week:</b> ' +
+        esc(stats.outstanding.map(function (x) { return x.n || x; }).join(', ')) + '</div>' : '') +
+      '</div>';
+  }
+
+  /* ---------------- interaction ---------------- */
+  function tbtQueueAdd(id, atIndex) {
+    var co = tbtCo();
+    var d = tbtById(id);
+    if (!d || d.s !== 'Ready') { toast('Only "Ready" talks can be scheduled.'); return; }
+    if (co.queue.indexOf(id) !== -1) { toast('That talk is already in the queue.'); return; }  // no duplicates
+    if (typeof atIndex === 'number' && atIndex >= 0) co.queue.splice(atIndex, 0, id);
+    else co.queue.push(id);
+    tbtSave(); pgTalksDemo();
+  }
+  function tbtQueueMove(from, to) {
+    var co = tbtCo();
+    if (from === to || from < 0 || from >= co.queue.length) return;
+    var item = co.queue.splice(from, 1)[0];
+    co.queue.splice(Math.max(0, Math.min(to, co.queue.length)), 0, item);
+    tbtSave(); pgTalksDemo();
+  }
+  function tbtWire() {
+    var sel = $('#tbt-company');
+    if (sel) sel.onchange = function () { TBT.company = sel.value; tbtF.group = ''; tbtSave(); pgTalksDemo(); };
+    wireSearch('tbt-q', function (v) { tbtF.q = v; pgTalksDemo(); });
+    var st = $('#tbt-status'); if (st) st.onchange = function () { tbtF.status = st.value; pgTalksDemo(); };
+    var md = $('#tbt-mode'); if (md) md.onchange = function () { tbtCo().mode = md.value; tbtSave(); pgTalksDemo(); };
+    $$('[data-tbt-grp]').forEach(function (c) {
+      c.onchange = function () {
+        var co = tbtCo(), g = c.getAttribute('data-tbt-grp'), i = co.groupsIncluded.indexOf(g);
+        if (c.checked && i === -1) co.groupsIncluded.push(g);
+        if (!c.checked && i !== -1) co.groupsIncluded.splice(i, 1);
+        tbtSave(); pgTalksDemo();
+      };
+    });
+    $$('[data-tbt-add]').forEach(function (b) { b.onclick = function () { tbtQueueAdd(b.getAttribute('data-tbt-add')); }; });
+    $$('[data-tbt-del]').forEach(function (b) {
+      b.onclick = function () { var co = tbtCo(); co.queue.splice(+b.getAttribute('data-tbt-del'), 1); tbtSave(); pgTalksDemo(); };
+    });
+    $$('[data-tbt-top]').forEach(function (b) { b.onclick = function () { tbtQueueMove(+b.getAttribute('data-tbt-top'), 0); }; });
+    $$('[data-tbt-preview]').forEach(function (b) {
+      b.onclick = function () { tbtPreview(b.getAttribute('data-tbt-preview')); };
+    });
+    var rst = $('#tbt-reset');
+    if (rst) rst.onclick = function () {
+      if (!confirm('Reset the demo schedule and completion data for every company?')) return;
+      try { localStorage.removeItem(TBT_KEY); } catch (e) {}
+      TBT = null; tbtLoad(); pgTalksDemo(); toast('Demo schedule reset.');
+    };
+    ['tbt-fweek|week', 'tbt-fgroup|group', 'tbt-fstatus|cstatus', 'tbt-fmethod|method'].forEach(function (pair) {
+      var p = pair.split('|'), el = $('#' + p[0]);
+      if (el) el.onchange = function () { tbtF[p[1]] = el.value; pgTalksDemo(); };
+    });
+
+    // ---- drag and drop: library -> queue, and reordering inside the queue ----
+    $$('[data-tbt-lib]').forEach(function (row) {
+      if (row.getAttribute('draggable') !== 'true') return;
+      row.ondragstart = function (e) { e.dataTransfer.setData('text/plain', 'lib:' + row.getAttribute('data-tbt-lib')); e.dataTransfer.effectAllowed = 'copy'; };
+    });
+    $$('.tbt-qrow').forEach(function (row) {
+      row.ondragstart = function (e) { e.dataTransfer.setData('text/plain', 'q:' + row.getAttribute('data-tbt-qi')); row.classList.add('dragging'); };
+      row.ondragend = function () { row.classList.remove('dragging'); };
+      row.ondragover = function (e) { e.preventDefault(); };
+      row.ondrop = function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var raw = e.dataTransfer.getData('text/plain') || '', to = +row.getAttribute('data-tbt-qi');
+        if (raw.indexOf('q:') === 0) tbtQueueMove(+raw.slice(2), to);
+        else if (raw.indexOf('lib:') === 0) tbtQueueAdd(raw.slice(4), to);
+      };
+    });
+    var qbox = $('#tbt-queue');
+    if (qbox) {
+      qbox.ondragover = function (e) { e.preventDefault(); qbox.classList.add('over'); };
+      qbox.ondragleave = function () { qbox.classList.remove('over'); };
+      qbox.ondrop = function (e) {
+        e.preventDefault(); qbox.classList.remove('over');
+        var raw = e.dataTransfer.getData('text/plain') || '';
+        if (raw.indexOf('lib:') === 0) tbtQueueAdd(raw.slice(4));
+        else if (raw.indexOf('q:') === 0) tbtQueueMove(+raw.slice(2), tbtCo().queue.length - 1);
+      };
+    }
+  }
+  // Demo preview opens the ORIGINAL local file. Demo-gated only; production
+  // never sees a local absolute path.
+  function tbtPreview(id) {
+    var d = tbtById(id); if (!d) return;
+    if (!TBT_DEMO) return;
+    try { window.open('file://' + encodeURI(d.path), '_blank'); }
+    catch (e) { toast('Could not open the local file.'); }
+  }
+
   function pgTalks() {
+    // Demo build: ?demo=1 swaps in the local Toolbox Talk system.
+    // Production behaviour below is untouched.
+    if (TBT_DEMO) return pgTalksDemo();
     var right = subtabs(talkTab, [['log', 'Log'], ['awaiting', 'Awaiting Submission'], ['archive', 'Archive']], 'tt');
     var allTalks = B.talks || [];
     var today = new Date().toISOString().slice(0, 10);
