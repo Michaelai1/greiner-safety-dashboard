@@ -3438,7 +3438,7 @@
         '</div>' +
         (ff.types.length
           ? '<div class="small muted" style="margin-top:6px">' + ff.types.map(function (t) {
-              return esc(t.title) + ' <b>' + t.count + '</b>'; }).join(' · ') + '</div>'
+              return esc(t.title) + ' &times; <b>' + t.count + '</b>'; }).join(' · ') + '</div>'
           : '<div class="an-empty">No field submissions in this range.</div>') +
         '</div>';
     }
@@ -3486,9 +3486,9 @@
           anCard(ca.closed.length, 'closed', 'ca-closed', 'See the closed actions') +
         '</div>' +
         (ca.all.length
-          ? '<div class="small muted" style="margin-top:6px">Source: ' +
+          ? '<div class="small muted" style="margin-top:6px">Sources: ' +
             Object.keys(ca.bySource).map(function (k) {
-              return esc(k) + ' <b>' + ca.bySource[k] + '</b>'; }).join(' · ') + '</div>'
+              return esc(k) + ' &times; <b>' + ca.bySource[k] + '</b>'; }).join(' · ') + '</div>'
           : '<div class="an-empty">No corrective actions on record.</div>') +
         '</div>';
     }
@@ -5117,7 +5117,7 @@
     (B.findings || []).forEach(function (f) {
       out.push({ text: f.corrective || (f.imported ? 'Open finding — corrective action pending' : f.description),
         detail: f.description,
-        src: f.imported ? (f.source || 'Imported Safety 101') : 'Report finding',
+        src: f.imported ? (f.source || 'Imported Safety 101') : 'Safety inspection finding',
         owner: f.imported ? '' : subName(f.sub_id), job: f.job_id,
         due: f.due, status: f.status, ref: 'find|' + f.id,
         photos: (f.photos_list || []).length });
