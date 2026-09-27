@@ -15,7 +15,11 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DASH = path.resolve(HERE, '..');
 const PHONE = path.resolve(DASH, '../greiner-qr-weekend-2026-09-26');
-const OUT = path.join(DASH, 'demo-site');
+/* Content is built under a /greiner/ prefix so the deployed paths already match
+   the intended demo.confirmsafety.com/greiner/... shape. Attaching that
+   hostname later needs no rebuild. */
+const ROOT_OUT = path.join(DASH, 'demo-site');
+const OUT = path.join(ROOT_OUT, 'greiner');
 
 const NOTE = 'DEMO BUILD — credentials stripped, no production access';
 
@@ -54,7 +58,7 @@ const mk = (p) => fs.mkdirSync(p, { recursive: true });
 const read = (p) => fs.readFileSync(p, 'utf8');
 const write = (p, s) => { mk(path.dirname(p)); fs.writeFileSync(p, s); };
 
-rm(OUT); mk(OUT);
+rm(ROOT_OUT); mk(OUT);
 
 /* ---------- shared scrubbing ---------- */
 function scrub(src, label) {
@@ -278,7 +282,14 @@ write(path.join(OUT, 'index.html'), `<!DOCTYPE html>
 </html>
 `);
 
-write(path.join(OUT, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-write(path.join(OUT, '_headers'), "/*\n  X-Robots-Tag: noindex, nofollow\n");
+write(path.join(ROOT_OUT, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
+write(path.join(ROOT_OUT, '_headers'), "/*\n  X-Robots-Tag: noindex, nofollow\n");
+  // a bare visit to the project root goes to the demo
+  write(path.join(ROOT_OUT, 'index.html'),
+    '<!DOCTYPE html><meta charset="utf-8">' +
+    '<meta name="robots" content="noindex, nofollow">' +
+    '<meta http-equiv="refresh" content="0; url=./greiner/">' +
+    '<title>Greiner Feature Demo</title>' +
+    '<a href="./greiner/">Greiner feature demo</a>');
 
-console.log('demo-site built at ' + path.relative(DASH, OUT));
+console.log('demo-site built at ' + path.relative(DASH, ROOT_OUT) + ' (content under /greiner/)');

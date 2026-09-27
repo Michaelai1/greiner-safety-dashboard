@@ -9,7 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = new URL('../', import.meta.url);
-const SITE = path.join(path.resolve(root.pathname), 'demo-site');
+// content lives under /greiner/ so the deployed paths match the target URLs
+const SITE = path.join(path.resolve(root.pathname), 'demo-site', 'greiner');
 
 if (!fs.existsSync(SITE)) {
   console.log('Demo site verification skipped (run tools/build-demo-site.mjs first).');
@@ -110,8 +111,8 @@ for (const page of ['index.html', 'office/index.html', 'phone/index.html']) {
   assert.match(src, /name="robots" content="noindex, nofollow"/,
     `${page} must carry a noindex meta tag`);
 }
-assert.match(read(path.join(SITE, 'robots.txt')), /Disallow: \//, 'robots.txt must disallow all');
-assert.match(read(path.join(SITE, '_headers')), /X-Robots-Tag: noindex/,
+assert.match(read(path.join(SITE, '..', 'robots.txt')), /Disallow: \//, 'robots.txt must disallow all');
+assert.match(read(path.join(SITE, '..', '_headers')), /X-Robots-Tag: noindex/,
   'the host headers must add X-Robots-Tag');
 
 // every internal link and asset resolves inside the site
