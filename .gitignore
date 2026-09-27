@@ -8,3 +8,6 @@ demo-site/
 # Real-name guard list for the privacy tests. Local only — the public repo
 # must not enumerate real people, which is the very thing the guard prevents.
 tests/real-names.local.json
+
+# wrangler local state
+.wrangler/
