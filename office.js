@@ -3171,7 +3171,7 @@
   }
   function siWeekDays(iso) {
     var out = [], d = new Date((iso || siWeekISO()) + 'T12:00:00');
-    for (var i = 0; i < 7; i++) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
+    for (var i = 0; i < 7; i++) { out.push(anIsoDay(d)); d.setDate(d.getDate() + 1); }
     return out;
   }
   // "Sep 28 – Oct 4, 2026"
@@ -3208,22 +3208,61 @@
     };
   }
 
-  /* ---- requirements store ------------------------------------------------
-     Requirements the office has defined, seeded from the demo fixtures and
-     kept in memory for the session. Nothing is written anywhere. */
-  var SI_REQS = null;
-  function siReqs() {
-    if (!SI_REQS) SI_REQS = (window.DEMO.requirements || []).map(function (r) {
-      return JSON.parse(JSON.stringify(r));
+  /* ---- what the field is required to submit ------------------------------
+     Derived from the Jobs tab's own assignment records: a form is expected on
+     a job when at least one field-login user on that job is permitted to open
+     it. There is no second list of requirements — change the assignment in
+     Jobs and this changes with it.
+
+     The frequency is policy attached to the form type (SI_FORMS_READY), not a
+     per-job record, so nothing here can drift out of step with Jobs.        */
+  var SI_ASSIGN = null;                 // job_id -> [form keys], from the RPC
+  function siLoadAssignments(then) {
+    var jobs = ((TBT_DEMO && window.DEMO) ? window.DEMO.jobs : (B && B.jobs)) || [];
+    var out = {}, left = jobs.length;
+    if (!left) { SI_ASSIGN = out; if (then) then(); return; }
+    jobs.forEach(function (j) {
+      post('cs_portal_job_field_users', { p_job_id: j.id }).then(function (users) {
+        var keys = {};
+        (Array.isArray(users) ? users : []).forEach(function (u) {
+          var fk = Array.isArray(u.form_keys) ? u.form_keys
+            : SI_FORMS_READY.map(function (f) { return f.key; });   // null = all defaults
+          fk.forEach(function (k) { keys[k] = 1; });
+        });
+        out[j.id] = Object.keys(keys);
+      }).catch(function () { out[j.id] = []; }).then(function () {
+        if (--left === 0) { SI_ASSIGN = out; if (then) then(); }
+      });
     });
-    return SI_REQS;
+  }
+  function siReqs() {
+    if (!SI_ASSIGN) return [];
+    var jobs = ((TBT_DEMO && window.DEMO) ? window.DEMO.jobs : (B && B.jobs)) || [];
+    var out = [];
+    jobs.forEach(function (j) {
+      (SI_ASSIGN[j.id] || []).forEach(function (key) {
+        var def = siFormDef(key);
+        if (!def) return;                       // unsupported form: never required
+        out.push({
+          id: 'assign-' + j.id + '-' + key,
+          company: 'greiner', job_id: j.id, form: key,
+          type: def.defaultType,
+          weekdays: def.defaultType === 'activity' ? [] : [1, 2, 3, 4, 5],
+          units: (((TBT_DEMO && window.DEMO) ? window.DEMO.equipment : (B && B.equipment)) || []).filter(function (e) {
+            return e.job_id === j.id &&
+              (key === 'aerial' ? e.kind === 'aerial' : key === 'forklift' ? e.kind === 'forklift' : false);
+          }).map(function (e) { return e.unit; }),
+          start: null, end: null, due_time: null, notes: def.note,
+          week: null, status: 'active', fromJobs: true
+        });
+      });
+    });
+    return out;
   }
   function siReqsForWeek(iso) {
     var week = iso || siWeekISO();
     return siReqs().filter(function (r) {
       if (r.week && r.week !== week) return false;
-      if (r.start && r.start > siWeekDays(week)[6]) return false;
-      if (r.end && r.end < week) return false;
       return true;
     });
   }
@@ -3272,7 +3311,7 @@
   function siStatus(req, week) {
     var subs = siSubmissionsFor(req, week);
     var exp = siExpected(req, week);
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     var days = siWeekDays(week);
     if (req.status === 'na') return { key: 'na', label: 'Not Applicable', done: subs.length, exp: exp, subs: subs };
     if (exp === null) {
@@ -3339,6 +3378,10 @@
       '.ar-note{background:var(--accent-tt);border:1px solid var(--accent-br,var(--line-2));border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;color:var(--ink-2);margin-bottom:14px}' +
       '.si-rules{margin-left:8px}.si-rules.on{background:var(--accent);color:#fff;border-color:var(--accent)}' +
       '.si-rulehd{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:14px}' +
+      '.ai-forms{display:grid;gap:6px}' +
+      '.ai-form{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}' +
+      '.ai-form b{display:block;font-size:13px;color:var(--ink)}' +
+      '.ai-form span{font-size:11.5px;color:var(--ink-4);line-height:1.45}' +
       '.ar-blocked{display:grid;gap:8px}' +
       '.ar-brow{border:1px dashed var(--line-2);border-radius:9px;padding:10px 12px;background:var(--bg);' +
         'opacity:.85;cursor:not-allowed}' +
@@ -3354,6 +3397,8 @@
 
   function pgObsDemo() {
     if (['log', 'jha', 'find', 'rules'].indexOf(siTab) === -1) siTab = 'log';
+    // Requirements come from the Jobs assignments; load them once per visit.
+    if (SI_ASSIGN === null) { siLoadAssignments(pgObsDemo); SI_ASSIGN = SI_ASSIGN || {}; }
     /* Weekly Requirements is no longer a main tab — the office reviews what came
        back, it does not live in a scheduling app. The requirement records and
        every compliance calculation are unchanged; they are edited behind
@@ -3449,7 +3494,7 @@
   function siWireReq() {
     var b = $('#si-backlog'); if (b) b.onclick = function () { siTab = 'log'; pgObsDemo(); };
     var j = $('#si-job'); if (j) j.onchange = function () { siF.job = j.value; pgObsDemo(); };
-    var a = $('#si-addreq'); if (a) a.onclick = siAddRequirement;
+    var a = $('#si-addreq'); if (a) a.onclick = siAddInspection;
     $$('[data-si-open]').forEach(function (b) {
       b.onclick = function () { siOpenRequirement(b.getAttribute('data-si-open')); };
     });
@@ -3483,157 +3528,58 @@
     drawer('Requirement', jobName(r.job_id) + ' · ' + siFormLabel(r.form), h);
   }
 
-  /* ---------------- Add Requirement ---------------- */
-  function siAddRequirement() {
-    var jobs = window.DEMO.jobs || [];
-    var st = { company: 'greiner', job: jobs[0] ? jobs[0].id : '', form: SI_FORMS_READY[0].key,
-               type: SI_FORMS_READY[0].defaultType, weekdays: [1, 2, 3, 4, 5],
-               start: siWeekISO(), end: siWeekDays()[6], due: '', units: [], notes: '' };
-
-    function render() {
-      var def = siFormDef(st.form);
-      var allowed = def ? def.types : ['once'];
-      if (allowed.indexOf(st.type) === -1) st.type = def ? def.defaultType : 'once';
-      var names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      var equip = (window.DEMO.equipment || []).filter(function (e) {
-        return e.job_id === st.job && (st.form === 'aerial' ? e.kind === 'aerial' : e.kind === 'forklift');
-      });
-
-      var h = '<div class="ar-note">This creates an <b>expected</b> field inspection for the ' +
-        'selected job and week. It does not mark an inspection complete — the crew still submits ' +
-        'it from the phone.</div>' +
-        '<div class="f"><label for="ar-co">Company</label>' +
-        '<select id="ar-co">' + Object.keys(TBT_COMPANIES).map(function (k) {
-          return '<option value="' + k + '"' + (st.company === k ? ' selected' : '') + '>' +
-            esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
-        (st.company === 'greiner' ? '' :
-          '<p class="small muted" style="margin:.35rem 0 0">Only Greiner has demo jobsites in this fixture set.</p>') +
-        '</div>' +
-        '<div class="f"><label for="ar-job">Jobsite</label><select id="ar-job">' +
-          jobs.map(function (j) {
-            return '<option value="' + esc(j.id) + '"' + (st.job === j.id ? ' selected' : '') + '>' +
-              esc(j.name) + '</option>'; }).join('') + '</select></div>' +
-
-        '<div class="f"><label for="ar-form">Inspection or form type</label>' +
-          '<select id="ar-form">' + SI_FORMS_READY.map(function (f) {
-            return '<option value="' + f.key + '"' + (st.form === f.key ? ' selected' : '') + '>' +
-              esc(f.label) + '</option>'; }).join('') + '</select>' +
-          (def ? '<p class="small muted" style="margin:.35rem 0 0">' + esc(def.note) + '</p>' : '') +
-        '</div>' +
-
-        '<div class="f"><label for="ar-type">Requirement type</label>' +
-          '<select id="ar-type">' + SI_REQ_TYPES.filter(function (t) {
-            return allowed.indexOf(t[0]) !== -1;
-          }).map(function (t) {
-            return '<option value="' + t[0] + '"' + (st.type === t[0] ? ' selected' : '') + '>' +
-              esc(t[1]) + '</option>'; }).join('') + '</select>' +
-          (allowed.length === 1
-            ? '<p class="small muted" style="margin:.35rem 0 0">' + esc(siFormLabel(st.form)) +
-              ' only supports this frequency.</p>' : '') +
-        '</div>' +
-
-        '<div class="f"><label>Week</label><div class="ar-week">' + esc(siWeekLabel()) + '</div></div>' +
-
-        (st.type === 'daily' || st.type === 'equipment'
-          ? '<div class="f"><label>Applicable weekdays</label><div class="ar-days">' +
-              names.map(function (n, i) {
-                var on = st.weekdays.indexOf(i) !== -1;
-                return '<button type="button" class="ar-day' + (on ? ' is-on' : '') +
-                  '" data-ar-day="' + i + '">' + n + '</button>'; }).join('') + '</div></div>'
-          : '') +
-
-        (st.type === 'equipment'
-          ? '<div class="f"><label>Applicable equipment</label>' +
-              (equip.length
-                ? equip.map(function (e) {
-                    var on = st.units.indexOf(e.unit) !== -1;
-                    return '<label class="check ar-unit"><input type="checkbox" data-ar-unit="' +
-                      esc(e.unit) + '"' + (on ? ' checked' : '') + '><span>' + esc(e.unit) +
-                      ' <span class="small muted">' + esc(e.label) + '</span></span></label>'; }).join('')
-                : '<p class="small muted">No ' + (st.form === 'aerial' ? 'aerial lifts' : 'forklifts') +
-                  ' are assigned to this jobsite, so a per-unit requirement cannot be counted yet.</p>') +
-            '</div>'
-          : '') +
-
-        '<div style="display:flex;gap:8px">' +
-          '<div class="f" style="flex:1"><label for="ar-start">Start date</label>' +
-            '<input type="date" id="ar-start" value="' + esc(st.start) + '"></div>' +
-          '<div class="f" style="flex:1"><label for="ar-end">End date</label>' +
-            '<input type="date" id="ar-end" value="' + esc(st.end) + '"></div>' +
-        '</div>' +
-        '<div class="f"><label for="ar-due">Due time</label>' +
-          '<input type="time" id="ar-due" value="' + esc(st.due) + '" placeholder="Optional"></div>' +
-        '<div class="f"><label for="ar-notes">Notes</label>' +
-          '<textarea id="ar-notes" rows="2" class="ar-ta">' + esc(st.notes) + '</textarea></div>' +
-
-        /* Everything the office cannot schedule, and why. */
-        '<div class="sec-h">Needs review before it can be scheduled</div>' +
-        '<div class="ar-blocked">' + SI_FORMS_REVIEW.map(function (f) {
-          return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
-            '<div class="w">' + esc(f.why) + '</div>' +
-            '<div class="tags">' + f.missing.map(function (m) {
-              return '<span class="ar-tag">' + esc(m) + '</span>'; }).join('') + '</div></div>';
-        }).join('') + SI_FORMS_NOTBUILT.map(function (f) {
-          return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
-            '<div class="w">' + esc(f.why) + '</div>' +
-            '<div class="tags"><span class="ar-tag">No mobile submission form exists</span></div></div>';
-        }).join('') + '</div>' +
-
-        '<div style="margin-top:16px">' +
-          '<button class="btn btn-gold" id="ar-save" style="width:100%;justify-content:center">Add Requirement</button>' +
-          '<button class="btn" id="ar-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>' +
-        '</div>';
-
-      drawer('Add Inspection for This Week',
-        'Expected inspection for ' + siWeekLabel(), h);
-      wire();
-    }
-
-    function wire() {
-      var co = $('#ar-co'); if (co) co.onchange = function () { st.company = this.value; render(); };
-      var jb = $('#ar-job'); if (jb) jb.onchange = function () { st.job = this.value; st.units = []; render(); };
-      // Changing the form resets the frequency to that form's default, so picking
-      // Aerial always lands on per-unit rather than silently keeping the last choice.
-      var fm = $('#ar-form'); if (fm) fm.onchange = function () {
-        st.form = this.value; st.units = [];
-        var d = siFormDef(st.form); if (d) st.type = d.defaultType;
-        render();
-      };
-      var tp = $('#ar-type'); if (tp) tp.onchange = function () { st.type = this.value; render(); };
-      $$('[data-ar-day]').forEach(function (b) {
-        b.onclick = function () {
-          var n = +b.getAttribute('data-ar-day'), i = st.weekdays.indexOf(n);
-          if (i === -1) st.weekdays.push(n); else st.weekdays.splice(i, 1);
-          st.weekdays.sort(); render();
-        };
-      });
-      $$('[data-ar-unit]').forEach(function (c) {
-        c.onchange = function () {
-          var u = c.getAttribute('data-ar-unit'), i = st.units.indexOf(u);
-          if (c.checked && i === -1) st.units.push(u);
-          if (!c.checked && i !== -1) st.units.splice(i, 1);
-        };
-      });
-      ['start', 'end', 'due', 'notes'].forEach(function (k) {
-        var e = $('#ar-' + k);
-        if (e) e.oninput = e.onchange = function () { st[k] = this.value; };
-      });
-      var cn = $('#ar-cancel'); if (cn) cn.onclick = closeDrawer;
-      var sv = $('#ar-save');
-      if (sv) sv.onclick = function () {
-        if (!st.job) { toast('Choose a jobsite.'); return; }
-        siReqs().push({
-          id: 'req-' + Date.now(), company: st.company, job_id: st.job, form: st.form,
-          type: st.type, weekdays: st.weekdays.slice(), units: st.units.slice(),
-          start: st.start || null, end: st.end || null, due_time: st.due || null,
-          notes: st.notes || '', week: null, status: 'active'
-        });
-        closeDrawer();
-        toast('Requirement added for ' + siWeekLabel() + ' (demo only — nothing saved).');
-        pgObsDemo();
-      };
-    }
-    render();
+  /* ---------------- Add Inspection for This Week ----------------
+     A shortcut, not a second assignment system. It picks a job and then opens
+     the Jobs tab's own field-access editor for that job — the same controls,
+     the same records (cs_portal_job_field_users / cs_portal_user_forms_set),
+     the same rules. Anything changed here is identical to changing it in Jobs,
+     because it IS the Jobs control. */
+  function siAddInspection() {
+    var jobs = (window.DEMO && window.DEMO.jobs) || (B && B.jobs) || [];
+    var pre = siF.job || (jobs[0] || {}).id || '';
+    var h = '<div class="ar-note">Inspections are assigned to a job in <b>Jobs</b>, by choosing ' +
+        'which forms each field-login user may open. This opens those same controls for the job ' +
+        'you pick — it does not create a separate schedule, and it does not mark anything ' +
+        'complete.</div>' +
+      '<div class="f"><label for="ai-job">Jobsite</label><select id="ai-job">' +
+        jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (pre === j.id ? ' selected' : '') + '>' +
+            esc(j.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="f"><label>Forms that can be assigned</label>' +
+        '<div class="ai-forms">' + SI_FORMS_READY.map(function (f) {
+          return '<div class="ai-form"><b>' + esc(f.label) + '</b>' +
+            '<span>' + esc(f.note) + '</span></div>'; }).join('') + '</div>' +
+        '<p class="small muted" style="margin:.4rem 0 0">Only forms the field app actually ' +
+        'supports can be assigned. Frequency follows the form: a daily JHA per active job, ' +
+        'hot work only when the activity occurs, lift checks per unit on days used.</p></div>' +
+      '<div class="sec-h">Needs review before it can be assigned</div>' +
+      '<div class="ar-blocked">' + SI_FORMS_REVIEW.map(function (f) {
+        return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
+          '<div class="w">' + esc(f.why) + '</div>' +
+          '<div class="tags">' + f.missing.map(function (m) {
+            return '<span class="ar-tag">' + esc(m) + '</span>'; }).join('') + '</div></div>';
+      }).join('') + SI_FORMS_NOTBUILT.map(function (f) {
+        return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
+          '<div class="w">' + esc(f.why) + '</div>' +
+          '<div class="tags"><span class="ar-tag">No mobile submission form exists</span></div></div>';
+      }).join('') + '</div>' +
+      '<div style="margin-top:16px">' +
+        '<button class="btn btn-gold" id="ai-go" style="width:100%;justify-content:center">' +
+          'Open assignment controls in Jobs</button>' +
+        '<button class="btn" id="ai-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>' +
+      '</div>';
+    drawer('Add Inspection for This Week', 'Assigned in Jobs · ' + siWeekLabel(), h);
+    var c = $('#ai-cancel'); if (c) c.onclick = closeDrawer;
+    var g = $('#ai-go');
+    if (g) g.onclick = function () {
+      var id = ($('#ai-job') || {}).value;
+      if (!id) { toast('Choose a jobsite.'); return; }
+      closeDrawer();
+      SI_ASSIGN = null;                 // re-read the assignments after any edit
+      jobsTab = 'active';
+      go('jobs');
+      openJob(id);                      // the Jobs tab's own drawer and controls
+    };
   }
 
   /* ---------------- B · Submission Log ---------------- */
@@ -3645,13 +3591,14 @@
     // A JHA and its revisions are one family by default.
     var seen = {}, out = [];
     rows.forEach(function (s) {
-      if (s.form_type === 'jha' && s.root_jha_id) {
-        if (seen[s.root_jha_id]) return;
-        seen[s.root_jha_id] = 1;
-        var fam = rows.filter(function (x) { return x.root_jha_id === s.root_jha_id; })
+      if (s.form_type === 'jha') {
+        var key = s.root_jha_id || s.id;
+        if (seen[key]) return;
+        seen[key] = 1;
+        var fam = rows.filter(function (x) { return (x.root_jha_id || x.id) === key; })
           .sort(function (a, b) { return (a.revision_number || 0) - (b.revision_number || 0); });
         var latest = fam[fam.length - 1];
-        out.push(Object.assign({}, latest, { revisions: fam.length - 1, family: s.root_jha_id }));
+        out.push(Object.assign({}, latest, { revisions: fam.length - 1, family: s.root_jha_id || null }));
         return;
       }
       out.push(s);
@@ -3715,7 +3662,7 @@
   }
   function siWireLog() {
     siWireWeek(pgObsDemo);
-    var ai = $('#si-addinsp'); if (ai) ai.onclick = siAddRequirement;
+    var ai = $('#si-addinsp'); if (ai) ai.onclick = siAddInspection;
     [['si-job', 'job'], ['si-form', 'form'], ['si-who', 'who'], ['si-flag', 'flagged']].forEach(function (p) {
       var e = $('#' + p[0]);
       if (e) e.onchange = function () { siF[p[1]] = e.value; pgObsDemo(); };
@@ -3754,7 +3701,7 @@
 
   /* ---------------- D · Findings & Corrective Actions ---------------- */
   function siFindingsHtml() {
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     var all = allCorrective().filter(function (c) {
       if (siF.job && c.job !== siF.job) return false;
       if (siF.status === 'open' && c.status === 'closed') return false;
@@ -3818,7 +3765,7 @@
   /* The window the whole page is filtered to. Presets resolve to real dates so
      every section uses the same range. */
   function anlRangeBounds() {
-    var iso = window.DEMO.isoDay, off = window.DEMO.dayOffset;
+    var iso = anIsoDay, off = anDayOffset;
     var preset = anF.range || 'week';
     if (preset === 'custom') {
       return { from: anF.from || iso(off(-6)), to: anF.to || iso(off(0)) };
@@ -3840,14 +3787,15 @@
     var b = anlRangeBounds();
     var out = [], d = new Date(b.from + 'T12:00:00'), end = new Date(b.to + 'T12:00:00');
     var guard = 0;
-    while (d <= end && guard++ < 400) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
+    while (d <= end && guard++ < 400) { out.push(anIsoDay(d)); d.setDate(d.getDate() + 1); }
     return out;
   }
   function anlJobs() {
     // Only Greiner has demo jobs; Choice and Peine are Toolbox-Talk-only in
     // this fixture set, and the page says so rather than borrowing job data.
-    if (anF.company !== 'greiner') return [];
-    return (window.DEMO.jobs || []).filter(function (j) { return !anF.job || j.id === anF.job; });
+    if (anSrc().live) { /* live: every active job counts */ }
+    else if (anF.company !== 'greiner') return [];
+    return (anSrc().jobs || []).filter(function (j) { return !anF.job || j.id === anF.job; });
   }
 
   /* ---- A. daily safety compliance -------------------------------------
@@ -3857,7 +3805,7 @@
     var days = anlRangeDays(), jobs = anlJobs();
     var jobIds = jobs.map(function (j) { return j.id; });
     var fams = jhaFamilies();
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     var required = [], completed = [], missed = [], upcoming = [];
 
     // Compliance follows the requirements the office defined, so the card and
@@ -3911,18 +3859,70 @@
              auto: !!(wk0 && wk0.auto), company: key };
   }
 
+  /* ---- where the numbers come from --------------------------------------
+     One accessor so the Analytics interface, calculations and empty states can
+     be merged into the live dashboard unchanged. In the demo it reads the
+     fixtures; in production it reads the real bundle and the real field
+     submissions, and nothing else. There is no path where a fixture reaches a
+     production screen: TBT_DEMO is the only switch, and window.DEMO only
+     exists as data when the page was opened with ?demo=1.                   */
+  function anSrc() {
+    if (TBT_DEMO && window.DEMO) {
+      return { live: false, jobs: window.DEMO.jobs || [], field: window.DEMO.field || [],
+               findings: window.DEMO.findings || [], incidents: window.DEMO.incidents || [],
+               nearMisses: window.DEMO.nearMisses || [], equipment: window.DEMO.equipment || [],
+               baseline: window.DEMO.baseline || {}, toolbox: true };
+    }
+    return {
+      live: true,
+      jobs: ((B && B.jobs) || []).filter(function (j) { return !j.archived; }),
+      // real crew submissions, in the same shape the demo fixtures use
+      field: (FIELDRAW || []).map(function (r) {
+        return { id: r.id, form_type: r.form_type, form_title: r.form_title || r.form_type,
+                 job_id: r.job_id, job_name: r.job_name || jobName(r.job_id),
+                 inspector_name: r.inspector_name, submitted_at: r.submitted_at,
+                 has_defects: !!r.has_defects, defect_count: r.defect_count || 0,
+                 asset_id: r.asset_id || null,
+                 // production JHAs carry no revision chain yet; each submission
+                 // is its own record and the revision figures read zero honestly
+                 root_jha_id: r.root_jha_id || null,
+                 revision_number: r.revision_number || 1 };
+      }),
+      findings: (B && B.findings) || [],
+      incidents: ((B && B.incidents) || []).filter(function (i) { return !i.demo_sample; }),
+      nearMisses: ((B && B.near_misses) || []).filter(function (i) { return !i.demo_sample; }),
+      equipment: (B && B.equipment) || [],
+      // No baseline is stored anywhere yet, so live always reports it missing
+      // rather than showing a zero.
+      baseline: { last_recordable: null, last_lost_time: null, recordkeeping_start: null },
+      // The weekly Toolbox Talk system is not live yet. Rather than compute a
+      // participation rate from nothing, the section says so.
+      toolbox: false
+    };
+  }
+  function anIsoDay(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+           '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function anDayOffset(n) {
+    var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return d;
+  }
+
   /* ---- D. field form activity ------------------------------------------
      Every field submission in range, by form type. Counted from the same
      records the Inspections page lists. */
   function anlFieldForms() {
     var days = anlRangeDays(), jobIds = anlJobs().map(function (j) { return j.id; });
-    var rows = (window.DEMO.field || []).filter(function (r) {
+    var rows = (anSrc().field || []).filter(function (r) {
       if (jobIds.indexOf(r.job_id) === -1) return false;
-      return days.indexOf(window.DEMO.isoDay(new Date(r.submitted_at))) !== -1;
+      return days.indexOf(anIsoDay(new Date(r.submitted_at))) !== -1;
     });
     // JHAs are counted as families so a revised JHA is one submission here too.
     var jhaFams = {};
-    rows.forEach(function (r) { if (r.form_type === 'jha' && r.root_jha_id) jhaFams[r.root_jha_id] = 1; });
+    rows.forEach(function (r) {
+      // A production JHA carries no revision chain, so it is its own family.
+      if (r.form_type === 'jha') jhaFams[r.root_jha_id || r.id] = 1;
+    });
     var byType = {};
     rows.forEach(function (r) {
       var k = r.form_type;
@@ -3942,10 +3942,11 @@
        per JHA family (its latest version), one row per other submission. */
     var seenFam = {}, counted = [];
     rows.forEach(function (r) {
-      if (r.form_type === 'jha' && r.root_jha_id) {
-        if (seenFam[r.root_jha_id]) return;
-        seenFam[r.root_jha_id] = 1;
-        var fam = rows.filter(function (x) { return x.root_jha_id === r.root_jha_id; })
+      if (r.form_type === 'jha') {
+        var key = r.root_jha_id || r.id;
+        if (seenFam[key]) return;
+        seenFam[key] = 1;
+        var fam = rows.filter(function (x) { return (x.root_jha_id || x.id) === key; })
           .sort(function (a, b) { return (a.revision_number || 0) - (b.revision_number || 0); });
         var latest = fam[fam.length - 1];
         counted.push(Object.assign({}, latest, {
@@ -3992,7 +3993,7 @@
     var jobIds = anlJobs().map(function (j) { return j.id; });
     var all = allCorrective().filter(function (c) { return jobIds.indexOf(c.job) !== -1; });
     var open = all.filter(function (c) { return c.status !== 'closed'; });
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     var overdue = open.filter(function (c) { return c.due && c.due < today; });
     var bySource = {};
     all.forEach(function (c) { bySource[c.src] = (bySource[c.src] || 0) + 1; });
@@ -4013,9 +4014,9 @@
       return jobIds.indexOf(r.job_id) !== -1 && r.date &&
              new Date(r.date).getFullYear() === year;
     };
-    var inc = ((window.DEMO.incidents) || []).filter(inScope);
-    var nm = ((window.DEMO.nearMisses) || []).filter(inScope);
-    var base = window.DEMO.baseline || {};
+    var inc = ((anSrc().incidents) || []).filter(inScope);
+    var nm = ((anSrc().nearMisses) || []).filter(inScope);
+    var base = anSrc().baseline || {};
     // Days since last recordable is only computable from a supplied baseline.
     // With no baseline and no incidents there is no number — and 0 would be a
     // lie in both directions, so it is never shown.
@@ -4103,10 +4104,13 @@
   var AN_TONE = { ok: '#16a34a', warn: '#d97706', bad: '#dc2626', info: '#2563eb', grey: '#94a3b8' };
 
   function pgAnalyticsDemo() {
+    // Compliance is derived from the Jobs assignments, so load them here too —
+    // the Analytics page can be opened without visiting Safety Inspections.
+    if (SI_ASSIGN === null) { SI_ASSIGN = {}; siLoadAssignments(pgAnalyticsDemo); }
     var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
     var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts(), ic = anlIncidents();
     var ca = anlCorrective();
-    var jobs = (window.DEMO.jobs || []);
+    var jobs = (anSrc().jobs || []);
     var s = tb.stats;
 
     var html = anStyle() +
@@ -4157,6 +4161,15 @@
       '</div>' + anCardClose('compliance');
 
     // 2 · Toolbox talk participation
+    if (!anSrc().toolbox) {
+      html += anCardOpen('') +
+        anHead('Toolbox Talk Participation',
+          'The weekly Toolbox Talk system is not live yet, so there is nothing to measure here. ' +
+          'No rate is shown rather than one calculated from nothing.', 0) +
+        '<div class="an-zero3"><div class="an-zrow"><b class="need">Not yet live</b>' +
+          '<span>weekly scheduling and completion</span></div></div>' +
+        anCardClose('');
+    } else
     html += anCardOpen('toolbox') +
       anHead('Toolbox Talk Participation',
         s.mode === 'group' ? 'Counted by job or meeting group. Manual attendees add to attendance only.'
@@ -4187,7 +4200,7 @@
       anCardClose('jhareview');
 
     // 4 · Open corrective actions
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     var ages = { '0-7': 0, '8-30': 0, '31+': 0 };
     ca.open.forEach(function (c) {
       if (!c.due) { ages['0-7']++; return; }
@@ -4294,8 +4307,8 @@
     to.setDate(to.getDate() - 1);
     from.setDate(from.getDate() - days);
     anF.range = 'custom';
-    anF.from = window.DEMO.isoDay(from);
-    anF.to = window.DEMO.isoDay(to);
+    anF.from = anIsoDay(from);
+    anF.to = anIsoDay(to);
     var out = { comp: anlCompliance(), jha: anlJhaActivity(), ff: anlFieldForms(),
                 hw: anlHotWork(), lf: anlLifts() };
     anF.range = saved.range; anF.from = saved.from; anF.to = saved.to;
@@ -4403,7 +4416,7 @@
         'Inspections with defects recorded', 'lift-flagged')
     ]);
 
-    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var today = anIsoDay(anDayOffset(0));
     html += anGroup('Corrective Actions', [
       anRow('Open', ca.open.length, null, 'Status not closed, from inspection findings', 'ca-open'),
       anRow('Overdue', ca.overdue.length, null, 'Open with a due date before today', 'ca-overdue'),
@@ -4778,7 +4791,7 @@
             : which === 'ca-overdue' ? 'Overdue corrective actions' : 'Closed corrective actions';
       sub = cl.length + ' action' + (cl.length === 1 ? '' : 's') +
         ' — from inspection findings and report fixes';
-      var todayStr = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+      var todayStr = anIsoDay(anDayOffset(0));
       body = tableWrap([{ t: 'Corrective action' }, { t: 'Source' }, { t: 'Job' },
                         { t: 'Owner' }, { t: 'Due' }, { t: 'Status', r: 1 }],
         cl.map(function (c) {
@@ -4810,7 +4823,27 @@
 
   // Group the flat revision rows into families keyed by root_jha_id.
   function jhaFamilies() {
-    var rows = (window.DEMO && window.DEMO.jha) || [];
+    /* Demo reads the rich fixture records. Live reads the real JHA submissions,
+       which carry no revision chain yet — so each submission is its own family
+       with zero revisions, and the revision figures read zero honestly rather
+       than being estimated. */
+    var rows;
+    if (TBT_DEMO && window.DEMO) {
+      rows = window.DEMO.jha || [];
+    } else {
+      rows = (anSrc().field || []).filter(function (r) { return r.form_type === 'jha'; })
+        .map(function (r) {
+          return { id: r.id, root_jha_id: r.root_jha_id || r.id,
+                   previous_revision_id: null, revision_number: r.revision_number || 1,
+                   job_id: r.job_id, job_name: r.job_name,
+                   work_date: r.submitted_at ? anIsoDay(new Date(r.submitted_at)) : '',
+                   original_submitted_at: r.submitted_at, revised_at: r.submitted_at,
+                   submitted_by: r.inspector_name, revised_by: r.inspector_name,
+                   status: 'submitted', description_of_work: '',
+                   employees: [], tasks: [], hazards: [], actions: [],
+                   ladder_use: '', photos: [], changes: null };
+        });
+    }
     var by = {};
     rows.forEach(function (r) { (by[r.root_jha_id] = by[r.root_jha_id] || []).push(r); });
     return Object.keys(by).map(function (root) {

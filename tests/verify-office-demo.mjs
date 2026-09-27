@@ -81,6 +81,19 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
             near_misses: window.DEMO.nearMisses, reports: [] };
   var ANL_DATA_NEEDED_REF = ANL_DATA_NEEDED;
   var jhaF = { job:'', from:'', to:'', by:'', kind:'', revs:'' };
+  /* Requirements derive from the Jobs assignment records, so seed the same
+     map siLoadAssignments() would build from cs_portal_job_field_users. */
+  var SI_ASSIGN = {};
+  (window.DEMO.jobs || []).forEach(function (j) {
+    var keys = {};
+    (window.DEMO.fieldUsers || []).filter(function (u) { return u.job_id === j.id; })
+      .forEach(function (u) {
+        (Array.isArray(u.form_keys) ? u.form_keys
+          : SI_FORMS_READY.map(function (f) { return f.key; }))
+          .forEach(function (k) { keys[k] = 1; });
+      });
+    SI_ASSIGN[j.id] = Object.keys(keys);
+  });
   var anF = { company:'greiner', job:'', from:'', to:'', form:'', status:'' };
   function reload(){ TBT = null; return tbtLoad(); }
   function setCompany(k){ tbtLoad(); TBT.company = k; anF.company = k; }
@@ -91,7 +104,7 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
            jhaFamilies, jhaFilteredFamilies,
            anlRangeBounds, anlRangeDays, anlJobs, anlCompliance,
            SI_FORMS_READY, SI_FORMS_REVIEW, SI_FORMS_NOTBUILT, SI_REQ_TYPES,
-           siReqs, siReqsForWeek, siMonday, siWeekDays, siWeekLabel, siExpected,
+           siReqs, siReqsForWeek, siMonday, getAssign: function(){ return SI_ASSIGN; }, siWeekDays, siWeekLabel, siExpected,
            siStatus, siSubmissionsFor, siFormDef, siFormLabel,
            setWeek: function (iso) { siWeek = iso; }, getWeek: function () { return siWeekISO(); }, anlJhaActivity, anlToolbox,
            anlFieldForms, anlHotWork, anlLifts, anlCorrective, anlIncidents,
@@ -758,9 +771,11 @@ includes(js, "['find', 'Findings & Corrective Actions']", 'Findings must be a vi
 /* Add Inspection for This Week lives on the Submission Log. */
 includes(js, '+ Add Inspection for This Week', 'the Submission Log must offer Add Inspection');
 includes(js, "id=\"si-addinsp\"", 'the Add Inspection button must be wired');
-includes(js, 'It does not mark an inspection complete', 'the panel must say what it does not do');
-includes(js, 'This creates an <b>expected</b> field inspection',
-  'the panel must say it creates an expected inspection');
+includes(js, 'does not mark anything ', 'the panel must say what it does not do');
+includes(js, 'Inspections are assigned to a job in <b>Jobs</b>',
+  'the panel must point at the Jobs tab as the source of truth');
+includes(js, 'it does not create a separate schedule',
+  'the panel must say it is not a second system');
 includes(js, 'function siJhaHtml() { return jhaBodyHtml(); }',
   'JHA Review must reuse the JHA table, not a copy of it');
 includes(js, 'function jhaBodyHtml()', 'the JHA table must be reusable');
@@ -776,9 +791,10 @@ for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
  * 12j. Add Requirement: only verified forms are selectable
  * ------------------------------------------------------------------ */
 {
-  includes(js, '+ Add Requirement', 'the Add Requirement button must exist');
-  includes(js, "id=\"si-addreq\"", 'the Add Requirement button must be wired');
-  assert.ok(!js.includes('>Add Inspection<'), 'the action must not be called Add Inspection');
+  includes(js, '+ Add Inspection for This Week', 'the Submission Log action must exist');
+  includes(js, 'function siAddInspection()', 'the shortcut must exist');
+  assert.ok(!js.includes('function siAddRequirement('),
+    'the separate requirement-creation panel must be gone');
 
   const ready = M.SI_FORMS_READY.map((f) => f.key);
   assert.deepEqual(ready.sort(),
@@ -803,7 +819,7 @@ for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
     assert.ok(!ready.includes(f.label.toLowerCase().split(' ')[0]),
       `${f.label} must not be selectable`);
   }
-  includes(js, 'Needs review before it can be scheduled',
+  includes(js, 'Needs review before it can be assigned',
     'the blocked area must be labelled');
   includes(js, 'aria-disabled="true"', 'blocked forms must be marked disabled');
 
@@ -1079,10 +1095,15 @@ assert.match(html, /office\.js\?v=\d+/, 'office.js must be cache-busted');
   // solely inside the demo branch.
   const demoAssign = (js.match(/C\.demo = true;/g) || []);
   assert.equal(demoAssign.length, 1, 'C.demo must be set in exactly one place');
-  const bootIdx = js.indexOf('if (TBT_DEMO && window.DEMO) {');
+  // Anchor on the boot block itself, not the first TBT_DEMO gate in the file.
+  const bootIdx = js.indexOf('openApp(window.DEMO.session);');
   const assignIdx = js.indexOf('C.demo = true;');
-  assert.ok(assignIdx > bootIdx && assignIdx < bootIdx + 400,
+  assert.ok(bootIdx > -1, 'the demo boot must exist');
+  assert.ok(assignIdx < bootIdx && bootIdx - assignIdx < 200,
     'C.demo must only be set inside the demo boot branch');
+  const bootBlock = js.slice(js.lastIndexOf('if (TBT_DEMO && window.DEMO) {', bootIdx), bootIdx);
+  assert.ok(bootBlock.includes('C.demo = true;'),
+    'C.demo must sit inside the TBT_DEMO boot gate');
 
   // No fixture total is hardcoded into the page.
   const analytics = js.slice(js.indexOf('function pgAnalyticsDemo()'), js.indexOf('function anStyle()'));

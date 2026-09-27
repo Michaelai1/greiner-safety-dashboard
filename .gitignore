@@ -1,2 +1,6 @@
 .DS_Store
 .gstack/
+
+# Built by tools/build-demo-site.mjs. Reproducible output, not source —
+# committing it would let the artifact drift from the code it came from.
+demo-site/

@@ -237,27 +237,31 @@
     { unit: 'DEMO-FL-11', kind: 'forklift', label: 'Rough terrain forklift', job_id: 'demo-job-f' }
   ];
 
-  /* ---------- weekly inspection requirements ------------------------------
-     The denominator behind Daily Safety Compliance. A daily JHA on every
-     active job, plus activity-based hot work and per-unit lift checks.      */
-  var REQUIREMENTS = [];
-  (function buildReqs() {
-    JOBS.forEach(function (j) {
-      REQUIREMENTS.push({ id: 'req-jha-' + j.id, company: 'greiner', job_id: j.id, form: 'jha',
-        type: 'daily', weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null,
-        due_time: '07:30', notes: 'Before work starts each morning.', week: null, status: 'active' });
-    });
-    REQUIREMENTS.push({ id: 'req-hw-b', company: 'greiner', job_id: 'demo-job-b', form: 'hotwork',
-      type: 'activity', weekdays: [], units: [], start: null, end: null, due_time: null,
-      notes: 'Only when cutting, welding or grinding takes place.', week: null, status: 'active' });
-    REQUIREMENTS.push({ id: 'req-lift-a', company: 'greiner', job_id: 'demo-job-a', form: 'aerial',
-      type: 'equipment', weekdays: [1, 2, 3, 4, 5], units: ['DEMO-SL-1930-01', 'DEMO-SL-1930-02'],
-      start: null, end: null, due_time: null, notes: 'Pre-use, per unit, on days used.',
-      week: null, status: 'active' });
-    REQUIREMENTS.push({ id: 'req-fl-b', company: 'greiner', job_id: 'demo-job-b', form: 'forklift',
-      type: 'equipment', weekdays: [1, 2, 3, 4, 5], units: ['DEMO-FL-05'], start: null, end: null,
-      due_time: null, notes: '', week: null, status: 'active' });
-  })();
+  /* ---------- field users and their per-job form access --------------------
+     This is the assignment system the Jobs tab already owns: which field-login
+     user may open which form on which job (cs_portal_job_field_users /
+     cs_portal_user_forms_set). The dashboard derives "what is required" from
+     these records — there is no second list of requirements anywhere.
+
+     form_keys null = every default form; [] = none; [..] = that subset.      */
+  var FIELD_USERS = [
+    { id: 'fu-1', name: 'Demo Foreman', title: 'Foreman', job_id: 'demo-job-a',
+      form_keys: ['jha', 'hotwork', 'aerial'] },
+    { id: 'fu-2', name: 'Alex Rivera (Demo)', title: 'Lead', job_id: 'demo-job-a',
+      form_keys: ['jha', 'aerial'] },
+    { id: 'fu-3', name: 'Casey Nolan (Demo)', title: 'Foreman', job_id: 'demo-job-b',
+      form_keys: ['jha', 'hotwork', 'forklift'] },
+    { id: 'fu-4', name: 'Taylor Reed (Demo)', title: 'Operator', job_id: 'demo-job-b',
+      form_keys: ['jha', 'forklift'] },
+    { id: 'fu-5', name: 'Riley Shaw (Demo)', title: 'Foreman', job_id: 'demo-job-c',
+      form_keys: ['jha'] },
+    { id: 'fu-6', name: 'Jamie Fontaine (Demo)', title: 'Foreman', job_id: 'demo-job-d',
+      form_keys: ['jha', 'aerial', 'jobsiteanalysis'] },
+    { id: 'fu-7', name: 'Sky Vandermolen (Demo)', title: 'Foreman', job_id: 'demo-job-e',
+      form_keys: ['jha', 'hotwork', 'jobsiteanalysis'] },
+    { id: 'fu-8', name: 'Rowan Achterberg (Demo)', title: 'Foreman', job_id: 'demo-job-f',
+      form_keys: ['jha', 'hotwork', 'forklift', 'jobsiteanalysis'] }
+  ];
 
   /* ---------- incidents and near misses -----------------------------------
      Deliberately empty. Greiner has an incident workflow — schema, intake
@@ -378,6 +382,23 @@
     cs_portal_bundle: function () { return BUNDLE; },
     cs_portal_field_inspections: function () { return FIELD; },
     cs_portal_findings: function () { return FINDINGS; },
+    /* The Jobs tab's own assignment RPCs, answered from FIELD_USERS so the
+       shortcut and the Jobs tab read and write exactly the same records. */
+    cs_portal_job_field_users: function (body) {
+      return FIELD_USERS.filter(function (u) { return u.job_id === (body || {}).p_job_id; })
+        .map(function (u) { return JSON.parse(JSON.stringify(u)); });
+    },
+    cs_portal_user_forms_set: function (body) {
+      var b = body || {};
+      var u = FIELD_USERS.filter(function (x) { return x.id === b.p_user_id; })[0];
+      if (!u) return { ok: false, error: 'unknown user' };
+      if (u.job_id !== b.p_job_id) return { ok: false, error: 'user is not on that job' };
+      // Only forms the field app actually supports may be stored.
+      var allowed = ['hotwork', 'aerial', 'forklift', 'jha', 'jobsiteanalysis'];
+      var keys = (b.p_form_keys || []).filter(function (k) { return allowed.indexOf(k) !== -1; });
+      u.form_keys = keys.slice();
+      return { ok: true, form_keys: u.form_keys.slice() };
+    },
     cs_portal_incidents: function () { return INCIDENTS; }
   };
 
@@ -389,7 +410,7 @@
     other: OTHER_SUBS,
     findings: FINDINGS,
     equipment: EQUIPMENT,
-    requirements: REQUIREMENTS,
+    fieldUsers: FIELD_USERS,
     incidents: INCIDENTS,
     nearMisses: NEAR_MISSES,
     baseline: INCIDENT_BASELINE,
@@ -404,9 +425,9 @@
        Nothing leaves the browser. An unknown RPC resolves empty rather than
        throwing, so a page that asks for something the demo has not modelled
        renders empty instead of breaking the review. */
-    call: function (fn) {
+    call: function (fn, body) {
       var f = ANSWERS[fn];
-      var out = f ? f() : [];
+      var out = f ? f(body) : [];
       return Promise.resolve(JSON.parse(JSON.stringify(out)));
     },
     /* Which talk the completions belong to. The office page owns the library,
