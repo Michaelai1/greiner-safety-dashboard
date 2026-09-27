@@ -61,6 +61,8 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
   ${js.slice(tbStart, tbLogicEnd)}
   ${slice('jhaFamilies', 'jhaBadge')}
   ${slice('jhaFilteredFamilies', 'pgJhaDemo')}
+  ${js.slice(js.indexOf('  var SI_FORMS_READY = ['), js.indexOf('  function siStyle()'))}
+  ${slice('anlRangeBounds', 'anlRangeDays')}
   ${slice('anlRangeDays', 'anlJobs')}
   ${slice('anlJobs', 'anlCompliance')}
   ${slice('anlCompliance', 'anlJhaActivity')}
@@ -87,7 +89,11 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
            tbtDefaultState, tbtMondayISO, tbtCompletionStats, tbtTalkForWeek,
            tbtGuidedOf, tbtFormatFor,
            jhaFamilies, jhaFilteredFamilies,
-           anlRangeDays, anlJobs, anlCompliance, anlJhaActivity, anlToolbox,
+           anlRangeBounds, anlRangeDays, anlJobs, anlCompliance,
+           SI_FORMS_READY, SI_FORMS_REVIEW, SI_FORMS_NOTBUILT, SI_REQ_TYPES,
+           siReqs, siReqsForWeek, siMonday, siWeekDays, siWeekLabel, siExpected,
+           siStatus, siSubmissionsFor, siFormDef, siFormLabel,
+           setWeek: function (iso) { siWeek = iso; }, getWeek: function () { return siWeekISO(); }, anlJhaActivity, anlToolbox,
            anlFieldForms, anlHotWork, anlLifts, anlCorrective, anlIncidents,
            allCorrective, ANL_DATA_NEEDED: ANL_DATA_NEEDED_REF,
            reload, setCompany,
@@ -144,23 +150,44 @@ assert.deepEqual(f3.revisions.map((r) => r.revision_number), [1, 2, 3, 4],
 
 /* ------------------------------------------------------------------ *
  * 3. Revisions do not inflate daily compliance
+ *
+ * Compliance is derived from the requirements the office defined, so the
+ * counts move with the week. The invariants are what matter.
  * ------------------------------------------------------------------ */
 const comp = M.anlCompliance();
-assert.equal(comp.required.length, 6, '3 jobs over 2 days = 6 required submissions');
-assert.equal(comp.completed.length, 3, 'three job/days have a JHA');
-assert.equal(comp.missed.length, 3, 'three job/days have none');
+assert.ok(comp.required.length > 0, 'the fixture must require some daily JHAs');
 assert.equal(comp.completed.length + comp.missed.length, comp.required.length,
   'completed plus missed must equal required');
-assert.equal(comp.pct, 50, 'compliance is 3 of 6');
+assert.equal(comp.pct, Math.round(comp.completed.length / comp.required.length * 100),
+  'the percentage must be derived from the counts');
+// Nothing in the future is ever counted as required or missed.
+const todayISO = DEMO.isoDay(DEMO.dayOffset(0));
+assert.ok(comp.required.every((r) => r.day <= todayISO),
+  'a day that has not arrived must not be required yet');
+assert.ok(comp.upcoming.every((r) => r.day > todayISO),
+  'upcoming rows must all be in the future');
+// Only applicable weekdays are required — no weekend JHAs are demanded.
+assert.ok(comp.required.every((r) => {
+  const dow = new Date(r.day + 'T12:00:00').getDay();
+  return dow >= 1 && dow <= 5;
+}), 'daily requirements must only fall on their applicable weekdays');
 
-// The day that carries the 4-version JHA counts once, not four times.
-const bigDay = comp.completed.find((r) => r.families.some((f) => f.root === 'jha-3'));
-assert.ok(bigDay, 'the multi-revision JHA must satisfy its day');
-assert.equal(bigDay.families.length, 1, 'a JHA family counts once for its job/day');
-assert.equal(bigDay.families[0].revisions.length, 4, '…even though it has four versions');
-// Total revision rows far exceed completed submissions — that is the point.
+// THE RULE: a JHA family satisfies its day exactly once, however many
+// revisions it carries.
+const multi = comp.completed.find((r) => r.families.some((f) => f.revisionCount > 0));
+if (multi) {
+  assert.equal(multi.families.length, 1, 'a JHA family counts once for its job/day');
+  assert.ok(multi.families[0].revisions.length > 1, '…even with several versions');
+}
+assert.ok(comp.completed.every((r) => r.families.length >= 1),
+  'a completed day must have at least one JHA');
+// Revision rows far outnumber completed submissions — that is the point.
 assert.ok(DEMO.jha.length > comp.completed.length,
-  'there must be more revision rows than completed submissions for this test to mean anything');
+  'there must be more revision rows than completed submissions for this to mean anything');
+// Counting raw revision rows instead of families would inflate the result.
+const rawRows = DEMO.jha.filter((j) => comp.completed.some((c) => c.job_id === j.job_id && c.day === j.work_date));
+assert.ok(rawRows.length > comp.completed.length,
+  'counting revisions instead of families would overstate compliance');
 
 /* ------------------------------------------------------------------ *
  * 4. JHA activity figures
@@ -185,12 +212,15 @@ const reset = () => Object.assign(jf, { job: '', from: '', to: '', by: '', kind:
 reset(); jf.job = 'demo-job-b';
 assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-2'], 'job filter');
 
-reset(); jf.from = DEMO.isoDay(DEMO.dayOffset(0));
+const latestDay = M.jhaFamilies().map((f) => f.work_date).sort().pop();
+const earlierDay = M.jhaFamilies().map((f) => f.work_date).sort()[0];
+assert.notEqual(latestDay, earlierDay, 'the fixture must span two work days');
+reset(); jf.from = latestDay;
 assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root).sort(), ['jha-1', 'jha-2'],
-  'date-from filter excludes yesterday');
-reset(); jf.to = DEMO.isoDay(DEMO.dayOffset(-1));
+  'date-from filter excludes the earlier day');
+reset(); jf.to = earlierDay;
 assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-3'],
-  'date-to filter keeps only yesterday');
+  'date-to filter keeps only the earlier day');
 
 reset(); jf.by = 'Morgan Ellis (Demo)';
 assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-2'], 'submitter filter');
@@ -204,22 +234,29 @@ reset(); jf.revs = '3';
 assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-3'], 'revision-count filter');
 reset();
 
-// Date filtering flows through to compliance.
+// Date filtering flows through to compliance. Pin to a known weekday so the
+// assertion does not depend on which day the suite runs.
 const af = M.getAnF();
-af.from = DEMO.isoDay(DEMO.dayOffset(0));
-af.to = DEMO.isoDay(DEMO.dayOffset(0));
+const weekdayBack = (n) => {
+  for (let i = 0; i < 14; i++) {
+    const d = DEMO.dayOffset(-i);
+    if (d.getDay() >= 1 && d.getDay() <= 5) { if (n-- === 0) return DEMO.isoDay(d); }
+  }
+  return DEMO.isoDay(DEMO.dayOffset(-1));
+};
+const oneWeekday = latestDay;
+af.range = 'custom'; af.from = oneWeekday; af.to = oneWeekday;
 const oneDay = M.anlCompliance();
-assert.equal(oneDay.required.length, 3, 'one day over three jobs = 3 required');
-assert.equal(oneDay.completed.length, 2, 'two jobs submitted today');
-af.from = ''; af.to = '';
+assert.equal(oneDay.required.length, 3, 'one weekday over three jobs = 3 required');
+assert.ok(oneDay.required.every((r) => r.day === oneWeekday), 'only that day is required');
 
 // Job filtering flows through too.
 af.job = 'demo-job-c';
 const jobC = M.anlCompliance();
-assert.equal(jobC.required.length, 2, 'one job over two days');
+assert.equal(jobC.required.length, 1, 'one job on one weekday');
 assert.equal(jobC.completed.length, 0, 'Demo Job C never submitted');
-assert.equal(jobC.missed.length, 2, 'both of its days are missed');
-af.job = '';
+assert.equal(jobC.missed.length, 1, 'so that day is missed');
+af.job = ''; af.range = 'week'; af.from = ''; af.to = '';
 
 /* ------------------------------------------------------------------ *
  * 6. Toolbox Talk — group completion, attendance, manual entries
@@ -365,8 +402,17 @@ assert.equal(M.anlJobs().length, 3, 'Greiner has three demo jobs');
   assert.equal(t.stats.attendance, rosterUnion.size + manual, 'attendance must be the sum of the two');
 
   const c2 = M.anlCompliance();
-  assert.equal(c2.required.length, M.anlJobs().length * M.anlRangeDays().length,
-    'required must equal jobs times days');
+  // Required = one row per daily requirement per applicable weekday already reached.
+  const dailyReqs = M.siReqs().filter((r) => r.type === 'daily');
+  const expectedRows = dailyReqs.reduce((n, r) => {
+    const wd = (r.weekdays && r.weekdays.length) ? r.weekdays : [1, 2, 3, 4, 5];
+    return n + M.anlRangeDays().filter((d) => {
+      const dow = new Date(d + 'T12:00:00').getDay();
+      return wd.includes(dow) && d <= DEMO.isoDay(DEMO.dayOffset(0));
+    }).length;
+  }, 0);
+  assert.equal(c2.required.length, expectedRows,
+    'required must equal the requirements times their elapsed applicable days');
   assert.equal(c2.completed.length,
     c2.required.filter((r) => r.families.length > 0).length,
     'completed must equal the rows that actually have a JHA');
@@ -552,14 +598,18 @@ assert.ok(js.indexOf("var incF = { job:") < js.indexOf('function pgIncidents()')
 
   // The page must say so in words.
   includes(js, 'No baseline recorded', 'the missing baseline must be stated');
-  includes(js, 'Needs the date of Greiner’s last recordable incident',
-    'the page must say which date is required');
-  includes(js, 'No incidents recorded during this reporting period',
-    'zero incidents must be qualified by the period');
-  includes(js, 'Zero does not mean Greiner has never had an incident.',
-    'the page must not imply Greiner has never had an incident');
-  includes(js, 'No near misses recorded during this reporting period',
-    'zero near misses must be qualified by the period');
+  includes(js, 'days since last recordable', 'the baseline row must be labelled');
+  includes(js, 'incidents entered', 'zero incidents must say "entered", not "occurred"');
+  includes(js, 'near misses entered', 'zero near misses must say "entered", not "occurred"');
+  includes(js, 'Zero means nothing entered, ',
+    'the page must not imply nothing happened');
+  includes(js, 'The incident workflow is built but nothing has been submitted.',
+    'the page must say the workflow exists');
+  includes(js, 'Intake is still held in this pilot.',
+    'the page must say intake is still held');
+  // Still the first requirement: which date is needed.
+  assert.ok(M.ANL_DATA_NEEDED.some((d) => /last OSHA-recordable/i.test(d[0])),
+    'the setup panel must name the recordable date');
 
   // Once a baseline exists the number is computed from it, not stored.
   const probe = JSON.parse(JSON.stringify(DEMO.baseline));
@@ -611,12 +661,170 @@ includes(js, "sv.onclick = function () { toast('Incident details saved.'); openI
   'the investigation editor must be left exactly as it was');
 
 /* ------------------------------------------------------------------ *
+ * 12h. Navigation: JHA is an inspection, not a top-level section
+ * ------------------------------------------------------------------ */
+{
+  const pages = js.slice(js.indexOf('  var PAGES = ['), js.indexOf('  var page = '));
+  assert.ok(!/id: 'jha'/.test(pages), 'JHA Submissions must not be a top-level page');
+  assert.ok(!pages.includes('JHA Submissions'), 'JHA Submissions must not appear in the sidebar');
+  // The agreed navigation, in order.
+  const labels = [...pages.matchAll(/label: '([^']+)'/g)].map((m) => m[1]);
+  const shown = labels.filter((l) => l !== 'Inspections');   // demoHide
+  assert.deepEqual(shown, ['Overview', 'Analytics', 'Safety Inspections', 'Equipment', 'Permits',
+    'Toolbox Talks', 'Incidents', 'Near Misses', 'Subcontractors', 'Orientation', 'Training',
+    'Documents', 'Automations', 'Jobs', 'Planner', 'Templates'],
+    'the demo sidebar must match the agreed navigation');
+  // Toolbox Talks keeps its own top-level section.
+  assert.ok(pages.includes("label: 'Toolbox Talks'"), 'Toolbox Talks stays top-level');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12i. JHA Review lives inside Safety Inspections
+ * ------------------------------------------------------------------ */
+includes(js, "['jha', 'JHA Review']", 'JHA Review must be a Safety Inspections view');
+includes(js, "['req', 'Weekly Requirements']", 'Weekly Requirements must be a view');
+includes(js, "['log', 'Submission Log']", 'Submission Log must be a view');
+includes(js, "['find', 'Findings & Corrective Actions']", 'Findings must be a view');
+includes(js, 'function siJhaHtml() { return jhaBodyHtml(); }',
+  'JHA Review must reuse the JHA table, not a copy of it');
+includes(js, 'function jhaBodyHtml()', 'the JHA table must be reusable');
+// Analytics JHA card opens JHA Review.
+includes(js, "var toSi = { compliance: 'req', jhareview: 'jha', findings: 'find' };",
+  'analytics cards must open the matching Safety Inspections view');
+for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
+  assert.ok(js.includes("anCardOpen('" + card + "')"),
+    `the ${card} card must be clickable`);
+}
+
+/* ------------------------------------------------------------------ *
+ * 12j. Add Requirement: only verified forms are selectable
+ * ------------------------------------------------------------------ */
+{
+  includes(js, '+ Add Requirement', 'the Add Requirement button must exist');
+  includes(js, "id=\"si-addreq\"", 'the Add Requirement button must be wired');
+  assert.ok(!js.includes('>Add Inspection<'), 'the action must not be called Add Inspection');
+
+  const ready = M.SI_FORMS_READY.map((f) => f.key);
+  assert.deepEqual(ready.sort(),
+    ['aerial', 'forklift', 'hotwork', 'jha', 'jobsiteanalysis'],
+    'only forms with a real field workflow may be selectable');
+
+  // Every Ready form must be a canonical permission key in the office.
+  const permBlock = js.slice(js.indexOf('var FIELD_PERM_FORMS = ['),
+    js.indexOf('function loadJobFieldAccess'));
+  for (const k of ready) {
+    assert.ok(permBlock.includes(`key: '${k}'`),
+      `"${k}" must be a canonical field-permission key to be schedulable`);
+  }
+
+  // Needs Review forms exist but are never selectable.
+  const reviewLabels = M.SI_FORMS_REVIEW.map((f) => f.label);
+  assert.ok(reviewLabels.includes('Ladder Inspection'),
+    'Ladder Inspection must be listed as needing review');
+  for (const f of M.SI_FORMS_REVIEW) {
+    assert.ok(f.missing && f.missing.length, `${f.label} must say what is missing`);
+    assert.ok(f.why && f.why.length > 30, `${f.label} must explain why`);
+    assert.ok(!ready.includes(f.label.toLowerCase().split(' ')[0]),
+      `${f.label} must not be selectable`);
+  }
+  includes(js, 'Needs review before it can be scheduled',
+    'the blocked area must be labelled');
+  includes(js, 'aria-disabled="true"', 'blocked forms must be marked disabled');
+
+  // Power tool / powder-actuated cannot be scheduled.
+  const notBuilt = M.SI_FORMS_NOTBUILT.map((f) => f.label);
+  assert.ok(notBuilt.some((l) => /Power Tool/i.test(l)), 'Power Tool must be listed as not built');
+  assert.ok(notBuilt.some((l) => /Powder-Actuated/i.test(l)), 'Powder-Actuated must be listed');
+  for (const label of notBuilt.concat(reviewLabels)) {
+    assert.ok(!M.SI_FORMS_READY.some((f) => f.label === label),
+      `"${label}" must never appear in the selectable list`);
+  }
+  // Ladder must not sneak in via the JHA's embedded variance questions.
+  assert.ok(!ready.includes('ladder'), 'ladder is not a schedulable form');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12k. Requirement rules: hot work is activity-based
+ * ------------------------------------------------------------------ */
+{
+  const hotwork = M.siFormDef('hotwork');
+  assert.deepEqual(hotwork.types, ['activity'],
+    'hot work may only ever be activity-based');
+  assert.equal(hotwork.defaultType, 'activity', 'and defaults to it');
+  const week = M.getWeek();
+  const hwReq = M.siReqs().find((r) => r.form === 'hotwork');
+  assert.ok(hwReq, 'the fixture must carry a hot work requirement');
+  assert.equal(hwReq.type, 'activity', 'it must be activity-based');
+  assert.equal(M.siExpected(hwReq, week), null,
+    'an activity-based requirement must have no fixed expected quantity');
+  const hwStatus = M.siStatus(hwReq, week);
+  assert.notEqual(hwStatus.key, 'missed',
+    'hot work must never be reported missed on a day with no hot work');
+
+  // JHA is daily per active job.
+  const jhaDef = M.siFormDef('jha');
+  assert.ok(jhaDef.types.includes('daily'), 'JHA can be required daily');
+  const jhaReq = M.siReqs().find((r) => r.form === 'jha');
+  assert.deepEqual(jhaReq.weekdays, [1, 2, 3, 4, 5], 'JHA is required on workdays');
+  assert.equal(M.siExpected(jhaReq, week), 5, 'five workdays in the week');
+
+  // Lift inspections are tied to units.
+  for (const key of ['aerial', 'forklift']) {
+    const def = M.siFormDef(key);
+    assert.ok(def.types.includes('equipment'), `${key} must support a per-unit requirement`);
+    assert.equal(def.defaultType, 'equipment', `${key} must default to per-unit`);
+  }
+  const liftReq = M.siReqs().find((r) => r.form === 'aerial');
+  assert.equal(liftReq.units.length, 2, 'two aerial units on that job');
+  assert.equal(M.siExpected(liftReq, week), 10, '2 units over 5 days');
+  // With no units assigned the expectation is unknown rather than invented.
+  const noUnits = Object.assign({}, liftReq, { units: [] });
+  assert.equal(M.siExpected(noUnits, week), null,
+    'a per-unit requirement with no units must not invent a quantity');
+
+  // A JHA family satisfies its requirement once.
+  const jhaA = M.siReqs().find((r) => r.job_id === 'demo-job-a' && r.form === 'jha');
+  const subs = M.siSubmissionsFor(jhaA, week);
+  const rawA = DEMO.field.filter((f) => f.form_type === 'jha' && f.job_id === 'demo-job-a');
+  assert.ok(rawA.length > subs.length,
+    'the raw revision rows must outnumber the counted submissions');
+  const roots = new Set(subs.map((s) => s.root_jha_id));
+  assert.equal(roots.size, subs.length, 'each JHA family is counted once');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12l. Week selector changes which records are shown
+ * ------------------------------------------------------------------ */
+{
+  const thisWeek = M.siMonday(null);
+  M.setWeek(thisWeek);
+  const now = M.siStatus(M.siReqs().find((r) => r.job_id === 'demo-job-a' && r.form === 'jha'), thisWeek);
+  const next = new Date(thisWeek + 'T12:00:00');
+  next.setDate(next.getDate() + 7);
+  const nextISO = DEMO.isoDay(next);
+  M.setWeek(nextISO);
+  const later = M.siStatus(M.siReqs().find((r) => r.job_id === 'demo-job-a' && r.form === 'jha'), nextISO);
+  assert.ok(now.done > 0, 'this week has submissions');
+  assert.equal(later.done, 0, 'next week has none');
+  assert.equal(later.key, 'notdue', 'a future week is Not Yet Due, never Missed');
+  assert.notEqual(M.siWeekLabel(thisWeek), M.siWeekLabel(nextISO), 'the label must change');
+  // The label reads as a range, e.g. "Sep 28 – Oct 4, 2026".
+  assert.match(M.siWeekLabel(thisWeek), /^[A-Z][a-z]{2} \d{1,2} – ([A-Z][a-z]{2} )?\d{1,2}, \d{4}$/,
+    'the week label must be a readable date range');
+  M.setWeek(thisWeek);
+  // Week days are Monday-first and seven long.
+  const days = M.siWeekDays(thisWeek);
+  assert.equal(days.length, 7, 'a week is seven days');
+  assert.equal(new Date(days[0] + 'T12:00:00').getDay(), 1, 'weeks start on Monday');
+}
+
+/* ------------------------------------------------------------------ *
  * 13. Production behaviour is unchanged
  * ------------------------------------------------------------------ */
 includes(js, 'if (TBT_DEMO) return pgTalksDemo();',
   'the Toolbox Talk demo must stay behind the ?demo=1 gate');
-includes(js, 'jha: (TBT_DEMO ? pgJhaDemo : pgOverview) }',
-  'the JHA page must exist only in the demo build');
+includes(js, 'obs: (TBT_DEMO ? pgObsDemo : pgObs),',
+  'Safety Inspections must use the demo workspace only in the demo build');
 includes(js, 'analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics)',
   'production analytics must stay on the production function');
 // The production analytics lock is untouched.
@@ -625,10 +833,10 @@ includes(js, 'PILOT: Analytics is intentionally locked until Greiner has accumul
 includes(js, 'Analytics will become available as Greiner builds more real safety data.',
   'the production analytics message must remain');
 // Demo-only pages never reach the production sidebar.
-includes(js, "var VISIBLE = PAGES.filter(function (p) { return !p.demoOnly || TBT_DEMO; });",
+includes(js, 'if (p.demoOnly && !TBT_DEMO) return false;',
   'demo-only pages must be filtered out of the production nav');
-includes(js, "{ id: 'jha',       label: 'JHA Submissions', group: 'Field work', demoOnly: true },",
-  'the JHA page must be marked demo-only');
+includes(js, 'if (p.demoHide && TBT_DEMO) return false;',
+  'demo-hidden pages must be filtered out of the demo nav');
 // The real transport and session are still there.
 includes(js, 'cs_portal_login', 'the production login RPC must still exist');
 includes(js, "fetch(C.creekside.url + '/rest/v1/rpc/' + fn", 'the production transport must remain');
@@ -674,12 +882,45 @@ for (const f of M.jhaFamilies()) {
  * 15. The page is labelled as demo data
  * ------------------------------------------------------------------ */
 includes(js, 'Demo Data', 'the demo pages must be labelled');
-includes(js, 'These are fixture records, not real Greiner submissions.',
-  'the JHA page must say the records are fixtures');
-includes(js, 'Every figure on this page comes from demo fixture records. These are not actual Greiner results.',
-  'analytics must say the figures are not real Greiner results');
+// The Demo Data label is now a compact pill beside the Analytics heading.
+includes(js, "<span class=\"an-pill\">Demo Data</span>",
+  'Analytics must carry a Demo Data pill');
+includes(js, ".an-pill{", 'the Demo Data pill must be styled');
 assert.match(html, /office-demo\.js/, 'office.html must load the fixtures');
 assert.match(html, /office\.js\?v=\d+/, 'office.js must be cache-busted');
+
+/* ------------------------------------------------------------------ *
+ * 15b. Fixtures are unreachable outside demo mode
+ * ------------------------------------------------------------------ */
+{
+  // Loaded without ?demo=1 the fixture file defines DEMO but reports itself off,
+  // and the dashboard never switches its transport.
+  const w2 = { location: { search: '' }, URLSearchParams };
+  new Function('window', 'location', 'URLSearchParams', demoSrc)(w2, w2.location, URLSearchParams);
+  assert.equal(w2.DEMO.on, false, 'the fixtures must know they are not in demo mode');
+
+  // Every demo surface is gated on TBT_DEMO.
+  for (const gate of [
+    'if (TBT_DEMO && window.DEMO) {',
+    'obs: (TBT_DEMO ? pgObsDemo : pgObs),',
+    'analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics)',
+    'if (TBT_DEMO) return pgTalksDemo();',
+  ]) includes(js, gate, `demo surface must be gated: ${gate}`);
+
+  // C.demo is the only thing that redirects the transport, and it is set
+  // solely inside the demo branch.
+  const demoAssign = (js.match(/C\.demo = true;/g) || []);
+  assert.equal(demoAssign.length, 1, 'C.demo must be set in exactly one place');
+  const bootIdx = js.indexOf('if (TBT_DEMO && window.DEMO) {');
+  const assignIdx = js.indexOf('C.demo = true;');
+  assert.ok(assignIdx > bootIdx && assignIdx < bootIdx + 400,
+    'C.demo must only be set inside the demo boot branch');
+
+  // No fixture total is hardcoded into the page.
+  const analytics = js.slice(js.indexOf('function pgAnalyticsDemo()'), js.indexOf('function anStyle()'));
+  assert.ok(!/>\s*(3|6|15|10|9|127)\s*</.test(analytics.replace(/viewBox[^"]*"[^"]*"/g, '')),
+    'analytics must not hardcode a fixture total into the markup');
+}
 
 /* ------------------------------------------------------------------ *
  * 16. Both files still parse

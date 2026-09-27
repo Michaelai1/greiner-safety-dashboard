@@ -31,6 +31,24 @@
   function at(dayN, h, m) {
     var d = dayOffset(dayN); d.setHours(h, m || 0, 0, 0); return d.toISOString();
   }
+  /* The n-th most recent weekday (0 = the latest weekday on or before today).
+     Field records are anchored to weekdays so the demo reads the same whichever
+     day it is opened — crews do not file daily JHAs at the weekend, and the
+     requirements only ask for them Monday to Friday. */
+  function weekday(n) {
+    var d = new Date(); d.setHours(12, 0, 0, 0);
+    var left = n;
+    for (var i = 0; i < 21; i++) {
+      var dow = d.getDay();
+      if (dow >= 1 && dow <= 5) { if (left === 0) return d; left--; }
+      d.setDate(d.getDate() - 1);
+    }
+    return d;
+  }
+  function wdISO(n) { return isoDay(weekday(n)); }
+  function wdAt(n, h, m) {
+    var d = weekday(n); d.setHours(h, m || 0, 0, 0); return d.toISOString();
+  }
   function mondayISO(weeksOut) {
     var d = new Date(); d.setHours(12, 0, 0, 0);
     var dow = d.getDay();
@@ -64,8 +82,8 @@
   var JHA = [
     /* ---- family 1: never revised ---- */
     { id: 'jha-1-r1', root_jha_id: 'jha-1', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: isoDay(dayOffset(0)),
-      original_submitted_at: at(0, 6, 40), revised_at: at(0, 6, 40),
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(0),
+      original_submitted_at: wdAt(0, 6, 40), revised_at: wdAt(0, 6, 40),
       submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'submitted',
       description_of_work: 'Overhead duct hangers, Level 2 east corridor.',
       employees: ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)'],
@@ -76,8 +94,8 @@
 
     /* ---- family 2: revised once ---- */
     { id: 'jha-2-r1', root_jha_id: 'jha-2', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: isoDay(dayOffset(0)),
-      original_submitted_at: at(0, 6, 55), revised_at: at(0, 6, 55),
+      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: wdISO(0),
+      original_submitted_at: wdAt(0, 6, 55), revised_at: wdAt(0, 6, 55),
       submitted_by: 'Casey Nolan (Demo)', revised_by: 'Casey Nolan (Demo)', status: 'superseded',
       description_of_work: 'Chilled water pump replacement, mechanical room 1.',
       employees: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)'],
@@ -86,8 +104,8 @@
       actions: ['Lockout/tagout before break', 'Rigging plan reviewed'],
       ladder_use: 'no', photos: [], changes: null },
     { id: 'jha-2-r2', root_jha_id: 'jha-2', previous_revision_id: 'jha-2-r1', revision_number: 2,
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: isoDay(dayOffset(0)),
-      original_submitted_at: at(0, 6, 55), revised_at: at(0, 11, 20),
+      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: wdISO(0),
+      original_submitted_at: wdAt(0, 6, 55), revised_at: wdAt(0, 11, 20),
       submitted_by: 'Casey Nolan (Demo)', revised_by: 'Morgan Ellis (Demo)', status: 'submitted',
       description_of_work: 'Chilled water pump replacement, mechanical room 1. Added hot work for bracket removal.',
       employees: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'],
@@ -103,16 +121,16 @@
 
     /* ---- family 3: revised three times ---- */
     { id: 'jha-3-r1', root_jha_id: 'jha-3', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: isoDay(dayOffset(-1)),
-      original_submitted_at: at(-1, 6, 30), revised_at: at(-1, 6, 30),
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
+      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 6, 30),
       submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'superseded',
       description_of_work: 'Ceiling grid and light rough-in, Level 2 west.',
       employees: ['Demo Foreman', 'Sam Whitfield (Demo)'],
       tasks: ['Ceiling grid'], hazards: ['Falling Objects'],
       actions: ['Hard hats'], ladder_use: 'no', photos: [], changes: null },
     { id: 'jha-3-r2', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r1', revision_number: 2,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: isoDay(dayOffset(-1)),
-      original_submitted_at: at(-1, 6, 30), revised_at: at(-1, 9, 15),
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
+      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 9, 15),
       submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'superseded',
       description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added.',
       employees: ['Demo Foreman', 'Sam Whitfield (Demo)'],
@@ -126,8 +144,8 @@
                  employees_added: [], employees_removed: [],
                  ladder_changed: true, photos_added: 1 } },
     { id: 'jha-3-r3', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r2', revision_number: 3,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: isoDay(dayOffset(-1)),
-      original_submitted_at: at(-1, 6, 30), revised_at: at(-1, 12, 5),
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
+      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 12, 5),
       submitted_by: 'Demo Foreman', revised_by: 'Alex Rivera (Demo)', status: 'superseded',
       description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added. Second crew joined.',
       employees: ['Demo Foreman', 'Sam Whitfield (Demo)', 'Jordan Blake (Demo)', 'Alex Rivera (Demo)'],
@@ -141,8 +159,8 @@
                  employees_added: ['Jordan Blake (Demo)', 'Alex Rivera (Demo)'], employees_removed: [],
                  ladder_changed: false, photos_added: 0 } },
     { id: 'jha-3-r4', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r3', revision_number: 4,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: isoDay(dayOffset(-1)),
-      original_submitted_at: at(-1, 6, 30), revised_at: at(-1, 14, 40),
+      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
+      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 14, 40),
       submitted_by: 'Demo Foreman', revised_by: 'Alex Rivera (Demo)', status: 'submitted',
       description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added. Second crew joined. Scissor lift swapped in for ladder.',
       employees: ['Demo Foreman', 'Sam Whitfield (Demo)', 'Jordan Blake (Demo)', 'Alex Rivera (Demo)'],
@@ -165,33 +183,33 @@
     /* --- hot work permits --- */
     { id: 'hw-1', form_type: 'hotwork', form_title: 'Hot Work Permit',
       job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Morgan Ellis (Demo)', submitted_at: at(0, 11, 30),
+      inspector_name: 'Morgan Ellis (Demo)', submitted_at: wdAt(0, 11, 30),
       has_defects: false, defect_count: 0 },
     { id: 'hw-2', form_type: 'hotwork', form_title: 'Hot Work Permit',
       job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Demo Foreman', submitted_at: at(-1, 8, 5),
+      inspector_name: 'Demo Foreman', submitted_at: wdAt(1, 8, 5),
       has_defects: true, defect_count: 1 },
     { id: 'hw-3', form_type: 'hotwork', form_title: 'Hot Work Permit',
       job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Casey Nolan (Demo)', submitted_at: at(-1, 13, 10),
+      inspector_name: 'Casey Nolan (Demo)', submitted_at: wdAt(1, 13, 10),
       has_defects: false, defect_count: 0 },
 
     /* --- lift inspections: aerial and forklift --- */
     { id: 'lift-1', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
       job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Alex Rivera (Demo)', submitted_at: at(0, 6, 50),
+      inspector_name: 'Alex Rivera (Demo)', submitted_at: wdAt(0, 6, 50),
       has_defects: false, defect_count: 0, asset_id: 'DEMO-SL-1930-01' },
     { id: 'lift-2', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
       job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Jordan Blake (Demo)', submitted_at: at(-1, 6, 45),
+      inspector_name: 'Jordan Blake (Demo)', submitted_at: wdAt(1, 6, 45),
       has_defects: true, defect_count: 2, asset_id: 'DEMO-SL-1930-02' },
     { id: 'lift-3', form_type: 'forklift', form_title: 'Forklift Inspection',
       job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Taylor Reed (Demo)', submitted_at: at(0, 7, 5),
+      inspector_name: 'Taylor Reed (Demo)', submitted_at: wdAt(0, 7, 5),
       has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' },
     { id: 'lift-4', form_type: 'forklift', form_title: 'Forklift Inspection',
       job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Taylor Reed (Demo)', submitted_at: at(-1, 7, 0),
+      inspector_name: 'Taylor Reed (Demo)', submitted_at: wdAt(1, 7, 0),
       has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' }
   ];
 
@@ -219,6 +237,41 @@
       corrective: 'Area cleared and daily clean-up assigned to the plant crew.',
       due: isoDay(dayOffset(-3)), status: 'closed', imported: false,
       source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-2)) }
+  ];
+
+  /* ---------- equipment on the demo jobs ---------------------------------
+     Only units that exist here can carry a per-unit inspection requirement.  */
+  var EQUIPMENT = [
+    { unit: 'DEMO-SL-1930-01', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
+    { unit: 'DEMO-SL-1930-02', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
+    { unit: 'DEMO-FL-05', kind: 'forklift', label: 'Warehouse forklift', job_id: 'demo-job-b' }
+  ];
+
+  /* ---------- weekly inspection requirements ------------------------------
+     What the office has told the field to complete this week. Only forms with
+     a real field workflow appear here: JHA, Hot Work, Aerial, Forklift and the
+     Job Site Analysis Checklist. Hot work is activity-based, so it is never
+     "missed" on a day with no hot work.                                      */
+  var REQUIREMENTS = [
+    { id: 'req-jha-a', company: 'greiner', job_id: 'demo-job-a', form: 'jha', type: 'daily',
+      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
+      notes: 'Before work starts each morning.', week: null, status: 'active' },
+    { id: 'req-jha-b', company: 'greiner', job_id: 'demo-job-b', form: 'jha', type: 'daily',
+      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
+      notes: '', week: null, status: 'active' },
+    { id: 'req-jha-c', company: 'greiner', job_id: 'demo-job-c', form: 'jha', type: 'daily',
+      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
+      notes: '', week: null, status: 'active' },
+    { id: 'req-hw-b', company: 'greiner', job_id: 'demo-job-b', form: 'hotwork', type: 'activity',
+      weekdays: [], units: [], start: null, end: null, due_time: null,
+      notes: 'Only when cutting, welding or grinding takes place.', week: null, status: 'active' },
+    { id: 'req-lift-a', company: 'greiner', job_id: 'demo-job-a', form: 'aerial', type: 'equipment',
+      weekdays: [1, 2, 3, 4, 5], units: ['DEMO-SL-1930-01', 'DEMO-SL-1930-02'],
+      start: null, end: null, due_time: null, notes: 'Pre-use, per unit, on days used.',
+      week: null, status: 'active' },
+    { id: 'req-fl-b', company: 'greiner', job_id: 'demo-job-b', form: 'forklift', type: 'equipment',
+      weekdays: [1, 2, 3, 4, 5], units: ['DEMO-FL-05'], start: null, end: null, due_time: null,
+      notes: '', week: null, status: 'active' }
   ];
 
   /* ---------- incidents and near misses -----------------------------------
@@ -256,30 +309,30 @@
     greiner: [
       // Job A completed, with two manual attendees who are not on the roster.
       { week: WEEK, kind: 'group', company: 'greiner', group: 'Demo Job A — Level 2 Fit-out',
-        presenter: 'Demo Foreman', at: at(0, 6, 15),
+        presenter: 'Demo Foreman', at: wdAt(0, 6, 15),
         roster: ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)', 'Sam Whitfield (Demo)'],
         manual: ['Temp Helper (Labor Ready)', 'Visiting Engineer (Demo)'] },
       // Job B completed, roster only.
       { week: WEEK, kind: 'group', company: 'greiner', group: 'Demo Job B — Central Plant',
-        presenter: 'Casey Nolan (Demo)', at: at(0, 6, 25),
+        presenter: 'Casey Nolan (Demo)', at: wdAt(0, 6, 25),
         roster: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'], manual: [] }
       // Job C submitted nothing: it is the outstanding group.
     ],
     choice: [
       { week: WEEK, kind: 'group', company: 'choice', group: 'Monday Group Meeting',
-        presenter: 'Alex Fyffe', at: at(0, 7, 5),
+        presenter: 'Alex Fyffe', at: wdAt(0, 7, 5),
         roster: ['Alex Fyffe', 'Angel Garcia', 'Zach France', 'Bobby Douthit', 'Cian McGarr',
                  'Cenon "T" Heim', 'Darvelle White', 'Joe Mikalouski', 'Jon Wennen',
                  'Justin Rice', 'Kyle Palmer'],
         manual: ['Temp Helper (Labor Ready)'] }
     ],
     peine: [
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: at(0, 6, 50) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Bailey Cruz (Demo)', at: at(0, 7, 2) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Cameron Diaz-Lee (Demo)', at: at(0, 7, 18) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Devon Marsh (Demo)', at: at(0, 8, 1) },
+      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: wdAt(0, 6, 50) },
+      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Bailey Cruz (Demo)', at: wdAt(0, 7, 2) },
+      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Cameron Diaz-Lee (Demo)', at: wdAt(0, 7, 18) },
+      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Devon Marsh (Demo)', at: wdAt(0, 8, 1) },
       // Same employee again, same week: must NOT be counted twice.
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: at(0, 9, 30) }
+      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: wdAt(0, 9, 30) }
     ]
   };
 
@@ -293,7 +346,7 @@
     near_misses: NEAR_MISSES, incidents: INCIDENTS,
     talks: [], templates: [], people: [], invites: [], talk_sends: [],
     permit_sends: [], doc_folders: [], hazcats: [], reg_visits: [], schedules: [],
-    send_log: [], equipment: [], talk_templates: [], job_orientations: [],
+    send_log: [], equipment: EQUIPMENT, talk_templates: [], job_orientations: [],
     orientation_sends: [], worker_pdfs: [], internal_crew: [], findings: FINDINGS,
     cjsc: null, scorecard: [], gc_templates: []
   };
@@ -326,6 +379,8 @@
     jha: JHA,
     other: OTHER_SUBS,
     findings: FINDINGS,
+    equipment: EQUIPMENT,
+    requirements: REQUIREMENTS,
     incidents: INCIDENTS,
     nearMisses: NEAR_MISSES,
     baseline: INCIDENT_BASELINE,

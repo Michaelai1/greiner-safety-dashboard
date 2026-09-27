@@ -379,11 +379,14 @@
     { id: 'overview',  label: 'Overview',        group: '' },
     { id: 'analytics', label: 'Analytics',       group: '' },
     { id: 'obs',       label: 'Safety Inspections', group: 'Field work' },
-    { id: 'insp',      label: 'Inspections',     group: 'Field work' },
+    // Superseded by Safety Inspections -> Submission Log, which shows the same
+    // field records with better filters. Hidden from the demo nav to match the
+    // agreed navigation; the page itself is untouched and still reachable at #insp,
+    // and production still shows it.
+    { id: 'insp',      label: 'Inspections',     group: 'Field work', demoHide: true },
     { id: 'equipment', label: 'Equipment',       group: 'Field work', badge: 'equipDue', warn: true },
     { id: 'permits',   label: 'Permits',         group: 'Field work', badge: 'permitsSoon' },
     { id: 'talks',     label: 'Toolbox Talks',   group: 'Field work' },
-    { id: 'jha',       label: 'JHA Submissions', group: 'Field work', demoOnly: true },
     { id: 'incidents', label: 'Incidents',       group: 'Safety program', badge: 'incOpen', warn: true },
     { id: 'nearmiss',  label: 'Near Misses',     group: 'Safety program' },
     { id: 'subs',      label: 'Subcontractors',  group: 'Safety program', badge: 'subsBlocked' },
@@ -1541,7 +1544,11 @@
     var c = counts(), nav = $('#nav');
     nav.innerHTML = '';
     // Demo-only pages never appear in the production sidebar.
-    var VISIBLE = PAGES.filter(function (p) { return !p.demoOnly || TBT_DEMO; });
+    var VISIBLE = PAGES.filter(function (p) {
+      if (p.demoOnly && !TBT_DEMO) return false;
+      if (p.demoHide && TBT_DEMO) return false;
+      return true;
+    });
     var order = [];
     VISIBLE.forEach(function (p) { var g = p.group || ''; if (order.indexOf(g) === -1) order.push(g); });
     order.forEach(function (g) {
@@ -1571,7 +1578,7 @@
     page = id;
     if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
     renderNav();
-    ({ overview: pgOverview, analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics), permits: pgPermits, incidents: pgIncidents, obs: pgObs,
+    ({ overview: pgOverview, analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics), permits: pgPermits, incidents: pgIncidents, obs: (TBT_DEMO ? pgObsDemo : pgObs),
        insp: pgInsp, equipment: pgEquipment, corrective: pgCorrective, talks: pgTalks, nearmiss: pgNearMiss,
        subs: pgSubs, training: pgTraining, templates: pgTemplates, jobs: pgJobs, docs: pgDocs,
        automations: pgAutomations, orient: pgOrient, assign: pgAssign,
@@ -3073,6 +3080,705 @@
   /* ====================== TOOLBOX TALKS ================================= */
   var talkTab = 'log';
   var talkF = { q: '', job: '' };
+  /* ==================== SAFETY INSPECTIONS WORKSPACE — DEMO ONLY ========
+     Four views behind one sidebar entry: Weekly Requirements, Submission Log,
+     JHA Review, Findings & Corrective Actions. JHAs are inspections, so JHA
+     Review lives here rather than in the top-level navigation.
+
+     Reached with office.html?demo=1. Production keeps pgObs() unchanged.
+     ==================================================================== */
+
+  /* ---- what the office is actually allowed to require ------------------
+     Ready means: a field form exists, it has an opener the office can link
+     to, and it has a canonical permission key (FIELD_PERM_FORMS). Anything
+     else is listed but not selectable, with the reason it cannot be
+     scheduled. Nothing here is inferred from a document name. */
+  var SI_FORMS_READY = [
+    { key: 'jha', label: 'Daily JHA',
+      types: ['daily', 'once'], defaultType: 'daily',
+      note: 'One per active job per workday. An original plus its revisions is one submission.' },
+    { key: 'hotwork', label: 'Hot Work Permit',
+      types: ['activity'], defaultType: 'activity',
+      note: 'Activity-based only. Never required on a day with no hot work.' },
+    { key: 'aerial', label: 'Aerial Lift Inspection',
+      types: ['equipment', 'activity'], defaultType: 'equipment',
+      note: 'Per active aerial lift on days the unit is used.' },
+    { key: 'forklift', label: 'Forklift Inspection',
+      types: ['equipment', 'activity'], defaultType: 'equipment',
+      note: 'Per active forklift on days the unit is used.' },
+    { key: 'jobsiteanalysis', label: 'Job Site Analysis Checklist',
+      types: ['daily', 'once', 'activity'], defaultType: 'once',
+      note: 'Separate form from the standard JHA; has its own field workflow and permission key.' }
+  ];
+
+  /* Exists as a document or a half-formed idea, but has no approved field
+     workflow. Listed so the office can see it was considered, and disabled
+     with what is actually missing. */
+  var SI_FORMS_REVIEW = [
+    { label: 'Ladder Inspection',
+      missing: ['Form questions need approval', 'Frequency needs confirmation',
+                'Failure workflow needs definition'],
+      why: 'The supplied PDF is a one-page Ladder Variance Form, not an inspection ' +
+           'checklist. Its four questions are already built into the JHA. There is no ' +
+           'standalone ladder inspection form or permission key.' }
+  ];
+
+  /* Named in planning but nothing exists — no field form and no source
+     document. Shown so nobody assumes they were missed. */
+  var SI_FORMS_NOTBUILT = [
+    { label: 'Power Tool Inspection',
+      why: 'No mobile submission form exists, and no source document was supplied.' },
+    { label: 'Powder-Actuated Tool Inspection',
+      why: 'No mobile submission form exists, and no source document was supplied.' }
+  ];
+
+  var SI_REQ_TYPES = [
+    ['daily', 'Daily on selected workdays'],
+    ['once', 'Once during the selected week'],
+    ['activity', 'Only when the activity occurs'],
+    ['equipment', 'Per active equipment unit on days used']
+  ];
+  function siReqTypeLabel(k) {
+    for (var i = 0; i < SI_REQ_TYPES.length; i++) if (SI_REQ_TYPES[i][0] === k) return SI_REQ_TYPES[i][1];
+    return k;
+  }
+  function siFormLabel(key) {
+    for (var i = 0; i < SI_FORMS_READY.length; i++) if (SI_FORMS_READY[i].key === key) return SI_FORMS_READY[i].label;
+    return key;
+  }
+  function siFormDef(key) {
+    for (var i = 0; i < SI_FORMS_READY.length; i++) if (SI_FORMS_READY[i].key === key) return SI_FORMS_READY[i];
+    return null;
+  }
+
+  var siTab = 'req';
+  var siWeek = null;                       // Monday ISO of the week being viewed
+  var siF = { job: '', form: '', who: '', status: '', flagged: '' };
+
+  /* ---- week handling ---------------------------------------------------- */
+  function siMonday(iso) {
+    var d = iso ? new Date(iso + 'T12:00:00') : new Date();
+    d.setHours(12, 0, 0, 0);
+    var dow = d.getDay();
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+    return window.DEMO.isoDay(d);
+  }
+  function siWeekISO() { return siWeek || (siWeek = siMonday(null)); }
+  function siShiftWeek(n) {
+    var d = new Date(siWeekISO() + 'T12:00:00');
+    d.setDate(d.getDate() + n * 7);
+    siWeek = window.DEMO.isoDay(d);
+  }
+  function siWeekDays(iso) {
+    var out = [], d = new Date((iso || siWeekISO()) + 'T12:00:00');
+    for (var i = 0; i < 7; i++) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
+    return out;
+  }
+  // "Sep 28 – Oct 4, 2026"
+  function siWeekLabel(iso) {
+    var days = siWeekDays(iso);
+    var a = new Date(days[0] + 'T12:00:00'), b = new Date(days[6] + 'T12:00:00');
+    var mA = a.toLocaleDateString('en-US', { month: 'short' });
+    var mB = b.toLocaleDateString('en-US', { month: 'short' });
+    return mA + ' ' + a.getDate() + ' – ' + (mA === mB ? '' : mB + ' ') + b.getDate() + ', ' + b.getFullYear();
+  }
+  function siIsCurrentWeek() { return siWeekISO() === siMonday(null); }
+
+  /* The week control: prev / label+calendar / next / Today. One control,
+     one height, 44px tap targets, visible selected state. */
+  function siWeekControlHtml() {
+    return '<div class="si-week" role="group" aria-label="Week">' +
+      '<button type="button" class="si-wbtn" id="si-prev" aria-label="Previous week">&lsaquo;</button>' +
+      '<label class="si-wlab' + (siIsCurrentWeek() ? ' is-now' : '') + '" for="si-date">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+        '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>' +
+        '<span>' + esc(siWeekLabel()) + '</span>' +
+        '<input type="date" id="si-date" value="' + esc(siWeekISO()) + '" aria-label="Pick a week">' +
+      '</label>' +
+      '<button type="button" class="si-wbtn" id="si-next" aria-label="Next week">&rsaquo;</button>' +
+      '<button type="button" class="si-today' + (siIsCurrentWeek() ? ' is-on' : '') + '" id="si-today">Today</button>' +
+      '</div>';
+  }
+  function siWireWeek(rerender) {
+    var p = $('#si-prev'); if (p) p.onclick = function () { siShiftWeek(-1); rerender(); };
+    var n = $('#si-next'); if (n) n.onclick = function () { siShiftWeek(1); rerender(); };
+    var t = $('#si-today'); if (t) t.onclick = function () { siWeek = siMonday(null); rerender(); };
+    var d = $('#si-date'); if (d) d.onchange = function () {
+      if (this.value) { siWeek = siMonday(this.value); rerender(); }
+    };
+  }
+
+  /* ---- requirements store ------------------------------------------------
+     Requirements the office has defined, seeded from the demo fixtures and
+     kept in memory for the session. Nothing is written anywhere. */
+  var SI_REQS = null;
+  function siReqs() {
+    if (!SI_REQS) SI_REQS = (window.DEMO.requirements || []).map(function (r) {
+      return JSON.parse(JSON.stringify(r));
+    });
+    return SI_REQS;
+  }
+  function siReqsForWeek(iso) {
+    var week = iso || siWeekISO();
+    return siReqs().filter(function (r) {
+      if (r.week && r.week !== week) return false;
+      if (r.start && r.start > siWeekDays(week)[6]) return false;
+      if (r.end && r.end < week) return false;
+      return true;
+    });
+  }
+
+  /* What actually satisfies a requirement, from the real submission records.
+     A JHA family counts once — revisions never inflate it. */
+  function siSubmissionsFor(req, week) {
+    var days = siWeekDays(week);
+    var rows = (window.DEMO.field || []).filter(function (s) {
+      if (s.job_id !== req.job_id) return false;
+      if (s.form_type !== req.form) return false;
+      return days.indexOf(window.DEMO.isoDay(new Date(s.submitted_at))) !== -1;
+    });
+    if (req.form !== 'jha') return rows;
+    var seen = {}, out = [];
+    rows.forEach(function (r) {
+      var k = r.root_jha_id || r.id;
+      if (seen[k]) return;
+      seen[k] = 1; out.push(r);
+    });
+    return out;
+  }
+
+  /* Expected quantity for the week, by requirement type. Activity-based
+     requirements have no fixed expectation — they are expected only when the
+     activity happens, so the office sees "as it occurs" rather than a number
+     the field cannot be measured against. */
+  function siExpected(req, week) {
+    var days = siWeekDays(week);
+    if (req.type === 'daily') {
+      var wd = (req.weekdays && req.weekdays.length) ? req.weekdays : [1, 2, 3, 4, 5];
+      return days.filter(function (d) {
+        var dow = new Date(d + 'T12:00:00').getDay();
+        return wd.indexOf(dow) !== -1;
+      }).length;
+    }
+    if (req.type === 'once') return 1;
+    if (req.type === 'equipment') {
+      var units = (req.units || []).length;
+      var udays = (req.weekdays && req.weekdays.length) ? req.weekdays.length : 5;
+      return units ? units * udays : null;     // null when the office has not said which units
+    }
+    return null;                               // activity-based
+  }
+
+  function siStatus(req, week) {
+    var subs = siSubmissionsFor(req, week);
+    var exp = siExpected(req, week);
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var days = siWeekDays(week);
+    if (req.status === 'na') return { key: 'na', label: 'Not Applicable', done: subs.length, exp: exp, subs: subs };
+    if (exp === null) {
+      return { key: subs.length ? 'complete' : 'activity', done: subs.length, exp: null, subs: subs,
+               label: subs.length ? 'Complete' : 'Not Yet Due' };
+    }
+    if (subs.length >= exp) return { key: 'complete', label: 'Complete', done: subs.length, exp: exp, subs: subs };
+    if (days[0] > today) return { key: 'notdue', label: 'Not Yet Due', done: subs.length, exp: exp, subs: subs };
+    if (days[6] < today) return { key: 'missed', label: 'Missed', done: subs.length, exp: exp, subs: subs };
+    if (subs.length > 0) return { key: 'progress', label: 'In Progress', done: subs.length, exp: exp, subs: subs };
+    // mid-week with nothing yet: only "missed" once the expected days have passed
+    var elapsed = days.filter(function (d) { return d <= today; }).length;
+    return elapsed >= exp
+      ? { key: 'missed', label: 'Missed', done: 0, exp: exp, subs: subs }
+      : { key: 'progress', label: 'In Progress', done: 0, exp: exp, subs: subs };
+  }
+  function siStatusPill(st) {
+    var m = { complete: 'p-ok', progress: 'p-warn', missed: 'p-bad',
+              notdue: 'p-grey', activity: 'p-grey', na: 'p-grey' };
+    return pill(m[st.key] || 'p-grey', st.label);
+  }
+
+  function siStyle() {
+    return '<style>' +
+      '.si-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}' +
+      '.si-ctl{height:44px;background:#fff;border:1px solid var(--line-2);border-radius:9px;padding:0 12px}' +
+      '.si-add{height:44px;margin-left:auto}' +
+      '.si-count{align-self:center}' +
+      /* week control: one unit, one height, real tap targets */
+      '.si-week{display:inline-flex;align-items:stretch;height:44px;background:#fff;' +
+        'border:1px solid var(--line-2);border-radius:9px;overflow:hidden}' +
+      '.si-wbtn{width:40px;border:0;background:#fff;color:var(--ink-3);font-size:20px;line-height:1;' +
+        'cursor:pointer;border-right:1px solid var(--line)}' +
+      '.si-wbtn:last-of-type{border-right:0;border-left:1px solid var(--line)}' +
+      '.si-wbtn:hover{background:var(--bg)}' +
+      '.si-wlab{display:inline-flex;align-items:center;gap:8px;padding:0 14px;cursor:pointer;' +
+        'position:relative;font-size:13.5px;font-weight:650;color:var(--ink);white-space:nowrap}' +
+      '.si-wlab svg{width:16px;height:16px;color:var(--ink-4);flex:0 0 auto}' +
+      '.si-wlab.is-now{color:var(--accent)}' +
+      '.si-wlab.is-now svg{color:var(--accent)}' +
+      '.si-wlab input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}' +
+      '.si-today{height:100%;border:0;border-left:1px solid var(--line);background:#fff;padding:0 14px;' +
+        'font-size:13px;font-weight:650;color:var(--ink-3);cursor:pointer}' +
+      '.si-today.is-on{background:var(--accent-tt);color:var(--accent)}' +
+      '.si-tally{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}' +
+      '.si-chip{font-size:12px;font-weight:600;border-radius:999px;padding:5px 11px;border:1px solid}' +
+      '.si-chip b{font-weight:800}' +
+      '.si-complete{background:#ecfdf5;border-color:#a7f3d0;color:#047857}' +
+      '.si-progress{background:#fffbeb;border-color:#fde68a;color:#b45309}' +
+      '.si-missed{background:#fef2f2;border-color:#fecaca;color:#b91c1c}' +
+      '.si-notdue{background:#f8fafc;border-color:#e2e8f0;color:#64748b}' +
+      '.si-out{color:#b45309}' +
+      'td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}' +
+      /* add-requirement panel */
+      '.ar-week{height:44px;display:flex;align-items:center;padding:0 12px;background:var(--bg);' +
+        'border:1px solid var(--line);border-radius:9px;font-weight:650;font-size:13.5px}' +
+      '.ar-days{display:flex;gap:6px;flex-wrap:wrap}' +
+      '.ar-day{min-width:44px;height:40px;border:1px solid var(--line-2);border-radius:8px;background:#fff;' +
+        'font-size:12.5px;font-weight:650;color:var(--ink-3);cursor:pointer}' +
+      '.ar-day.is-on{background:var(--accent);border-color:var(--accent);color:#fff}' +
+      '.ar-unit{display:flex;gap:8px;align-items:center;margin:4px 0}' +
+      '.ar-ta{width:100%;padding:8px 11px;border:1px solid var(--line-2);border-radius:7px;' +
+        'background:#fafbfc;font-size:13.5px}' +
+      '.ar-blocked{display:grid;gap:8px}' +
+      '.ar-brow{border:1px dashed var(--line-2);border-radius:9px;padding:10px 12px;background:var(--bg);' +
+        'opacity:.85;cursor:not-allowed}' +
+      '.ar-brow .t{font-weight:650;font-size:13.5px;color:var(--ink-3)}' +
+      '.ar-brow .w{font-size:12.5px;color:var(--ink-4);margin:3px 0 6px;line-height:1.5}' +
+      '.ar-tag{display:inline-block;font-size:11px;font-weight:650;background:#fff;border:1px solid var(--line-2);' +
+        'border-radius:999px;padding:2px 9px;margin:0 5px 5px 0;color:var(--ink-4)}' +
+      '@media (max-width:820px){.si-add{margin-left:0;width:100%}.si-week{width:100%}.si-wlab{flex:1;justify-content:center}}' +
+      /* Narrow screens: the subtab strip scrolls rather than forcing the page wide. */
+      '@media (max-width:820px){.pg-hd{flex-wrap:wrap}.subtabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.subtabs button{white-space:nowrap}}' +
+      '</style>';
+  }
+
+  function pgObsDemo() {
+    if (['req', 'log', 'jha', 'find'].indexOf(siTab) === -1) siTab = 'req';
+    var right = subtabs(siTab, [['req', 'Weekly Requirements'], ['log', 'Submission Log'],
+      ['jha', 'JHA Review'], ['find', 'Findings & Corrective Actions']], 'si');
+    var html = siStyle() + head('Safety Inspections',
+      'Define what the field must complete, then review what came back.', right);
+    if (siTab === 'req') html += siRequirementsHtml();
+    else if (siTab === 'log') html += siLogHtml();
+    else if (siTab === 'jha') html += siJhaHtml();
+    else html += siFindingsHtml();
+    paint(html);
+    wireSubtabs('si', function (v) { siTab = v; pgObsDemo(); });
+    if (siTab === 'req') { siWireWeek(pgObsDemo); siWireReq(); }
+    else if (siTab === 'log') siWireLog();
+    else if (siTab === 'jha') jhaWire();
+    else siWireFindings();
+  }
+
+  /* ---------------- A · Weekly Requirements ---------------- */
+  function siRequirementsHtml() {
+    var week = siWeekISO();
+    var reqs = siReqsForWeek(week).filter(function (r) {
+      return !siF.job || r.job_id === siF.job;
+    });
+    var jobs = window.DEMO.jobs || [];
+    var tally = { complete: 0, progress: 0, missed: 0, notdue: 0, activity: 0, na: 0 };
+    var rows = reqs.map(function (r) {
+      var st = siStatus(r, week);
+      tally[st.key] = (tally[st.key] || 0) + 1;
+      var outstanding = st.exp === null ? null : Math.max(0, st.exp - st.done);
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(jobName(r.job_id)) + '</span></td>' +
+        '<td>' + esc(siFormLabel(r.form)) + '</td>' +
+        '<td>' + esc(siReqTypeLabel(r.type)) + '</td>' +
+        '<td>' + esc(siApplicable(r)) + '</td>' +
+        '<td class="num">' + (st.exp === null ? '<span class="muted">as it occurs</span>' : st.exp) + '</td>' +
+        '<td class="num">' + st.done + '</td>' +
+        '<td class="num">' + (outstanding === null ? '<span class="muted">—</span>'
+          : (outstanding ? '<b class="si-out">' + outstanding + '</b>' : '0')) + '</td>' +
+        '<td>' + siStatusPill(st) + '</td>' +
+        '<td class="r"><button class="btn btn-sm" data-si-open="' + esc(r.id) + '">View</button></td>' +
+        '</tr>';
+    });
+
+    return '<div class="si-bar">' +
+      siWeekControlHtml() +
+      '<select id="si-job" class="si-ctl"><option value="">All jobsites</option>' +
+        jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (siF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<button class="btn btn-gold si-add" id="si-addreq">+ Add Requirement</button>' +
+      '</div>' +
+      '<div class="si-tally">' +
+        siTallyChip('complete', 'Complete', tally.complete) +
+        siTallyChip('progress', 'In Progress', tally.progress) +
+        siTallyChip('missed', 'Missed', tally.missed) +
+        siTallyChip('notdue', 'Not Yet Due', tally.notdue + tally.activity) +
+      '</div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Jobsite' }, { t: 'Required form' }, { t: 'Frequency' }, { t: 'Applicable days / activity' },
+         { t: 'Expected', r: 1 }, { t: 'Completed', r: 1 }, { t: 'Outstanding', r: 1 },
+         { t: 'Status' }, { t: '', r: 1 }],
+        rows, 'No requirements defined for this week. Use Add Requirement to define one.') +
+      '</div></div>';
+  }
+  function siTallyChip(k, label, n) {
+    return '<span class="si-chip si-' + k + '"><b>' + n + '</b> ' + esc(label) + '</span>';
+  }
+  function siApplicable(r) {
+    if (r.type === 'activity') return 'When the activity occurs';
+    if (r.type === 'once') return 'Any day this week';
+    var names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var wd = (r.weekdays && r.weekdays.length) ? r.weekdays : [1, 2, 3, 4, 5];
+    var d = wd.map(function (n) { return names[n]; }).join(' ');
+    if (r.type === 'equipment') {
+      return d + ((r.units && r.units.length) ? ' · ' + r.units.join(', ') : ' · no units assigned');
+    }
+    return d;
+  }
+
+  function siWireReq() {
+    var j = $('#si-job'); if (j) j.onchange = function () { siF.job = j.value; pgObsDemo(); };
+    var a = $('#si-addreq'); if (a) a.onclick = siAddRequirement;
+    $$('[data-si-open]').forEach(function (b) {
+      b.onclick = function () { siOpenRequirement(b.getAttribute('data-si-open')); };
+    });
+  }
+
+  function siOpenRequirement(id) {
+    var r = siReqs().filter(function (x) { return x.id === id; })[0];
+    if (!r) return;
+    var st = siStatus(r, siWeekISO());
+    var h = '<div class="sec-h">Requirement</div>' +
+      kv('Jobsite', jobName(r.job_id)) + kv('Form', siFormLabel(r.form)) +
+      kv('Frequency', siReqTypeLabel(r.type)) + kv('Applicable', siApplicable(r)) +
+      kv('Week', siWeekLabel()) +
+      (r.due_time ? kv('Due by', r.due_time) : '') +
+      (r.notes ? kv('Notes', r.notes) : '') +
+      '<div class="sec-h">This week</div>' +
+      kv('Expected', st.exp === null ? 'As the activity occurs' : String(st.exp)) +
+      kv('Completed', String(st.done)) +
+      kv('Status', st.label) +
+      '<div class="sec-h">Submissions</div>' +
+      (st.subs.length
+        ? tableWrap([{ t: 'Submitted' }, { t: 'By' }, { t: 'Result', r: 1 }],
+            st.subs.map(function (s) {
+              return '<tr><td>' + esc(fmtWhen(s.submitted_at)) + '</td>' +
+                '<td>' + esc(s.inspector_name) + '</td>' +
+                '<td class="r">' + (s.has_defects ? pill('p-warn', s.defect_count + ' defect' +
+                  (s.defect_count === 1 ? '' : 's')) : pill('p-ok', 'Pass')) + '</td></tr>';
+            }), '')
+        : '<div class="small muted">Nothing submitted against this requirement yet.</div>') +
+      '<p class="small muted" style="margin-top:12px">Demo requirement — nothing is saved to production.</p>';
+    drawer('Requirement', jobName(r.job_id) + ' · ' + siFormLabel(r.form), h);
+  }
+
+  /* ---------------- Add Requirement ---------------- */
+  function siAddRequirement() {
+    var jobs = window.DEMO.jobs || [];
+    var st = { company: 'greiner', job: jobs[0] ? jobs[0].id : '', form: SI_FORMS_READY[0].key,
+               type: SI_FORMS_READY[0].defaultType, weekdays: [1, 2, 3, 4, 5],
+               start: siWeekISO(), end: siWeekDays()[6], due: '', units: [], notes: '' };
+
+    function render() {
+      var def = siFormDef(st.form);
+      var allowed = def ? def.types : ['once'];
+      if (allowed.indexOf(st.type) === -1) st.type = def ? def.defaultType : 'once';
+      var names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      var equip = (window.DEMO.equipment || []).filter(function (e) {
+        return e.job_id === st.job && (st.form === 'aerial' ? e.kind === 'aerial' : e.kind === 'forklift');
+      });
+
+      var h = '<div class="f"><label for="ar-co">Company</label>' +
+        '<select id="ar-co">' + Object.keys(TBT_COMPANIES).map(function (k) {
+          return '<option value="' + k + '"' + (st.company === k ? ' selected' : '') + '>' +
+            esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
+        (st.company === 'greiner' ? '' :
+          '<p class="small muted" style="margin:.35rem 0 0">Only Greiner has demo jobsites in this fixture set.</p>') +
+        '</div>' +
+        '<div class="f"><label for="ar-job">Jobsite</label><select id="ar-job">' +
+          jobs.map(function (j) {
+            return '<option value="' + esc(j.id) + '"' + (st.job === j.id ? ' selected' : '') + '>' +
+              esc(j.name) + '</option>'; }).join('') + '</select></div>' +
+
+        '<div class="f"><label for="ar-form">Inspection or form type</label>' +
+          '<select id="ar-form">' + SI_FORMS_READY.map(function (f) {
+            return '<option value="' + f.key + '"' + (st.form === f.key ? ' selected' : '') + '>' +
+              esc(f.label) + '</option>'; }).join('') + '</select>' +
+          (def ? '<p class="small muted" style="margin:.35rem 0 0">' + esc(def.note) + '</p>' : '') +
+        '</div>' +
+
+        '<div class="f"><label for="ar-type">Requirement type</label>' +
+          '<select id="ar-type">' + SI_REQ_TYPES.filter(function (t) {
+            return allowed.indexOf(t[0]) !== -1;
+          }).map(function (t) {
+            return '<option value="' + t[0] + '"' + (st.type === t[0] ? ' selected' : '') + '>' +
+              esc(t[1]) + '</option>'; }).join('') + '</select>' +
+          (allowed.length === 1
+            ? '<p class="small muted" style="margin:.35rem 0 0">' + esc(siFormLabel(st.form)) +
+              ' only supports this frequency.</p>' : '') +
+        '</div>' +
+
+        '<div class="f"><label>Week</label><div class="ar-week">' + esc(siWeekLabel()) + '</div></div>' +
+
+        (st.type === 'daily' || st.type === 'equipment'
+          ? '<div class="f"><label>Applicable weekdays</label><div class="ar-days">' +
+              names.map(function (n, i) {
+                var on = st.weekdays.indexOf(i) !== -1;
+                return '<button type="button" class="ar-day' + (on ? ' is-on' : '') +
+                  '" data-ar-day="' + i + '">' + n + '</button>'; }).join('') + '</div></div>'
+          : '') +
+
+        (st.type === 'equipment'
+          ? '<div class="f"><label>Applicable equipment</label>' +
+              (equip.length
+                ? equip.map(function (e) {
+                    var on = st.units.indexOf(e.unit) !== -1;
+                    return '<label class="check ar-unit"><input type="checkbox" data-ar-unit="' +
+                      esc(e.unit) + '"' + (on ? ' checked' : '') + '><span>' + esc(e.unit) +
+                      ' <span class="small muted">' + esc(e.label) + '</span></span></label>'; }).join('')
+                : '<p class="small muted">No ' + (st.form === 'aerial' ? 'aerial lifts' : 'forklifts') +
+                  ' are assigned to this jobsite, so a per-unit requirement cannot be counted yet.</p>') +
+            '</div>'
+          : '') +
+
+        '<div style="display:flex;gap:8px">' +
+          '<div class="f" style="flex:1"><label for="ar-start">Start date</label>' +
+            '<input type="date" id="ar-start" value="' + esc(st.start) + '"></div>' +
+          '<div class="f" style="flex:1"><label for="ar-end">End date</label>' +
+            '<input type="date" id="ar-end" value="' + esc(st.end) + '"></div>' +
+        '</div>' +
+        '<div class="f"><label for="ar-due">Due time</label>' +
+          '<input type="time" id="ar-due" value="' + esc(st.due) + '" placeholder="Optional"></div>' +
+        '<div class="f"><label for="ar-notes">Notes</label>' +
+          '<textarea id="ar-notes" rows="2" class="ar-ta">' + esc(st.notes) + '</textarea></div>' +
+
+        /* Everything the office cannot schedule, and why. */
+        '<div class="sec-h">Needs review before it can be scheduled</div>' +
+        '<div class="ar-blocked">' + SI_FORMS_REVIEW.map(function (f) {
+          return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
+            '<div class="w">' + esc(f.why) + '</div>' +
+            '<div class="tags">' + f.missing.map(function (m) {
+              return '<span class="ar-tag">' + esc(m) + '</span>'; }).join('') + '</div></div>';
+        }).join('') + SI_FORMS_NOTBUILT.map(function (f) {
+          return '<div class="ar-brow" aria-disabled="true"><div class="t">' + esc(f.label) + '</div>' +
+            '<div class="w">' + esc(f.why) + '</div>' +
+            '<div class="tags"><span class="ar-tag">No mobile submission form exists</span></div></div>';
+        }).join('') + '</div>' +
+
+        '<div style="margin-top:16px">' +
+          '<button class="btn btn-gold" id="ar-save" style="width:100%;justify-content:center">Add Requirement</button>' +
+          '<button class="btn" id="ar-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>' +
+        '</div>';
+
+      drawer('Add Requirement', 'Define what the field must complete this week', h);
+      wire();
+    }
+
+    function wire() {
+      var co = $('#ar-co'); if (co) co.onchange = function () { st.company = this.value; render(); };
+      var jb = $('#ar-job'); if (jb) jb.onchange = function () { st.job = this.value; st.units = []; render(); };
+      // Changing the form resets the frequency to that form's default, so picking
+      // Aerial always lands on per-unit rather than silently keeping the last choice.
+      var fm = $('#ar-form'); if (fm) fm.onchange = function () {
+        st.form = this.value; st.units = [];
+        var d = siFormDef(st.form); if (d) st.type = d.defaultType;
+        render();
+      };
+      var tp = $('#ar-type'); if (tp) tp.onchange = function () { st.type = this.value; render(); };
+      $$('[data-ar-day]').forEach(function (b) {
+        b.onclick = function () {
+          var n = +b.getAttribute('data-ar-day'), i = st.weekdays.indexOf(n);
+          if (i === -1) st.weekdays.push(n); else st.weekdays.splice(i, 1);
+          st.weekdays.sort(); render();
+        };
+      });
+      $$('[data-ar-unit]').forEach(function (c) {
+        c.onchange = function () {
+          var u = c.getAttribute('data-ar-unit'), i = st.units.indexOf(u);
+          if (c.checked && i === -1) st.units.push(u);
+          if (!c.checked && i !== -1) st.units.splice(i, 1);
+        };
+      });
+      ['start', 'end', 'due', 'notes'].forEach(function (k) {
+        var e = $('#ar-' + k);
+        if (e) e.oninput = e.onchange = function () { st[k] = this.value; };
+      });
+      var cn = $('#ar-cancel'); if (cn) cn.onclick = closeDrawer;
+      var sv = $('#ar-save');
+      if (sv) sv.onclick = function () {
+        if (!st.job) { toast('Choose a jobsite.'); return; }
+        siReqs().push({
+          id: 'req-' + Date.now(), company: st.company, job_id: st.job, form: st.form,
+          type: st.type, weekdays: st.weekdays.slice(), units: st.units.slice(),
+          start: st.start || null, end: st.end || null, due_time: st.due || null,
+          notes: st.notes || '', week: null, status: 'active'
+        });
+        closeDrawer();
+        toast('Requirement added for ' + siWeekLabel() + ' (demo only — nothing saved).');
+        pgObsDemo();
+      };
+    }
+    render();
+  }
+
+  /* ---------------- B · Submission Log ---------------- */
+  function siLogRows() {
+    var days = siWeekDays();
+    var rows = (window.DEMO.field || []).filter(function (s) {
+      return days.indexOf(window.DEMO.isoDay(new Date(s.submitted_at))) !== -1;
+    });
+    // A JHA and its revisions are one family by default.
+    var seen = {}, out = [];
+    rows.forEach(function (s) {
+      if (s.form_type === 'jha' && s.root_jha_id) {
+        if (seen[s.root_jha_id]) return;
+        seen[s.root_jha_id] = 1;
+        var fam = rows.filter(function (x) { return x.root_jha_id === s.root_jha_id; })
+          .sort(function (a, b) { return (a.revision_number || 0) - (b.revision_number || 0); });
+        var latest = fam[fam.length - 1];
+        out.push(Object.assign({}, latest, { revisions: fam.length - 1, family: s.root_jha_id }));
+        return;
+      }
+      out.push(s);
+    });
+    return out.filter(function (s) {
+      if (siF.job && s.job_id !== siF.job) return false;
+      if (siF.form && s.form_type !== siF.form) return false;
+      if (siF.who && s.inspector_name !== siF.who) return false;
+      if (siF.flagged === 'flag' && !s.has_defects) return false;
+      if (siF.flagged === 'clean' && s.has_defects) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.submitted_at).localeCompare(String(a.submitted_at)); });
+  }
+  function siLogHtml() {
+    var list = siLogRows();
+    var people = {}, forms = {};
+    (window.DEMO.field || []).forEach(function (s) {
+      people[s.inspector_name] = 1;
+      forms[s.form_type] = s.form_title || s.form_type;
+    });
+    var rows = list.map(function (s) {
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(s.form_title || s.form_type) + '</span>' +
+          (s.revisions ? '<div class="small muted">+' + s.revisions + ' revision' +
+            (s.revisions === 1 ? '' : 's') + ' — one submission</div>' : '') +
+          (s.asset_id ? '<div class="small muted">' + esc(s.asset_id) + '</div>' : '') + '</td>' +
+        '<td>' + esc(s.job_name) + '</td>' +
+        '<td>' + esc(s.inspector_name) + '</td>' +
+        '<td>' + esc(fmtWhen(s.submitted_at)) + '</td>' +
+        '<td>' + (s.has_defects ? pill('p-warn', s.defect_count + ' finding' +
+          (s.defect_count === 1 ? '' : 's')) : pill('p-ok', 'Clean')) + '</td>' +
+        '<td class="r">' +
+          (s.family
+            ? '<button class="btn btn-sm" data-si-hist="' + esc(s.family) + '">Revision history</button> '
+            : '') +
+          '<button class="btn btn-sm" data-si-sub="' + esc(s.id) + '">View</button>' +
+        '</td></tr>';
+    });
+    return '<div class="si-bar">' + siWeekControlHtml() +
+      '<select id="si-job" class="si-ctl"><option value="">All jobsites</option>' +
+        (window.DEMO.jobs || []).map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (siF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="si-form" class="si-ctl"><option value="">All forms</option>' +
+        Object.keys(forms).map(function (k) {
+          return '<option value="' + esc(k) + '"' + (siF.form === k ? ' selected' : '') + '>' + esc(forms[k]) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="si-who" class="si-ctl"><option value="">Anyone</option>' +
+        Object.keys(people).map(function (p) {
+          return '<option value="' + esc(p) + '"' + (siF.who === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="si-flag" class="si-ctl"><option value="">All results</option>' +
+        '<option value="flag"' + (siF.flagged === 'flag' ? ' selected' : '') + '>Flagged</option>' +
+        '<option value="clean"' + (siF.flagged === 'clean' ? ' selected' : '') + '>Clean</option></select>' +
+      '<span class="small muted si-count">' + list.length + ' submission' + (list.length === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Form' }, { t: 'Jobsite' }, { t: 'Submitted by' }, { t: 'When' }, { t: 'Result' }, { t: '', r: 1 }],
+        rows, 'No submissions in this week for these filters.') + '</div></div>';
+  }
+  function siWireLog() {
+    siWireWeek(pgObsDemo);
+    [['si-job', 'job'], ['si-form', 'form'], ['si-who', 'who'], ['si-flag', 'flagged']].forEach(function (p) {
+      var e = $('#' + p[0]);
+      if (e) e.onchange = function () { siF[p[1]] = e.value; pgObsDemo(); };
+    });
+    $$('[data-si-hist]').forEach(function (b) {
+      b.onclick = function () { jhaHistory(b.getAttribute('data-si-hist')); };
+    });
+    $$('[data-si-sub]').forEach(function (b) {
+      b.onclick = function () { siOpenSubmission(b.getAttribute('data-si-sub')); };
+    });
+  }
+  function siOpenSubmission(id) {
+    var s = (window.DEMO.field || []).filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    var h = '<div class="sec-h">Submission</div>' +
+      kv('Form', s.form_title || s.form_type) + kv('Jobsite', s.job_name) +
+      kv('Submitted by', s.inspector_name) + kv('When', fmtWhen(s.submitted_at)) +
+      (s.asset_id ? kv('Unit', s.asset_id) : '') +
+      kv('Result', s.has_defects ? s.defect_count + ' finding(s)' : 'Clean');
+    if (s.root_jha_id) {
+      h += '<div class="sec-h">JHA</div>' +
+        '<p class="small">This submission is part of a JHA family. Open the revision history to ' +
+        'see every version.</p>' +
+        '<button class="btn btn-sm" id="si-gohist">View revision history</button>';
+    }
+    h += '<p class="small muted" style="margin-top:12px">Attached records (photos, PDFs) are not ' +
+      'stored in this demo, so none are shown rather than showing placeholders.</p>';
+    drawer(s.form_title || s.form_type, s.job_name + ' · ' + fmtWhen(s.submitted_at), h);
+    var g = $('#si-gohist');
+    if (g) g.onclick = function () { jhaHistory(s.root_jha_id); };
+  }
+
+  /* ---------------- C · JHA Review ----------------
+     The JHA submissions view, moved in from the removed top-level page. */
+  function siJhaHtml() { return jhaBodyHtml(); }
+
+  /* ---------------- D · Findings & Corrective Actions ---------------- */
+  function siFindingsHtml() {
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var all = allCorrective().filter(function (c) {
+      if (siF.job && c.job !== siF.job) return false;
+      if (siF.status === 'open' && c.status === 'closed') return false;
+      if (siF.status === 'closed' && c.status !== 'closed') return false;
+      if (siF.status === 'overdue' && !(c.status !== 'closed' && c.due && c.due < today)) return false;
+      return true;
+    });
+    var rows = all.map(function (c) {
+      var late = c.status !== 'closed' && c.due && c.due < today;
+      var age = c.due ? Math.round((new Date(today) - new Date(c.due)) / 86400000) : null;
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(c.text || '—') + '</span>' +
+          (c.detail ? '<div class="small muted">' + esc(c.detail) + '</div>' : '') + '</td>' +
+        '<td>' + esc(c.src) + '</td>' +
+        '<td>' + esc(jobName(c.job)) + '</td>' +
+        '<td>' + esc(c.owner || '<span class="muted">Unassigned</span>') + '</td>' +
+        '<td>' + esc(c.due || '—') + '</td>' +
+        '<td class="num">' + (age === null ? '—' : (age > 0 ? '<b class="si-out">' + age + 'd late</b>'
+          : (-age) + 'd left')) + '</td>' +
+        '<td>' + (c.status === 'closed' ? pill('p-ok', 'Closed')
+          : late ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td>' +
+        '</tr>';
+    });
+    return '<div class="si-bar">' +
+      '<select id="si-job" class="si-ctl"><option value="">All jobsites</option>' +
+        (window.DEMO.jobs || []).map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (siF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="si-status" class="si-ctl"><option value="">All statuses</option>' +
+        '<option value="open"' + (siF.status === 'open' ? ' selected' : '') + '>Open</option>' +
+        '<option value="overdue"' + (siF.status === 'overdue' ? ' selected' : '') + '>Overdue</option>' +
+        '<option value="closed"' + (siF.status === 'closed' ? ' selected' : '') + '>Closed</option></select>' +
+      '<span class="small muted si-count">' + all.length + ' finding' + (all.length === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Finding' }, { t: 'Source form' }, { t: 'Jobsite' }, { t: 'Assigned owner' },
+         { t: 'Due date' }, { t: 'Age', r: 1 }, { t: 'Status' }],
+        rows, 'No findings on record.') + '</div></div>' +
+      '<p class="small muted" style="margin-top:8px">Only findings that come from a real submission ' +
+      'are listed. There are no incident corrective actions because no incident has been submitted.</p>';
+  }
+  function siWireFindings() {
+    [['si-job', 'job'], ['si-status', 'status']].forEach(function (p) {
+      var e = $('#' + p[0]);
+      if (e) e.onchange = function () { siF[p[1]] = e.value; pgObsDemo(); };
+    });
+  }
+
   /* ==================== ANALYTICS — DEMO ONLY ==========================
      Reached with office.html?demo=1. Production analytics stays locked (see
      pgAnalytics) because Greiner does not have enough real history yet; this
@@ -3082,14 +3788,34 @@
      can be opened to show exactly the records it counted. No total is stored
      separately from the records that produce it.
      ==================================================================== */
-  var anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '' };
+  var anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '', range: 'week' };
 
+  /* The window the whole page is filtered to. Presets resolve to real dates so
+     every section uses the same range. */
+  function anlRangeBounds() {
+    var iso = window.DEMO.isoDay, off = window.DEMO.dayOffset;
+    var preset = anF.range || 'week';
+    if (preset === 'custom') {
+      return { from: anF.from || iso(off(-6)), to: anF.to || iso(off(0)) };
+    }
+    if (preset === '30') return { from: iso(off(-29)), to: iso(off(0)) };
+    if (preset === 'month') {
+      var n = new Date(); n.setHours(12, 0, 0, 0);
+      return { from: iso(new Date(n.getFullYear(), n.getMonth(), 1)), to: iso(off(0)) };
+    }
+    // this week / last week, Monday-based
+    var d = new Date(); d.setHours(12, 0, 0, 0);
+    var dow = d.getDay();
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow) + (preset === 'last' ? -7 : 0));
+    var from = iso(d);
+    d.setDate(d.getDate() + 6);
+    return { from: from, to: iso(d) };
+  }
   function anlRangeDays() {
-    // Default window: the fixture days (yesterday and today).
-    var from = anF.from || window.DEMO.isoDay(window.DEMO.dayOffset(-1));
-    var to = anF.to || window.DEMO.isoDay(window.DEMO.dayOffset(0));
-    var out = [], d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
-    while (d <= end) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
+    var b = anlRangeBounds();
+    var out = [], d = new Date(b.from + 'T12:00:00'), end = new Date(b.to + 'T12:00:00');
+    var guard = 0;
+    while (d <= end && guard++ < 400) { out.push(window.DEMO.isoDay(d)); d.setDate(d.getDate() + 1); }
     return out;
   }
   function anlJobs() {
@@ -3104,19 +3830,30 @@
      (original + every revision) satisfies it exactly once. */
   function anlCompliance() {
     var days = anlRangeDays(), jobs = anlJobs();
+    var jobIds = jobs.map(function (j) { return j.id; });
     var fams = jhaFamilies();
-    var required = [], completed = [], missed = [];
-    days.forEach(function (day) {
-      jobs.forEach(function (job) {
-        var hit = fams.filter(function (f) { return f.job_id === job.id && f.work_date === day; });
-        var row = { day: day, job_id: job.id, job: job.name, form: 'Job Hazard Analysis',
-                    families: hit, done: hit.length > 0 };
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var required = [], completed = [], missed = [], upcoming = [];
+
+    // Compliance follows the requirements the office defined, so the card and
+    // Weekly Requirements never disagree. A daily requirement is expected only
+    // on its applicable weekdays, and only once that day has arrived.
+    siReqs().filter(function (r) {
+      return r.type === 'daily' && jobIds.indexOf(r.job_id) !== -1;
+    }).forEach(function (r) {
+      var wd = (r.weekdays && r.weekdays.length) ? r.weekdays : [1, 2, 3, 4, 5];
+      days.forEach(function (day) {
+        if (wd.indexOf(new Date(day + 'T12:00:00').getDay()) === -1) return;
+        var hit = fams.filter(function (f) {
+          return f.job_id === r.job_id && f.work_date === day; });
+        var row = { day: day, job_id: r.job_id, job: jobName(r.job_id),
+                    form: siFormLabel(r.form), families: hit, done: hit.length > 0 };
+        if (day > today) { upcoming.push(row); return; }   // not yet due
         required.push(row);
         (row.done ? completed : missed).push(row);
       });
     });
-    if (anF.status === 'done') { /* filter applies to the drilldown lists only */ }
-    return { required: required, completed: completed, missed: missed,
+    return { required: required, completed: completed, missed: missed, upcoming: upcoming,
              pct: required.length ? Math.round(completed.length / required.length * 100) : 0 };
   }
 
@@ -3286,308 +4023,405 @@
      'Any risk ranking needs criteria Greiner has signed off on, not invented weights.']
   ];
 
+  /* ---- small visual helpers ------------------------------------------- */
+  function anDonut(pct, label, tone) {
+    var r = 52, c = 2 * Math.PI * r, on = Math.max(0, Math.min(100, pct)) / 100 * c;
+    return '<svg class="an-donut" viewBox="0 0 140 140" role="img" aria-label="' + pct + '%">' +
+      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="var(--line)" stroke-width="14"/>' +
+      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="' + tone + '" stroke-width="14"' +
+        ' stroke-linecap="round" stroke-dasharray="' + on.toFixed(1) + ' ' + c.toFixed(1) + '"' +
+        ' transform="rotate(-90 70 70)"/>' +
+      '<text x="70" y="66" text-anchor="middle" class="an-dv">' + pct + '%</text>' +
+      '<text x="70" y="86" text-anchor="middle" class="an-dl">' + esc(label) + '</text></svg>';
+  }
+  function anMeter(pct, tone) {
+    return '<div class="an-meter"><i style="width:' + Math.max(0, Math.min(100, pct)) + '%;background:' + tone + '"></i></div>';
+  }
+  // horizontal stacked bar from [{label, value, color}]
+  function anStack(parts) {
+    var total = parts.reduce(function (n, p) { return n + p.value; }, 0) || 1;
+    return '<div class="an-stack">' + parts.map(function (p) {
+      return '<span style="width:' + (p.value / total * 100) + '%;background:' + p.color + '" title="' +
+        esc(p.label) + ': ' + p.value + '"></span>';
+    }).join('') + '</div><div class="an-keys">' + parts.map(function (p) {
+      return '<span class="an-key"><i style="background:' + p.color + '"></i>' + esc(p.label) +
+        ' <b>' + p.value + '</b></span>';
+    }).join('') + '</div>';
+  }
+  // labelled rows with proportional bars
+  function anBars(rows, tone) {
+    var max = rows.reduce(function (n, r) { return Math.max(n, r.value); }, 0) || 1;
+    return '<div class="an-rows">' + rows.map(function (r) {
+      return '<div class="an-row"><span class="l">' + esc(r.label) + '</span>' +
+        '<span class="b"><i style="width:' + (r.value / max * 100) + '%;background:' +
+          (r.color || tone || 'var(--accent)') + '"></i></span>' +
+        '<span class="v">' + r.value + '</span></div>';
+    }).join('') + '</div>';
+  }
+  function anInfo(text) {
+    return '<button type="button" class="an-i" data-an-info="' + esc(text) + '" aria-label="How this is calculated">i</button>';
+  }
+  /* The card is a div, not a button: it contains its own info button, and the
+     HTML parser closes a <button> as soon as it meets a nested one, which
+     spilled every card's contents out of its box. role+tabindex keep it
+     keyboard-operable. */
+  function anCardOpen(drill, cls) {
+    return '<div class="an-c' + (cls ? ' ' + cls : '') + (drill ? ' is-link' : '') + '"' +
+      (drill ? ' data-an-go="' + drill + '" role="button" tabindex="0"' : '') + '>';
+  }
+  function anCardClose() { return '</div>'; }
+  function anHead(title, info, chev) {
+    return '<div class="an-h"><span>' + esc(title) + '</span>' +
+      (info ? anInfo(info) : '') + (chev ? '<span class="an-chev">›</span>' : '') + '</div>';
+  }
+
+  var AN_TONE = { ok: '#16a34a', warn: '#d97706', bad: '#dc2626', info: '#2563eb', grey: '#94a3b8' };
+
   function pgAnalyticsDemo() {
-    var comp = anlCompliance();
-    var jha = anlJhaActivity();
-    var tb = anlToolbox();
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts(), ic = anlIncidents();
+    var ca = anlCorrective();
     var jobs = (window.DEMO.jobs || []);
+    var s = tb.stats;
 
-    var style = '<style>' +
-      '.an-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:8px}' +
-      '.an-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);' +
-        'text-align:left;cursor:pointer;font:inherit}' +
-      '.an-card:hover{border-color:var(--accent)}' +
-      '.an-card b{display:block;font-size:24px;color:var(--ink);line-height:1.15}' +
-      '.an-card span{font-size:11.5px;color:var(--ink-4)}' +
-      '.an-card em{display:block;font-style:normal;font-size:10.5px;color:var(--accent);margin-top:5px;font-weight:650}' +
-      '.an-sec{border:1px solid var(--line);border-radius:12px;background:var(--card);' +
-        'box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
-      '.an-sec h3{margin:0 0 2px;font-size:15px}' +
-      '.an-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
-      '.an-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}' +
-      '.an-bar i{display:block;height:100%;background:var(--ok)}' +
-      // a card with nothing to drill into: no hover, no pointer
-      '.an-card.an-static{cursor:default}.an-card.an-static:hover{border-color:var(--line)}' +
-      '.an-card.an-needs{border-style:dashed;border-color:var(--warn-br,#fcd34d);background:#fffbeb}' +
-      '.an-nobase{font-size:15px!important;line-height:1.3;color:#92400e!important}' +
-      '.an-ask{color:#b45309!important;font-weight:600}' +
-      '.an-zero{color:var(--ink-5)!important;font-weight:500;font-style:normal}' +
-      '.an-empty{padding:14px;border:1px dashed var(--line-2);border-radius:10px;' +
-        'color:var(--ink-4);font-size:13px;text-align:center;margin-top:4px}' +
-      '.an-note{margin-top:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;' +
-        'background:var(--bg);font-size:12.5px;color:var(--ink-4);line-height:1.55}' +
-      '.an-need{display:grid;gap:8px}' +
-      '.an-needrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}' +
-      '.an-needrow .t{font-weight:650;font-size:13.5px;color:var(--ink)}' +
-      '.an-needrow .w{font-size:12.5px;color:var(--ink-4);margin-top:2px;line-height:1.5}' +
-      '</style>';
+    var html = anStyle() +
+      '<div class="pg-hd"><div><h2>Analytics <span class="an-pill">Demo Data</span></h2></div></div>';
 
-    var right = '<select id="an-company" style="min-width:150px">' +
-      Object.keys(TBT_COMPANIES).map(function (k) {
-        return '<option value="' + k + '"' + (anF.company === k ? ' selected' : '') + '>' + esc(TBT_COMPANIES[k].name) + '</option>';
-      }).join('') + '</select>';
-
-    var html = style + head('Analytics',
-      'Demo — daily compliance, JHA activity and Toolbox Talk participation, all computed from demo fixtures.', right);
-
-    html += '<div class="an-sec" style="border-color:#fdba74;background:#fff7ed">' +
-      '<b style="color:#7c2d12">Demo Data</b> <span class="small" style="color:#7c2d12">' +
-      'Every figure on this page comes from demo fixture records. These are not actual Greiner results.</span></div>';
-
-    /* filters */
-    html += '<div class="fbar" style="margin-bottom:14px">' +
-      '<select id="an-job"' + (anF.company === 'greiner' ? '' : ' disabled') + '>' +
-        '<option value="">All jobs</option>' +
-        jobs.map(function (j) {
-          return '<option value="' + esc(j.id) + '"' + (anF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
-      '</select>' +
-      '<input type="date" id="an-from" value="' + esc(anF.from || window.DEMO.isoDay(window.DEMO.dayOffset(-1))) + '">' +
-      '<input type="date" id="an-to" value="' + esc(anF.to || window.DEMO.isoDay(window.DEMO.dayOffset(0))) + '">' +
-      '<select id="an-form"><option value="">All form types</option>' +
-        '<option value="jha"' + (anF.form === 'jha' ? ' selected' : '') + '>Job Hazard Analysis</option>' +
-        '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option>' +
-        '<option value="hotwork"' + (anF.form === 'hotwork' ? ' selected' : '') + '>Hot Work Permit</option>' +
-        '<option value="lift"' + (anF.form === 'lift' ? ' selected' : '') + '>Lift Inspection</option>' +
-        '<option value="incident"' + (anF.form === 'incident' ? ' selected' : '') + '>Incidents</option>' +
-        '<option value="nearmiss"' + (anF.form === 'nearmiss' ? ' selected' : '') + '>Near Misses</option></select>' +
-      '<select id="an-status"><option value="">All statuses</option>' +
-        '<option value="done"' + (anF.status === 'done' ? ' selected' : '') + '>Completed</option>' +
-        '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding / missed</option></select>' +
+    /* ---- one compact filter row ---- */
+    html += '<div class="an-bar">' +
+      '<select id="an-company" class="an-ctl">' + Object.keys(TBT_COMPANIES).map(function (k) {
+        return '<option value="' + k + '"' + (anF.company === k ? ' selected' : '') + '>' +
+          esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
+      '<select id="an-job" class="an-ctl"' + (anF.company === 'greiner' ? '' : ' disabled') + '>' +
+        '<option value="">All jobsites</option>' + jobs.map(function (j) {
+          return '<option value="' + esc(j.id) + '"' + (anF.job === j.id ? ' selected' : '') + '>' +
+            esc(j.name) + '</option>'; }).join('') + '</select>' +
+      anRangeControl() +
+      '<select id="an-form" class="an-ctl"><option value="">All forms</option>' +
+        '<option value="jha"' + (anF.form === 'jha' ? ' selected' : '') + '>JHA</option>' +
+        '<option value="hotwork"' + (anF.form === 'hotwork' ? ' selected' : '') + '>Hot Work</option>' +
+        '<option value="lift"' + (anF.form === 'lift' ? ' selected' : '') + '>Lift</option>' +
+        '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option></select>' +
+      '<select id="an-status" class="an-ctl"><option value="">All statuses</option>' +
+        '<option value="done"' + (anF.status === 'done' ? ' selected' : '') + '>Complete</option>' +
+        '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding</option></select>' +
+      '<button class="an-reset" id="an-reset">Reset</button>' +
       '</div>';
 
-    var showJha = !anF.form || anF.form === 'jha';
-    var showTb = !anF.form || anF.form === 'toolbox';
-    var showForms = !anF.form;
-    var showHot = !anF.form || anF.form === 'hotwork';
-    var showLifts = !anF.form || anF.form === 'lift';
-    var showCA = !anF.form;
-    var showInc = !anF.form || anF.form === 'incident';
-    var showNm = !anF.form || anF.form === 'nearmiss';
+    /* ---- primary row: the four things that matter ---- */
+    html += '<div class="an-grid">';
 
-    /* A — daily safety compliance */
-    if (showJha) {
-      html += '<div class="an-sec"><h3>Daily safety compliance</h3>' +
-        '<div class="an-sub">One daily JHA is required per active job per day. ' +
-        '<b>One original JHA plus any number of revisions counts as one completed submission</b> — ' +
-        'revisions never inflate this.' +
-        (anF.company === 'greiner' ? '' : ' ' + esc(TBT_COMPANIES[anF.company].name) +
-          ' has no demo job records, so there is nothing to require here.') + '</div>' +
-        '<div class="an-kpi">' +
-          anCard(comp.required.length, 'required submissions', 'required', 'See the job/day list') +
-          anCard(comp.completed.length, 'completed', 'completed', 'See what was submitted') +
-          anCard(comp.missed.length, 'missed', 'missed', 'See the missing job/date/form') +
-          anCard(comp.pct + '%', 'compliance', '', '', comp.pct) +
-        '</div></div>';
-    }
+    // 1 · Daily safety compliance
+    html += anCardOpen('compliance') +
+      anHead('Daily Safety Compliance',
+        'One daily JHA per active job per day. An original plus any number of revisions counts once.', 1) +
+      '<div class="an-mid">' + anDonut(comp.pct, 'complete',
+        comp.pct >= 90 ? AN_TONE.ok : comp.pct >= 70 ? AN_TONE.warn : AN_TONE.bad) + '</div>' +
+      '<div class="an-foot3">' +
+        '<div><b class="ok">' + comp.completed.length + '</b><span>Completed</span></div>' +
+        '<div><b class="bad">' + comp.missed.length + '</b><span>Missed</span></div>' +
+        '<div><b>' + comp.required.length + '</b><span>Required</span></div>' +
+      '</div>' + anCardClose('compliance');
 
-    /* B — JHA activity */
-    if (showJha) {
-      html += '<div class="an-sec"><h3>JHA activity</h3>' +
-        '<div class="an-sub">Unique JHAs and what happened to them after the original submission.</div>' +
-        '<div class="an-kpi">' +
-          anCard(jha.unique, 'unique JHAs submitted', 'jha-unique', 'See the JHAs') +
-          anCard(jha.revised.length, 'JHAs later revised', 'jha-revised', 'See the revised JHAs') +
-          anCard(jha.events, 'total revision events', 'jha-events', 'See every revision') +
-          anCard(jha.pctRevised + '%', 'of JHAs revised', '', '') +
-          anCard(jha.avgPerRevised, 'avg revisions per revised JHA', '', '') +
-        '</div>';
-      if (jha.recent.length) {
-        html += '<div class="small muted" style="margin-top:6px"><b>Most recently revised:</b> ' +
-          jha.recent.slice(0, 3).map(function (f) {
-            return esc(f.job_name) + ' (' + f.revisionCount + ') ' + esc(fmtWhen(f.latest_revised_at));
-          }).join(' · ') + '</div>';
-      }
-      html += '</div>';
-    }
+    // 2 · Toolbox talk participation
+    html += anCardOpen('toolbox') +
+      anHead('Toolbox Talk Participation',
+        s.mode === 'group' ? 'Counted by job or meeting group. Manual attendees add to attendance only.'
+                           : 'Counted by assigned employee.', 1) +
+      '<div class="an-mid"><div class="an-big">' + s.pct + '<i>%</i></div>' +
+        anMeter(s.pct, s.pct >= 90 ? AN_TONE.ok : s.pct >= 70 ? AN_TONE.warn : AN_TONE.bad) +
+        '<div class="an-cap">' + esc(tb.talk ? tb.talk.t : '—') + '</div></div>' +
+      '<div class="an-foot3">' +
+        '<div><b class="ok">' + s.completed.length + '</b><span>Completed</span></div>' +
+        '<div><b class="warn">' + s.outstanding.length + '</b><span>Outstanding</span></div>' +
+        '<div><b>' + s.attendance + '</b><span>Attendance</span></div>' +
+      '</div>' + anCardClose('toolbox');
 
-    /* C — Toolbox Talk participation */
-    if (showTb) {
-      var s = tb.stats;
-      html += '<div class="an-sec"><h3>Toolbox Talk participation</h3>' +
-        '<div class="an-sub">' + esc(TBT_COMPANIES[tb.company].name) + ' · week of ' + esc(tbtMondayLabel(0)) +
-        ' · <b>' + (tb.talk ? esc(tb.talk.t) : '—') + '</b>' + (tb.auto ? ' (auto-selected)' : '') +
-        ' · ' + (s.mode === 'group' ? 'foreman-led group — counted by job / meeting group'
-                                    : 'individual — counted by assigned employee') + '</div>' +
-        '<div class="an-kpi">' +
-          anCard(s.total, s.unitLabel + ' assigned', 'tb-assigned', 'See who is assigned') +
-          anCard(s.completed.length, 'completed', 'tb-done', 'See the submissions') +
-          anCard(s.outstanding.length, 'outstanding', 'tb-out', 'See who still owes it') +
-          anCard(s.pct + '%', 'completion', '', '', s.pct) +
-          (s.mode === 'group'
-            ? anCard(s.attendance, 'total attendance', 'tb-att', 'See the attendance') +
-              anCard(s.manualCount, 'manual attendance', 'tb-manual', 'See the manual entries')
-            : '') +
-        '</div>' +
-        (s.mode === 'group'
-          ? '<div class="small muted" style="margin-top:6px">Total attendance counts each roster employee ' +
-            'once for the week plus every manual entry. Manual entries never change the number of groups assigned.</div>'
-          : '') +
-        '</div>';
-    }
+    // 3 · JHA activity
+    var recent = jha.recent.slice(0, 3);
+    html += anCardOpen('jhareview') +
+      anHead('JHA Activity', 'Unique JHAs, and what changed after the original submission.', 1) +
+      '<div class="an-mid">' + anBars([
+        { label: 'Unique', value: jha.unique, color: AN_TONE.info },
+        { label: 'Revised', value: jha.revised.length, color: AN_TONE.warn },
+        { label: 'Revisions', value: jha.events, color: AN_TONE.grey }
+      ]) + '</div>' +
+      '<div class="an-list">' + (recent.length
+        ? recent.map(function (f) {
+            return '<div class="an-li"><span>' + esc(f.job_name.replace(/^Demo Job /, 'Job ')) + '</span>' +
+              '<b>' + f.revisionCount + '</b></div>'; }).join('')
+        : '<div class="an-li muted">No revisions</div>') + '</div>' +
+      anCardClose('jhareview');
 
-    /* D — field form activity */
-    if (showForms) {
-      var ff = anlFieldForms();
-      html += '<div class="an-sec"><h3>Field form activity</h3>' +
-        '<div class="an-sub">Every field submission in range. A JHA and its revisions count as ' +
-        'one submission here, the same way they do for compliance.</div>' +
-        '<div class="an-kpi">' +
-          anCard(ff.total, 'submissions', 'forms', 'See every submission') +
-          anCard(ff.types.length, 'form types used', '', '') +
-          anCard(ff.withDefects.length, 'flagged with defects', 'forms-flagged', 'See the flagged forms') +
-        '</div>' +
-        (ff.types.length
-          ? '<div class="small muted" style="margin-top:6px">' + ff.types.map(function (t) {
-              return esc(t.title) + ' &times; <b>' + t.count + '</b>'; }).join(' · ') + '</div>'
-          : '<div class="an-empty">No field submissions in this range.</div>') +
-        '</div>';
-    }
+    // 4 · Open corrective actions
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    var ages = { '0-7': 0, '8-30': 0, '31+': 0 };
+    ca.open.forEach(function (c) {
+      if (!c.due) { ages['0-7']++; return; }
+      var d = Math.round((new Date(today) - new Date(c.due)) / 86400000);
+      if (d <= 7) ages['0-7']++; else if (d <= 30) ages['8-30']++; else ages['31+']++;
+    });
+    html += anCardOpen('findings') +
+      anHead('Open Corrective Actions', 'From inspection findings. No incident actions exist yet.', 1) +
+      '<div class="an-mid">' + anBars([
+        { label: '0–7 days', value: ages['0-7'], color: AN_TONE.ok },
+        { label: '8–30 days', value: ages['8-30'], color: AN_TONE.warn },
+        { label: '31+ days', value: ages['31+'], color: AN_TONE.bad }
+      ]) + '</div>' +
+      '<div class="an-foot3">' +
+        '<div><b class="warn">' + ca.open.length + '</b><span>Open</span></div>' +
+        '<div><b class="bad">' + ca.overdue.length + '</b><span>Overdue</span></div>' +
+        '<div><b class="ok">' + ca.closed.length + '</b><span>Closed</span></div>' +
+      '</div>' + anCardClose('findings');
 
-    /* E — hot work */
-    if (showHot) {
-      var hw = anlHotWork();
-      html += '<div class="an-sec"><h3>Hot work activity</h3>' +
-        '<div class="an-sub">Hot work permits submitted from the field.</div>' +
-        '<div class="an-kpi">' +
-          anCard(hw.count, 'permits submitted', 'hot-all', 'See the permits') +
-          anCard(Object.keys(hw.jobs).length, 'jobs with hot work', '', '') +
-          anCard(hw.flagged.length, 'flagged for follow-up', 'hot-flagged', 'See the flagged permits') +
-        '</div>' +
-        (hw.count ? '' : '<div class="an-empty">No hot work permits in this range.</div>') +
-        '</div>';
-    }
+    html += '</div>';
 
-    /* F — lift inspections */
-    if (showLifts) {
-      var lf = anlLifts();
-      html += '<div class="an-sec"><h3>Lift inspection activity</h3>' +
-        '<div class="an-sub">Aerial lift and forklift pre-use inspections.</div>' +
-        '<div class="an-kpi">' +
-          anCard(lf.count, 'inspections', 'lift-all', 'See the inspections') +
-          anCard(lf.aerial.length, 'aerial lift', '', '') +
-          anCard(lf.forklift.length, 'forklift', '', '') +
-          anCard(lf.units.length, 'units inspected', '', '') +
-          anCard(lf.flagged.length, 'failed / defects found', 'lift-flagged', 'See the failures') +
-        '</div>' +
-        (lf.count ? '' : '<div class="an-empty">No lift inspections in this range.</div>') +
-        '</div>';
-    }
+    /* ---- secondary row ---- */
+    html += '<div class="an-grid">';
 
-    /* G — corrective actions */
-    if (showCA) {
-      var ca = anlCorrective();
-      html += '<div class="an-sec"><h3>Open corrective actions</h3>' +
-        '<div class="an-sub">Every corrective action that has a record behind it, from ' +
-        'inspection findings and report fixes. There are no incident corrective actions ' +
-        'because there are no incidents.</div>' +
-        '<div class="an-kpi">' +
-          anCard(ca.open.length, 'open', 'ca-open', 'See the open actions') +
-          anCard(ca.overdue.length, 'overdue', 'ca-overdue', 'See what is late') +
-          anCard(ca.closed.length, 'closed', 'ca-closed', 'See the closed actions') +
-        '</div>' +
-        (ca.all.length
-          ? '<div class="small muted" style="margin-top:6px">Sources: ' +
-            Object.keys(ca.bySource).map(function (k) {
-              return esc(k) + ' &times; <b>' + ca.bySource[k] + '</b>'; }).join(' · ') + '</div>'
-          : '<div class="an-empty">No corrective actions on record.</div>') +
-        '</div>';
-    }
+    // Field form activity
+    var palette = [AN_TONE.info, AN_TONE.ok, AN_TONE.warn, AN_TONE.grey, '#7c3aed'];
+    html += anCardOpen('forms') +
+      anHead('Field Form Activity', 'A JHA and its revisions count as one submission.', 1) +
+      '<div class="an-mid">' + (ff.total
+        ? anStack(ff.types.map(function (t, i) {
+            return { label: t.title.replace(' Inspection', '').replace(' Permit', ''),
+                     value: t.count, color: palette[i % palette.length] }; }))
+        : '<div class="an-none">No submissions</div>') + '</div>' +
+      '<div class="an-foot3"><div><b>' + ff.total + '</b><span>Submissions</span></div>' +
+        '<div><b>' + ff.types.length + '</b><span>Form types</span></div>' +
+        '<div><b class="warn">' + ff.withDefects.length + '</b><span>Flagged</span></div></div>' +
+      anCardClose('forms');
 
-    /* H — incidents: real zero-data state, never invented */
-    if (showInc) {
-      var ic = anlIncidents();
-      html += '<div class="an-sec"><h3>Incidents</h3>' +
-        '<div class="an-sub">Greiner’s incident workflow is built — intake form, witnesses, ' +
-        'documents and corrective actions all exist. No incident has been submitted yet, so there ' +
-        'is nothing to count. Nothing below is estimated or filled in.</div>' +
-        '<div class="an-kpi">' +
+    // Hot work by job
+    var hwByJob = {};
+    hw.rows.forEach(function (r) { hwByJob[r.job_name] = (hwByJob[r.job_name] || 0) + 1; });
+    html += anCardOpen('hot-all') +
+      anHead('Hot Work Activity', 'Activity-based: never required on a day with no hot work.', 1) +
+      '<div class="an-mid">' + (hw.count
+        ? anBars(Object.keys(hwByJob).map(function (k) {
+            return { label: k.replace(/^Demo Job /, 'Job '), value: hwByJob[k], color: AN_TONE.info }; }))
+        : '<div class="an-none">No permits</div>') + '</div>' +
+      '<div class="an-foot3"><div><b>' + hw.count + '</b><span>Permits</span></div>' +
+        '<div><b>' + Object.keys(hwByJob).length + '</b><span>Jobs</span></div>' +
+        '<div><b class="warn">' + hw.flagged.length + '</b><span>Flagged</span></div></div>' +
+      anCardClose('hot-all');
 
-          // Days since last recordable — never 0 without a baseline
-          '<div class="an-card an-static' + (ic.daysSinceRecordable === null ? ' an-needs' : '') + '">' +
-            (ic.daysSinceRecordable === null
-              ? '<b class="an-nobase">No baseline recorded</b>' +
-                '<span>days since last recordable incident</span>' +
-                '<em class="an-ask">Needs the date of Greiner’s last recordable incident</em>'
-              : '<b>' + ic.daysSinceRecordable + '</b><span>days since last recordable incident</span>') +
-          '</div>' +
+    // Lift inspections
+    var failedUnits = {};
+    lf.flagged.forEach(function (r) { if (r.asset_id) failedUnits[r.asset_id] = 1; });
+    html += anCardOpen('lift-all') +
+      anHead('Lift Inspection Activity', 'Pre-use checks, per unit, on days used.', 1) +
+      '<div class="an-mid">' + (lf.count
+        ? anBars([{ label: 'Aerial', value: lf.aerial.length, color: AN_TONE.info },
+                   { label: 'Forklift', value: lf.forklift.length, color: '#7c3aed' }])
+        : '<div class="an-none">No inspections</div>') + '</div>' +
+      (Object.keys(failedUnits).length
+        ? '<div class="an-fail"><b>Failed:</b> ' + esc(Object.keys(failedUnits).join(', ')) + '</div>'
+        : '<div class="an-foot3"><div><b>' + lf.count + '</b><span>Inspections</span></div>' +
+          '<div><b>' + lf.units.length + '</b><span>Units</span></div>' +
+          '<div><b class="ok">0</b><span>Failed</span></div></div>') +
+      anCardClose('lift-all');
 
-          // Incidents YTD — zero, with the period stated
-          '<div class="an-card an-static"><b>' + ic.incidents.length + '</b>' +
-            '<span>incidents recorded ' + ic.year + '</span>' +
-            (ic.incidents.length === 0
-              ? '<em class="an-zero">No incidents recorded during this reporting period</em>'
-              : '') +
-          '</div>' +
+    // Incidents and near misses — honest compact empty state
+    html += anCardOpen('') +
+      anHead('Incidents & Near Misses',
+        'The incident workflow is built but nothing has been submitted. Zero means nothing entered, ' +
+        'not that nothing happened. Intake is still held in this pilot.', 0) +
+      '<div class="an-zero3">' +
+        '<div class="an-zrow"><b class="need">No baseline recorded</b>' +
+          '<span>days since last recordable</span></div>' +
+        '<div class="an-zrow"><b>' + ic.incidents.length + '</b><span>incidents entered</span></div>' +
+        '<div class="an-zrow"><b>' + ic.nearMisses.length + '</b><span>near misses entered</span></div>' +
+      '</div>' + anCardClose('');
 
-        '</div>' +
-        '<div class="an-note">' +
-          '<b>Zero does not mean Greiner has never had an incident.</b> It means no incident has ' +
-          'been entered into this system' +
-          (ic.recordkeepingStart
-            ? ' since ' + esc(ic.recordkeepingStart) + '.'
-            : ', and the recordkeeping start date has not been supplied.') +
-          ' Incident intake is still held in this pilot, so submissions are not being accepted yet.' +
-        '</div>' +
-        '</div>';
-    }
+    html += '</div>';
 
-    /* I — near misses: separate from incidents, real zero-state */
-    if (showNm) {
-      var nm = anlIncidents();
-      html += '<div class="an-sec"><h3>Near misses</h3>' +
-        '<div class="an-sub">Close calls with no injury — the early warning. Reported from the ' +
-        'field and closed out here.</div>' +
-        '<div class="an-kpi">' +
-          '<div class="an-card an-static"><b>' + nm.nearMisses.length + '</b>' +
-            '<span>near misses recorded ' + nm.year + '</span>' +
-            (nm.nearMisses.length === 0
-              ? '<em class="an-zero">No near misses recorded during this reporting period</em>'
-              : '') + '</div>' +
-          '<div class="an-card an-static"><b>' +
-            nm.nearMisses.filter(function (n) { return n.status !== 'closed'; }).length + '</b>' +
-            '<span>open / under review</span></div>' +
-          '<div class="an-card an-static"><b>' +
-            nm.nearMisses.filter(function (n) { return n.severity === 'high'; }).length + '</b>' +
-            '<span>high potential</span></div>' +
-        '</div>' +
-        (nm.nearMisses.length ? '' :
-          '<div class="an-note">Near-miss reporting is built, but no near miss has been entered ' +
-          'into this system yet. Zero here means nothing has been reported, not that no close ' +
-          'call has happened.</div>') +
-        '</div>';
-    }
-
-    /* Data needed before any of the missing metrics can be built */
-    html += '<div class="an-sec"><h3>Data needed</h3>' +
-      '<div class="an-sub">These metrics are deliberately absent rather than estimated. ' +
-      'Each one needs a value from Greiner before it can be calculated.</div>' +
-      '<div class="an-need">' + ANL_DATA_NEEDED.map(function (d) {
+    /* ---- one collapsed setup panel ---- */
+    html += '<details class="an-need"><summary>Finish analytics setup · ' +
+      ANL_DATA_NEEDED.length + ' items needed</summary><div class="an-needbody">' +
+      ANL_DATA_NEEDED.map(function (d) {
         return '<div class="an-needrow"><div class="t">' + esc(d[0]) + '</div>' +
-          '<div class="w">' + esc(d[1]) + '</div></div>';
-      }).join('') + '</div></div>';
+          '<div class="w">' + esc(d[1]) + '</div></div>'; }).join('') +
+      '</div></details>';
 
     paint(html);
     anlWire();
   }
 
-  function anCard(value, label, drill, hint, bar) {
-    return '<button type="button" class="an-card"' + (drill ? ' data-an-drill="' + drill + '"' : '') + '>' +
-      '<b>' + esc(String(value)) + '</b><span>' + esc(label) + '</span>' +
-      (bar !== undefined ? '<div class="an-bar"><i style="width:' + bar + '%"></i></div>' : '') +
-      (drill && hint ? '<em>' + esc(hint) + ' →</em>' : '') + '</button>';
+  /* Date-range control: one button, presets plus custom. */
+  var AN_RANGES = [['week', 'This week'], ['last', 'Last week'], ['30', 'Last 30 days'],
+                   ['month', 'This month'], ['custom', 'Custom range']];
+  function anRangeLabel() {
+    for (var i = 0; i < AN_RANGES.length; i++) if (AN_RANGES[i][0] === (anF.range || 'week')) return AN_RANGES[i][1];
+    return 'This week';
+  }
+  function anRangeControl() {
+    return '<div class="an-range">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+      '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>' +
+      '<select id="an-range">' + AN_RANGES.map(function (r) {
+        return '<option value="' + r[0] + '"' + ((anF.range || 'week') === r[0] ? ' selected' : '') + '>' +
+          r[1] + '</option>'; }).join('') + '</select>' +
+      ((anF.range || 'week') === 'custom'
+        ? '<input type="date" id="an-from" class="an-cd" value="' + esc(anF.from || '') + '">' +
+          '<input type="date" id="an-to" class="an-cd" value="' + esc(anF.to || '') + '">'
+        : '<span class="an-rlab">' + esc(anRangeText()) + '</span>') +
+      '</div>';
+  }
+  function anRangeText() {
+    var d = anlRangeDays();
+    if (!d.length) return '—';
+    var a = new Date(d[0] + 'T12:00:00'), b = new Date(d[d.length - 1] + 'T12:00:00');
+    var mA = a.toLocaleDateString('en-US', { month: 'short' }), mB = b.toLocaleDateString('en-US', { month: 'short' });
+    return mA + ' ' + a.getDate() + ' – ' + (mA === mB ? '' : mB + ' ') + b.getDate();
+  }
+
+  function anStyle() {
+    return '<style>' +
+      '.an-pill{display:inline-block;vertical-align:middle;margin-left:9px;font-size:11px;font-weight:700;' +
+        'background:#fffbeb;border:1px solid #fde68a;color:#b45309;border-radius:999px;padding:3px 10px}' +
+      /* filter row */
+      '.an-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}' +
+      '.an-ctl{height:40px;background:#fff;border:1px solid var(--line-2);border-radius:8px;padding:0 11px;font-size:13px}' +
+      '.an-range{display:inline-flex;align-items:center;gap:7px;height:40px;background:#fff;' +
+        'border:1px solid var(--line-2);border-radius:8px;padding:0 11px}' +
+      '.an-range svg{width:15px;height:15px;color:var(--ink-4)}' +
+      '.an-range select{border:0;background:transparent;font-size:13px;font-weight:600;color:var(--ink)}' +
+      '.an-rlab{font-size:12.5px;color:var(--ink-4);border-left:1px solid var(--line);padding-left:8px;' +
+        'font-variant-numeric:tabular-nums}' +
+      '.an-cd{border:0;border-left:1px solid var(--line);padding-left:7px;font-size:12.5px;background:transparent}' +
+      '.an-reset{height:40px;border:1px solid var(--line-2);background:#fff;border-radius:8px;padding:0 13px;' +
+        'font-size:13px;font-weight:600;color:var(--ink-3);cursor:pointer;margin-left:auto}' +
+      '.an-reset:hover{background:var(--bg)}' +
+      /* grid */
+      '.an-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;align-items:stretch}' +
+      '@media (max-width:1180px){.an-grid{grid-template-columns:repeat(2,1fr)}}' +
+      '@media (max-width:700px){.an-grid{grid-template-columns:1fr}}' +
+      '.an-c{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;' +
+        'padding:14px 15px;text-align:left;font:inherit;color:inherit}' +
+      '.an-c.is-link{cursor:pointer}' +
+      '.an-c.is-link:hover{border-color:var(--accent);box-shadow:0 1px 3px rgba(15,23,42,.07)}' +
+      '.an-c.is-link:hover .an-chev{color:var(--accent);transform:translateX(2px)}' +
+      '.an-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--ink-2);' +
+        'letter-spacing:.01em;margin-bottom:10px;min-height:20px}' +
+      '.an-h > span:first-child{flex:1;min-width:0}' +
+      '.an-chev{color:var(--ink-5);font-size:17px;line-height:1;transition:transform .12s,color .12s}' +
+      '.an-i{width:18px;height:18px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line-2);' +
+        'background:#fff;color:var(--ink-4);font-size:11px;font-weight:700;font-style:italic;cursor:pointer;' +
+        'line-height:1;padding:0}' +
+      '.an-i:hover{border-color:var(--info,#2563eb);color:var(--info,#2563eb)}' +
+      '.an-mid{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:118px}' +
+      /* donut + big number */
+      '.an-donut{width:100%;max-width:150px;height:auto;margin:0 auto;display:block}' +
+      '.an-dv{font-size:30px;font-weight:700;fill:var(--ink)}' +
+      '.an-dl{font-size:11px;fill:var(--ink-4)}' +
+      '.an-big{font-size:40px;font-weight:700;color:var(--ink);line-height:1;text-align:center;' +
+        'font-variant-numeric:tabular-nums}' +
+      '.an-big i{font-size:19px;font-style:normal;color:var(--ink-4);margin-left:1px}' +
+      '.an-meter{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin:11px 0 0}' +
+      '.an-meter i{display:block;height:100%}' +
+      '.an-cap{text-align:center;font-size:12px;color:var(--ink-4);margin-top:7px}' +
+      /* footers */
+      '.an-foot3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-top:1px solid var(--line);' +
+        'padding-top:10px;margin-top:11px}' +
+      '.an-foot3 div{text-align:center}' +
+      '.an-foot3 b{display:block;font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums}' +
+      '.an-foot3 b.ok{color:#16a34a}.an-foot3 b.warn{color:#d97706}.an-foot3 b.bad{color:#dc2626}' +
+      '.an-foot3 span{font-size:10.5px;color:var(--ink-4)}' +
+      /* bars */
+      '.an-rows{display:grid;gap:7px}' +
+      '.an-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;font-size:12px}' +
+      '.an-row .l{color:var(--ink-3);white-space:nowrap;max-width:96px;overflow:hidden;text-overflow:ellipsis}' +
+      '.an-row .b{height:9px;border-radius:999px;background:var(--line);overflow:hidden}' +
+      '.an-row .b i{display:block;height:100%;border-radius:999px}' +
+      '.an-row .v{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;min-width:16px;text-align:right}' +
+      /* stacked */
+      '.an-stack{display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--line)}' +
+      '.an-stack span{display:block;height:100%}' +
+      '.an-keys{display:flex;flex-wrap:wrap;gap:4px 11px;margin-top:10px}' +
+      '.an-key{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-4)}' +
+      '.an-key i{width:8px;height:8px;border-radius:2px;display:inline-block}' +
+      '.an-key b{color:var(--ink);font-variant-numeric:tabular-nums}' +
+      /* lists + misc */
+      '.an-list{border-top:1px solid var(--line);padding-top:8px;margin-top:11px;display:grid;gap:4px}' +
+      '.an-li{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3)}' +
+      '.an-li b{color:var(--ink);font-variant-numeric:tabular-nums}' +
+      '.an-none{text-align:center;color:var(--ink-5);font-size:12.5px;padding:22px 0}' +
+      '.an-fail{border-top:1px solid var(--line);padding-top:10px;margin-top:11px;font-size:11.5px;color:#b91c1c;' +
+        'overflow-wrap:anywhere}' +
+      '.an-zero3{display:grid;gap:9px;margin-top:2px}' +
+      '.an-zrow{display:flex;align-items:baseline;gap:9px;padding-bottom:8px;border-bottom:1px solid var(--line)}' +
+      '.an-zrow:last-child{border-bottom:0;padding-bottom:0}' +
+      '.an-zrow b{font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}' +
+      '.an-zrow b.need{font-size:13px;color:#b45309;font-weight:700}' +
+      '.an-zrow span{font-size:11.5px;color:var(--ink-4)}' +
+      /* setup panel */
+      '.an-need{background:#fff;border:1px solid var(--line);border-radius:12px;padding:0}' +
+      '.an-need summary{cursor:pointer;padding:13px 15px;font-size:13px;font-weight:650;color:var(--ink-2);' +
+        'list-style:none;display:flex;align-items:center;gap:8px}' +
+      '.an-need summary::-webkit-details-marker{display:none}' +
+      '.an-need summary::before{content:"▸";color:var(--ink-4);font-size:12px}' +
+      '.an-need[open] summary::before{content:"▾"}' +
+      '.an-needbody{padding:0 15px 14px;display:grid;gap:7px}' +
+      '.an-needrow{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--bg)}' +
+      '.an-needrow .t{font-weight:650;font-size:12.5px;color:var(--ink)}' +
+      '.an-needrow .w{font-size:11.5px;color:var(--ink-4);margin-top:2px;line-height:1.5}' +
+      /* Narrow screens: the subtab strip scrolls rather than forcing the page wide. */
+      '@media (max-width:820px){.pg-hd{flex-wrap:wrap}.subtabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.subtabs button{white-space:nowrap}}' +
+      '</style>';
   }
 
   function anlWire() {
     var c = $('#an-company');
     if (c) c.onchange = function () { anF.company = c.value; anF.job = ''; pgAnalyticsDemo(); };
     var j = $('#an-job'); if (j) j.onchange = function () { anF.job = j.value; pgAnalyticsDemo(); };
+    var r = $('#an-range'); if (r) r.onchange = function () { anF.range = r.value; pgAnalyticsDemo(); };
     var f = $('#an-from'); if (f) f.onchange = function () { anF.from = f.value; pgAnalyticsDemo(); };
     var t = $('#an-to'); if (t) t.onchange = function () { anF.to = t.value; pgAnalyticsDemo(); };
     var fm = $('#an-form'); if (fm) fm.onchange = function () { anF.form = fm.value; pgAnalyticsDemo(); };
     var st = $('#an-status'); if (st) st.onchange = function () { anF.status = st.value; pgAnalyticsDemo(); };
-    $$('[data-an-drill]').forEach(function (b) {
-      b.onclick = function () { anlDrill(b.getAttribute('data-an-drill')); };
+    var rs = $('#an-reset');
+    if (rs) rs.onclick = function () {
+      anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '', range: 'week' };
+      pgAnalyticsDemo();
+    };
+    // calculation detail lives behind the info icon, not in the card
+    $$('[data-an-info]').forEach(function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        drawer('How this is calculated', '', '<p class="small">' +
+          esc(b.getAttribute('data-an-info')) + '</p>' +
+          '<p class="small muted" style="margin-top:10px">Demo fixture records.</p>');
+      };
     });
+    // the card itself is the click target
+    $$('[data-an-go]').forEach(function (b) {
+      var go = function () { anGo(b.getAttribute('data-an-go')); };
+      b.onclick = go;
+      b.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+      };
+    });
+  }
+
+  /* A card either opens the workspace view that owns it, or the record list
+     behind the number. */
+  function anGo(which) {
+    var toSi = { compliance: 'req', jhareview: 'jha', findings: 'find' };
+    if (toSi[which]) {
+      siTab = toSi[which];
+      if (anF.job) siF.job = anF.job;
+      go('obs');
+      return;
+    }
+    if (which === 'toolbox') {
+      tbtTab = 'completion';
+      if (TBT_COMPANIES[anF.company]) { tbtLoad(); TBT.company = anF.company; tbtSave(); }
+      go('talks');
+      return;
+    }
+    anlDrill(which);
   }
 
   /* Every drilldown renders the exact records the card counted. */
@@ -3826,6 +4660,14 @@
   }
 
   function pgJhaDemo() {
+    paint(head('JHA Submissions',
+      'Demo — one original plus its revisions is one JHA.', '') + jhaBodyHtml());
+    jhaWire();
+  }
+
+  /* The JHA table and its filters, without a page heading, so the Safety
+     Inspections workspace can host it as the JHA Review view. */
+  function jhaBodyHtml() {
     var fams = jhaFilteredFamilies();
     var all = jhaFamilies();
     var people = {};
@@ -3855,14 +4697,7 @@
       '.jha-na{color:var(--ink-5);font-style:italic}' +
       '</style>';
 
-    var html = style + head('JHA Submissions',
-      'Demo — one original plus its revisions is one JHA. Local fixtures only; nothing is read from or written to production.', '');
-
-    html += '<div class="tbt-card" style="border-color:#fdba74;background:#fff7ed;border-width:1px;border-style:solid;' +
-      'border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
-      '<b style="color:#7c2d12">Demo Data</b> <span class="small" style="color:#7c2d12">' +
-      'These are fixture records, not real Greiner submissions.</span></div>';
-
+    var html = style;
     html += '<div class="jha-kpi">' +
       '<div><b>' + fams.length + '</b><span>JHAs submitted (originals, not revisions)</span></div>' +
       '<div><b>' + revised.length + '</b><span>later revised</span></div>' +
@@ -3913,9 +4748,7 @@
 
     html += '<p class="small muted" style="margin-top:10px">The table shows the latest version of each JHA. ' +
       'Originals are never overwritten — open the revision history to see every version.</p>';
-
-    paint(html);
-    jhaWire();
+    return html;
   }
 
   function fmtWhen(iso) {
@@ -4425,6 +5258,9 @@
 
     var style = '<style>' +
       '.tbt-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}' +
+      // grid children default to min-width:auto and refuse to shrink below their
+      // content, which pushed the page wider than the viewport on a phone
+      '.tbt-grid>*{min-width:0}.tbt-card{max-width:100%}' +
       '@media (max-width:1100px){.tbt-grid{grid-template-columns:1fr}}' +
       '.tbt-card{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
       '.tbt-card h3{margin:0 0 2px;font-size:15px}' +
@@ -4461,6 +5297,8 @@
         'font-size:13.5px;font-weight:650;color:var(--ink-4);cursor:pointer}' +
       '.tbt-tab.on{background:var(--accent);border-color:var(--accent);color:#fff}' +
       '.tbt-fmtnote{font-size:12px;color:var(--ink-4);margin-top:6px}' +
+      /* Narrow screens: the subtab strip scrolls rather than forcing the page wide. */
+      '@media (max-width:820px){.pg-hd{flex-wrap:wrap}.subtabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.subtabs button{white-space:nowrap}}' +
       '.tbt-manual{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:999px;' +
         'padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}' +
       '</style>';
