@@ -4,3 +4,7 @@
 # Built by tools/build-demo-site.mjs. Reproducible output, not source —
 # committing it would let the artifact drift from the code it came from.
 demo-site/
+
+# Real-name guard list for the privacy tests. Local only — the public repo
+# must not enumerate real people, which is the very thing the guard prevents.
+tests/real-names.local.json

@@ -164,7 +164,7 @@ assert.equal(M.TBT_COMPANIES.greiner.modeConfigurable, true,
 
 // Choice's confirmed submitters are the three with full access.
 const choiceLeads = M.TBT_COMPANIES.choice.employees.filter((e) => e.lead).map((e) => e.n);
-assert.deepEqual(choiceLeads.sort(), ['Alex Fyffe', 'Angel Garcia', 'Zach France'],
+assert.deepEqual(choiceLeads.sort(), ['Adrian Gable (Demo)', 'Ainsley Frost (Demo)', 'Zane Fairlie (Demo)'],
   `Choice's submitters must be exactly the three confirmed names, got ${choiceLeads.join(', ')}`);
 assert.equal(M.TBT_COMPANIES.choice.groups.length, 1,
   'Choice runs one group talk at the Monday morning meeting');
@@ -346,7 +346,7 @@ assert.equal(s.pct, 0, 'an empty week is 0%');
 // One group submits: the group is credited and attendance counts everyone
 // named, including a manually added name.
 gco.completions = [{
-  week, kind: 'group', group: gDef.groups[0], presenter: 'Alex Fyffe',
+  week, kind: 'group', group: gDef.groups[0], presenter: 'Ainsley Frost (Demo)',
   roster: gDef.employees.slice(0, 4).map((e) => e.n), manual: ['Temp Helper'],
   at: new Date().toISOString(),
 }];
@@ -368,7 +368,7 @@ assert.equal(M.tbtCompletionStats(gco, gDef, M.tbtMondayISO(-1)).completed.lengt
 // An individual record must not earn group credit.
 const mixed = M.tbtBlank('choice');
 mixed.mode = 'group';
-mixed.completions = [{ week, kind: 'individual', employee: 'Alex Fyffe', at: new Date().toISOString() }];
+mixed.completions = [{ week, kind: 'individual', employee: 'Ainsley Frost (Demo)', at: new Date().toISOString() }];
 assert.equal(M.tbtCompletionStats(mixed, gDef, week).completed.length, 0,
   'an individual submission must not complete a group talk');
 

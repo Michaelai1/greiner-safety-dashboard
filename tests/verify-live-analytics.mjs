@@ -198,7 +198,7 @@ const weekdayBack = (n) => {
   includes('return {\n      live: true,', 'the live branch must be the default');
 
   // No demo company names, jobs or people are referenced outside the fixtures.
-  for (const leak of ['Demo Job A', 'Demo Foreman', 'DEMO-SL-', 'Alex Fyffe']) {
+  for (const leak of ['Demo Job A', 'Demo Foreman', 'DEMO-SL-', 'Ainsley Frost']) {
     const inAnalytics = analytics.includes(leak);
     assert.ok(!inAnalytics, `"${leak}" must not appear in the analytics code`);
   }

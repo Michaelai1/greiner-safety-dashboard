@@ -27,12 +27,25 @@ const textFiles = files.filter((f) => /\.(html|js|css|json|txt|_headers)$/.test(
 const rel = (f) => path.relative(SITE, f);
 const read = (f) => fs.readFileSync(f, 'utf8');
 
-/* The only third-party fetch the hosted demo is allowed to make. */
+/* The hosted demo makes NO external request. jsPDF is vendored. The only
+   absolute URLs allowed anywhere are the inert placeholders the build
+   substitutes for every stripped endpoint. */
 const ALLOWED_EXTERNAL = [
-  /^https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf\//,
-  // the inert placeholder the build substitutes for every stripped endpoint
   /^https:\/\/demo\.invalid\//,
 ];
+
+/* Real people who must never appear in the public build. The list itself lives
+   in a gitignored local file — enumerating real names in a public repo is the
+   exact thing this guard exists to prevent. Without the file the check is
+   skipped loudly rather than passing quietly. */
+const NAMES_FILE = path.join(path.resolve(root.pathname), 'tests/real-names.local.json');
+let REAL_PEOPLE = [], REAL_FIRST = [], NAMES_AVAILABLE = false;
+if (fs.existsSync(NAMES_FILE)) {
+  const j = JSON.parse(fs.readFileSync(NAMES_FILE, 'utf8'));
+  REAL_PEOPLE = j.people || [];
+  REAL_FIRST = j.firstNames || [];
+  NAMES_AVAILABLE = true;
+}
 
 /* ------------------------------------------------------------------ *
  * 1. Nothing that could reach production
@@ -111,10 +124,6 @@ for (const page of ['index.html', 'office/index.html', 'phone/index.html']) {
     .filter((r) => !/[${]|' \+|\+ '/.test(r));
   for (const r of refs) {
     if (/^(https?:)?\/\//.test(r)) {
-      /* One documented exception: jsPDF from a public CDN. The demo builds a
-         PDF in memory so the reviewer can see the record it would produce.
-         It is a public library fetch — no Greiner data is sent, and nothing is
-         written anywhere. Everything else must be local. */
       assert.ok(ALLOWED_EXTERNAL.some((re) => re.test(r)),
         `${page} references an external resource: ${r}`);
       continue;
@@ -134,11 +143,59 @@ for (const page of ['index.html', 'office/index.html', 'phone/index.html']) {
   }
   const unexpected = externals.filter((u) => !ALLOWED_EXTERNAL.some((re) => re.test(u)));
   assert.deepEqual(unexpected, [], `unexpected external references: ${unexpected.join(', ')}`);
-  // Only the one real library fetch; the rest are inert placeholders that
-  // resolve nowhere by design.
+  // Zero real external fetches: everything the demo needs is in the bundle.
   const realFetches = externals.filter((u) => !/^https:\/\/demo\.invalid\//.test(u));
-  assert.ok(realFetches.length <= 1,
-    `expected at most one real external fetch, got ${realFetches.length}: ${realFetches.join(', ')}`);
+  assert.deepEqual(realFetches, [],
+    `the hosted demo must make no external request: ${realFetches.join(', ')}`);
+}
+
+/* ------------------------------------------------------------------ *
+ * 3b. jsPDF is vendored, not fetched
+ * ------------------------------------------------------------------ */
+{
+  const lib = path.join(SITE, 'phone/vendor/jspdf.umd.min.js');
+  assert.ok(fs.existsSync(lib), 'jsPDF must be vendored into the bundle');
+  assert.ok(fs.statSync(lib).size > 200000, 'the vendored library looks truncated');
+  const phone = read(path.join(SITE, 'phone/index.html'));
+  assert.match(phone, /src="\.\/vendor\/jspdf\.umd\.min\.js"/,
+    'the phone demo must load jsPDF from the bundle');
+  assert.ok(!/cdnjs\.cloudflare\.com/.test(phone),
+    'the CDN reference must be gone from the page');
+  // jsPDF only reaches the network in its pdfobject output modes, which the
+  // demo never uses. Assert that stays true.
+  const modes = [...phone.matchAll(/\.output\('([a-z]+)'\)/g)].map((m) => m[1]);
+  assert.ok(modes.length > 0, 'the demo builds a PDF in memory');
+  for (const m of modes) {
+    assert.ok(['blob', 'datauristring', 'arraybuffer', 'dataurlstring'].includes(m),
+      `jsPDF output mode "${m}" may fetch pdfobject from a CDN`);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 3c. No real person is named anywhere in the artifact
+ * ------------------------------------------------------------------ */
+if (!NAMES_AVAILABLE) {
+  console.warn('  ! real-name scan SKIPPED: tests/real-names.local.json is absent');
+} else {
+  for (const f of textFiles) {
+    // the vendored library is third-party code with its own author credits
+    if (rel(f).includes('vendor/')) continue;
+    const src = read(f);
+    for (const person of REAL_PEOPLE) {
+      assert.ok(!src.includes(person), `${rel(f)} names a real person`);
+    }
+    for (const first of REAL_FIRST) {
+      assert.ok(!new RegExp('\\b' + first + '\\b').test(src),
+        `${rel(f)} still refers to a real first name`);
+    }
+  }
+}
+// And the fictional stand-ins are actually there, so the demo still reads.
+{
+  const office = read(path.join(SITE, 'office/office.js'));
+  assert.ok(/Ainsley Frost \(Demo\)/.test(office),
+    'the fictional Choice submitter must replace the real one');
+  assert.ok(/\(Demo\)/.test(office), 'stand-in names must be marked as demo');
 }
 
 /* ------------------------------------------------------------------ *

@@ -18,6 +18,34 @@ const PHONE = path.resolve(DASH, '../greiner-qr-weekend-2026-09-26');
 const OUT = path.join(DASH, 'demo-site');
 
 const NOTE = 'DEMO BUILD — credentials stripped, no production access';
+
+/* The source on these demo branches is already de-identified, so this map is a
+   safety net rather than the primary defence. It lives in a gitignored local
+   file because enumerating real people in a public repo is exactly what the
+   de-identification exists to avoid. Absent, the build still runs — the source
+   carries no real names — and the guard below simply has nothing to check. */
+const NAMES_FILE = path.join(HERE, '../tests/real-names.local.json');
+let REAL_PEOPLE = [], REAL_FIRST = [];
+if (fs.existsSync(NAMES_FILE)) {
+  const j = JSON.parse(fs.readFileSync(NAMES_FILE, 'utf8'));
+  REAL_PEOPLE = (j.people || []).map((n) => [n, '(name removed for the public demo)'])
+    .sort((a, b) => b[0].length - a[0].length);
+  REAL_FIRST = j.firstNames || [];
+}
+function deIdentify(src) {
+  let s = src;
+  for (const [real, fake] of REAL_PEOPLE) {
+    s = s.split(real).join(fake);
+  }
+  // Source-folder names carry a person's first name and a partner company;
+  // both are normalised to a neutral batch label.
+  s = s.replace(/[A-Z][a-z]+ Toolbox Email (\d+)/g, 'Source Batch $1');
+  s = s.replace(/[A-Z][a-z]+ Thread Batch (\d+)/g, 'Source Batch C$1');
+  for (const first of REAL_FIRST) {
+    s = s.replace(new RegExp('\\b' + first + '\\b', 'g'), 'the safety manager');
+  }
+  return s;
+}
 const DEAD_URL = 'https://demo.invalid/disabled';
 const DEAD_KEY = 'demo-build-no-key';
 
@@ -30,7 +58,7 @@ rm(OUT); mk(OUT);
 
 /* ---------- shared scrubbing ---------- */
 function scrub(src, label) {
-  let s = src;
+  let s = deIdentify(src);
   // 1. Supabase project URLs and anon keys -> inert placeholders
   s = s.replace(/https:\/\/[a-z0-9]{20}\.supabase\.co/g, DEAD_URL);
   s = s.replace(/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_\-.]+/g, DEAD_KEY);
@@ -64,6 +92,14 @@ function scrub(src, label) {
     const m = s.match(re);
     if (m) throw new Error(`scrub failed for ${label}: ${what} survived — ${m[0].slice(0, 60)}`);
   }
+  for (const [real] of REAL_PEOPLE) {
+    if (s.includes(real)) throw new Error(`scrub failed for ${label}: a real name survived`);
+  }
+  for (const first of REAL_FIRST) {
+    if (new RegExp('\\b' + first + '\\b').test(s)) {
+      throw new Error(`scrub failed for ${label}: a real first name survived`);
+    }
+  }
   return s;
 }
 function noindex(html) {
@@ -86,7 +122,17 @@ function noindex(html) {
     '<a href="./" class="demo-home" style="position:fixed;left:12px;bottom:12px;z-index:9999;' +
     'background:#0f172a;color:#fff;border:1px solid #334155;border-radius:999px;padding:9px 15px;' +
     'font:600 13px system-ui;text-decoration:none">&larr; Demo home</a>\n</body>');
+  // jsPDF is vendored so the hosted demo makes no external request at all.
+  html = html.replace(
+    /<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf\/[^"]*"><\/script>/,
+    '<script src="./vendor/jspdf.umd.min.js"></script>');
+  if (/cdnjs\.cloudflare\.com/.test(html)) {
+    throw new Error('scrub failed for phone/index.html: the jsPDF CDN reference survived');
+  }
   write(path.join(OUT, 'phone/index.html'), html);
+  mk(path.join(OUT, 'phone/vendor'));
+  fs.copyFileSync(path.join(HERE, 'vendor/jspdf.umd.min.js'),
+    path.join(OUT, 'phone/vendor/jspdf.umd.min.js'));
 
   // page images for the Guided Talk
   const assets = path.join(PHONE, 'demo-assets');
@@ -97,7 +143,7 @@ function noindex(html) {
       if (e.name === 'fall-source-text.txt') continue;
       if (e.isDirectory()) { mk(t); copyDir(f, t); }
       else if (e.name === 'manifest.json') {
-        const m = JSON.parse(read(f));
+        const m = JSON.parse(deIdentify(read(f)));
         // keep traceability, drop the local path
         m.talks.forEach((x) => {
           x.sourceFolder = String(x.sourcePath).split('/').slice(-2, -1)[0];

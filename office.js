@@ -1364,14 +1364,14 @@
       return;
     }
 
-    /* Registry: real units from cs_equipment (backend-ready). Tony has not sent
+    /* Registry: real units from cs_equipment (backend-ready). the safety manager has not sent
        the lift/unit numbers yet, so this is an honest empty list until real
        units exist — no demo equipment, no invented maintenance schedules.
        Minimal unit model: unit number, type, assigned job, active state. */
     var units = (B.equipment || []).slice().sort(function (a, b) {
       return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
     var html = head('Equipment',
-      'Greiner equipment units. Once Tony provides the lift and unit numbers they are added ' +
+      'Greiner equipment units. Once the safety manager provides the lift and unit numbers they are added ' +
       'here and tie to field inspections by unit.', right);
     html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
       [{ t: 'Unit' }, { t: 'Type' }, { t: 'Assigned job' }, { t: 'Status', r: 1 }],
@@ -5077,143 +5077,143 @@
   var TBT_KEY = 'cs_tbt_demo_v1';
   var TBT_WEEKS_NO_REPEAT = 12;   // a talk may not repeat inside 12 weeks
 
-      /* Toolbox Talk library — built from Tony's 10 email batches.
+      /* Toolbox Talk library — built from the safety manager's 10 email batches.
          127 attachments, 124 unique by content hash, 3 duplicate copies.
          i=id(hash) t=display title (cleaned filename) f=original filename
          p=pages n=type s=status src=publisher note=why path=local source (demo preview only) */
       var TBT_LIB = [
-  {i:'4fabfd86963a77d7',t:'Reverse Polarity v2',f:'Reverse_Polarity_v2.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Reverse_Polarity_v2.pdf'},
-  {i:'c76e0d100bdbe323',t:'SE79PDF',f:'SE79PDF.pdf',p:17,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'17 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/SE79PDF.pdf'},
-  {i:'7b6311c716ddb7b7',t:'Safety Alert Hand Laceration',f:'Safety Alert - Hand Laceration.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Safety alert',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Safety Alert - Hand Laceration.pdf'},
-  {i:'05df1426939e2139',t:'Screwdrivers',f:'Screwdrivers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Screwdrivers-Toolbox-Talk.pdf'},
-  {i:'cf831d2766e46035',t:'Step Ladder Safety',f:'Step_Ladder_Safety.pdf',p:6,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Step_Ladder_Safety.pdf'},
-  {i:'61a99481f1fdf24d',t:'Stepladders',f:'Stepladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Stepladders-Toolbox-Talk.pdf'},
-  {i:'ca8f89414467ceb4',t:'Storage Of Portable Ladders',f:'Storage_Of_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Storage_Of_Portable_Ladders.pdf'},
-  {i:'1eb4cae0e52ddf22',t:'Suspended Loads',f:'Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/Suspended Loads.pdf'},
-  {i:'a79352f49a0e8810',t:'substance abuse',f:'substance-abuse.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/substance-abuse.pdf'},
-  {i:'bc48db6df07a4e8d',t:'suicide warnings',f:'suicide-warnings.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 02/suicide-warnings.pdf'},
-  {i:'a23d472d25905b79',t:'MCA Tool Box Talks Volume I',f:'MCA Tool Box Talks Volume I.pdf',p:55,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume I.pdf'},
-  {i:'5e588888d0f304fd',t:'MCA Tool Box Talks Volume II',f:'MCA Tool Box Talks Volume II.pdf',p:56,n:'PDF',s:'Collection',src:null,note:'56 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume II.pdf'},
-  {i:'3f9cf5cede12a00d',t:'MCA Tool Box Talks Volume III',f:'MCA Tool Box Talks Volume III.pdf',p:55,n:'PDF',s:'Collection',src:null,note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume III.pdf'},
-  {i:'03ff45871304d403',t:'MCA Tool Box Talks Volume IV',f:'MCA Tool Box Talks Volume IV.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 08/MCA Tool Box Talks Volume IV.pdf'},
-  {i:'7f0dd975bc62ace2',t:'MSCA Tool Box Talks Volume I',f:'MSCA Tool Box Talks Volume I.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSCA Tool Box Talks Volume I.pdf'},
-  {i:'3c6e47bcd57ee810',t:'MSCA Tool Box Talks Volume II',f:'MSCA Tool Box Talks Volume II.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSCA Tool Box Talks Volume II.pdf'},
-  {i:'7f0dd975bc62ace2',t:'MSSE2',f:'MSSE2.pdf',p:57,n:'PDF',s:'Excluded',src:null,note:'duplicate copy of MSCA Tool Box Talks Volume I.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/MSSE2.pdf'},
-  {i:'8957c75667c33851',t:'Mobile Devices While Driving',f:'Mobile-Devices-While-Driving-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Mobile-Devices-While-Driving-Toolbox-Talk.pdf'},
-  {i:'12f355bcfbd20262',t:'Name It Tame It',f:'Name_It_Tame_It.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Name_It_Tame_It.pdf'},
-  {i:'c883132600a845d5',t:'Overhead Power Lines',f:'Overhead_Power_Lines.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Overhead_Power_Lines.pdf'},
-  {i:'e6ec5cfcb10c9fac',t:'Powerline Contact',f:'Powerline-Contact-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Powerline-Contact-Toolbox-Talk.pdf'},
-  {i:'a1b26bfd4ffd6282',t:'PreUse Ladder Inspections',f:'PreUse_Ladder_Inspections.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/PreUse_Ladder_Inspections.pdf'},
-  {i:'30172401ceae8f27',t:'Protecting your hands (PPE)',f:'Protecting your hands (PPE).pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Protecting your hands (PPE).pdf'},
-  {i:'e1776e53ae90c46a',t:'Qualified Signal Person and Rigger Training Courses Offered by SMG',f:'Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Training material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf'},
-  {i:'d2c7f6356c499e9f',t:'Quizzes Engl Mar16 PM 411266',f:'Quizzes Engl Mar16-PM_411266.pdf',p:4,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Quizzes Engl Mar16-PM_411266.pdf'},
-  {i:'35f0155d362c5e7b',t:'Racial discrimination',f:'Racial-discrimination-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/Racial-discrimination-Toolbox-Talk-.pdf'},
-  {i:'f0903aae1dd49dd0',t:'mental health routines',f:'mental-health-routines.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/mental-health-routines.pdf'},
-  {i:'4caef110189b0248',t:'narcan naloxone',f:'narcan-naloxone.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 01/narcan-naloxone.pdf'},
-  {i:'399f36b53d9b7290',t:'Avoiding Distractions',f:'Avoiding Distractions.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Avoiding Distractions.pdf'},
-  {i:'46364d9766f7a08c',t:'Back Injuries Get Your Workers Back in Control',f:'Back Injuries - Get Your Workers Back in Control.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Back Injuries - Get Your Workers Back in Control.pdf'},
-  {i:'06dccc67821ea196',t:'Behavioral Safety Who is Responsible for Safety',f:'Behavioral Safety-Who is Responsible for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Behavioral Safety-Who is Responsible for Safety.pdf'},
-  {i:'229842fcc2ac3029',t:'Blood Borne Pathogens 1 and 2',f:'Blood Borne Pathogens 1 and 2.pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Blood Borne Pathogens 1 and 2.pdf'},
-  {i:'d936e806c7815a3e',t:'Caught In On Between',f:'Caught In-On-Between.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Caught In-On-Between.pdf'},
-  {i:'640e63bd93fb29b4',t:'Cold Weather Driving',f:'Cold Weather Driving.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Cold Weather Driving.pdf'},
-  {i:'71678685e7e376c4',t:'Common Sense Safety',f:'Common Sense Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Common Sense Safety.pdf'},
-  {i:'1faf21e9bafba6bc',t:'Communicating Safely',f:'Communicating Safely.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Communicating Safely.pdf'},
-  {i:'4fc5304859b7104f',t:'Compressed Air Safety',f:'Compressed Air Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Compressed Air Safety.pdf'},
-  {i:'3c0b0a2a220cc530',t:'Confined Space Part 1',f:'Confined Space Part 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Confined Space Part 1.pdf'},
-  {i:'260a70497af07043',t:'Confined Space Part 2',f:'Confined Space Part 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Confined Space Part 2.pdf'},
-  {i:'0071d88f6d86261f',t:'Construction Site Hygiene',f:'Construction Site Hygiene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Construction Site Hygiene.pdf'},
-  {i:'73a438505f05772c',t:'Crystalline Silica Awareness',f:'Crystalline Silica Awareness.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Crystalline Silica Awareness.pdf'},
-  {i:'f00bcce6ef74a47e',t:'Equipment Hazards Safe Operations of Forklifts',f:'Equipment Hazards - Safe Operations of Forklifts.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Equipment Hazards - Safe Operations of Forklifts.pdf'},
-  {i:'e27299abc50d39a9',t:'Ergonomic Breaks, Rest Periods, and Stretches',f:'Ergonomic Breaks, Rest Periods, and Stretches.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Ergonomic Breaks, Rest Periods, and Stretches.pdf'},
-  {i:'b1bc7e719cb3b36b',t:'Excavation Safety',f:'Excavation Safety.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Excavation Safety.pdf'},
-  {i:'8832865a7d67016c',t:'Extension Cord Safety',f:'Extension Cord Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Extension Cord Safety.pdf'},
-  {i:'dee719fec495262b',t:'Eye and Face Protection',f:'Eye and Face Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Eye and Face Protection.pdf'},
-  {i:'151f1940e4918d98',t:'Fall Protection',f:'Fall Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 06/Fall Protection.pdf'},
-  {i:'7c7301f704cb04db',t:'Arc Welding Safety',f:'Arc Welding Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/Arc Welding Safety.pdf'},
-  {i:'a947f4d8b6e6601e',t:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet',f:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf',p:1,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf'},
-  {i:'453560b18cbe70f3',t:'MCA Tool Box Talks Volume V',f:'MCA Tool Box Talks Volume V.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCA Tool Box Talks Volume V.pdf'},
-  {i:'dbbc89f2a9ec6fae',t:'MCAA Toolbox Safety Talks Volume VI',f:'MCAA-Toolbox-Safety-Talks-Volume-VI.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/MCAA-Toolbox-Safety-Talks-Volume-VI.pdf'},
-  {i:'4d144c7d6daa50d1',t:'PCA Tool Box Talks Volume I',f:'PCA Tool Box Talks Volume I.pdf',p:58,n:'PDF',s:'Collection',src:null,note:'58 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/PCA Tool Box Talks Volume I.pdf'},
-  {i:'1b680099bc73acfd',t:'PWSE1PDF',f:'PWSE1PDF.pdf',p:29,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'29 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/PWSE1PDF.pdf'},
-  {i:'1b680099bc73acfd',t:'Pipe Welding Tool Box Talks',f:'Pipe Welding Tool Box Talks.pdf',p:29,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'duplicate copy of PWSE1PDF.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 07/Pipe Welding Tool Box Talks.pdf'},
-  {i:'29947aad37fd1d4e',t:'Suspended Loads2',f:'Suspended Loads2.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads2.pdf'},
-  {i:'6a219f2a0abf814d',t:'Suspended Loads Dangers Overhead',f:'Suspended Loads_Dangers Overhead.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads_Dangers Overhead.pdf'},
-  {i:'436eb9659dcd44a4',t:'Suspended Loads Lifting Chains',f:'Suspended Loads_Lifting Chains.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Suspended Loads_Lifting Chains.pdf'},
-  {i:'f6453311d7d62839',t:'Toolbox Talks for Fab Shop',f:'Toolbox Talks for Fab Shop.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Toolbox Talks for Fab Shop.pdf'},
-  {i:'e09bd8b6f81c013e',t:'Weather Effects On Portable Ladders',f:'Weather_Effects_On_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Weather_Effects_On_Portable_Ladders.pdf'},
-  {i:'71bf62cafae7fa1c',t:'Winning the Morning',f:'Winning_the_Morning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Winning_the_Morning.pdf'},
-  {i:'dbd9dd2091be80a3',t:'Wire Rope Inspection',f:'Wire-Rope-Inspection-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Wire-Rope-Inspection-Toolbox-Talk.pdf'},
-  {i:'4f7944e491f6a3e4',t:'Working Around Cranes',f:'Working Around Cranes.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working Around Cranes.pdf'},
-  {i:'116b65639b5d9640',t:'Working Around Suspended Loads',f:'Working Around Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working Around Suspended Loads.pdf'},
-  {i:'d9cff3b213adf58f',t:'Working Near Power On A Ladder',f:'Working_Near_Power_On_A_Ladder.pdf',p:6,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Tony Toolbox Email 01/Working_Near_Power_On_A_Ladder.pdf'},
-  {i:'575ba96cb74b0694',t:'Fall Protection Hole Covers',f:'Fall Protection- Hole Covers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fall Protection- Hole Covers.pdf'},
-  {i:'053dfbef68c71369',t:'Falling Objects',f:'Falling Objects.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Falling Objects.pdf'},
-  {i:'14048d3c3c31b861',t:'Fatigue',f:'Fatigue.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fatigue.pdf'},
-  {i:'22eaa90603233b6d',t:'Fire Extinguishers and Fire Class Types',f:'Fire Extinguishers and Fire Class Types.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fire Extinguishers and Fire Class Types.pdf'},
-  {i:'0b235e6980502b81',t:'Fire Prevention & Extinguishing Tips and Care',f:'Fire Prevention & Extinguishing - Tips and Care.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fire Prevention & Extinguishing - Tips and Care.pdf'},
-  {i:'2e85012c17c6df06',t:'First Aid',f:'First Aid.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/First Aid.pdf'},
-  {i:'30e03ed1f9f0c8e8',t:'Flammable and Combustible Liquids',f:'Flammable and Combustible Liquids.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Flammable and Combustible Liquids.pdf'},
-  {i:'8916ab6a1998d537',t:'Fork Truck Operation',f:'Fork Truck Operation.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Fork Truck Operation.pdf'},
-  {i:'8916ab6a1998d537',t:'Forklift Operation',f:'Forklift Operation.pdf',p:2,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'duplicate copy of Fork Truck Operation.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Forklift Operation.pdf'},
-  {i:'52af1d7dc08a3e11',t:'Healthy Worksite',f:'Healthy Worksite.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Healthy Worksite.pdf'},
-  {i:'a303364391a0bc20',t:'High Pressure Air',f:'High Pressure Air.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/High Pressure Air.pdf'},
-  {i:'8d2c250c4dad473a',t:'Hot Work Procedures',f:'Hot Work Procedures.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Hot Work Procedures.pdf'},
-  {i:'3fe0fab391ccf6df',t:'Housekeeping for Safety',f:'Housekeeping for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/Housekeeping for Safety.pdf'},
-  {i:'6b9f0c24064f96a0',t:'How Can Eye Injuries be Prevented',f:'How Can Eye Injuries be Prevented.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How Can Eye Injuries be Prevented.pdf'},
-  {i:'6e82f93a1048d9f6',t:'How To Avoid Respiratory Hazards',f:'How To Avoid Respiratory Hazards.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How To Avoid Respiratory Hazards.pdf'},
-  {i:'8737bd27844462ad',t:'How to Manage Cutting with Oxygen Acetylene',f:'How to Manage Cutting with Oxygen-Acetylene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 05/How to Manage Cutting with Oxygen-Acetylene.pdf'},
-  {i:'c4ff21d936f61a0c',t:'Compressed Gas Cylinders',f:'Compressed-Gas-Cylinders-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Compressed-Gas-Cylinders-Toolbox-Talk-.pdf'},
-  {i:'dd12d5aa540eb06b',t:'Concrete Silica',f:'Concrete-Silica-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Concrete-Silica-Toolbox-Talk-.pdf'},
-  {i:'904942287994ba10',t:'Confined Space',f:'Confined-Space-ToolBox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Confined-Space-ToolBox-Talk-.pdf'},
-  {i:'7da84d7b9405bed1',t:'Construction Equipment Dangers',f:'Construction Equipment Dangers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Construction Equipment Dangers.pdf'},
-  {i:'401374c765ceb632',t:'Dark Side Electricity',f:'Dark_Side_Electricity.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dark_Side_Electricity.pdf'},
-  {i:'0c2bddd703fc0f8b',t:'Double Insulated Tools',f:'Double_Insulated_Tools.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Double_Insulated_Tools.pdf'},
-  {i:'9133d64463992e35',t:'Dump Truck Tipovers',f:'Dump-Truck-Tipovers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dump-Truck-Tipovers-Toolbox-Talk.pdf'},
-  {i:'db8ae17a5650e60e',t:'Dump Trucks',f:'Dump-Trucks-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dump-Trucks-Toolbox-Talk.pdf'},
-  {i:'f3ce5ca5671e9513',t:'Dust',f:'Dust-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Dust-Toolbox-Talk-.pdf'},
-  {i:'f929edf32b57ef11',t:'Earplug',f:'Earplug-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Earplug-Toolbox-Talk-.pdf'},
-  {i:'558dac4f19b91fd5',t:'Electric Tools Sabre Saws',f:'Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf'},
-  {i:'224b903151771a19',t:'Electrical Safety',f:'Electrical-Safety-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electrical-Safety-Toolbox-Talk.pdf'},
-  {i:'d98b2100ffaa8454',t:'Electrical Emergencies',f:'Electrical_Emergencies.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Electrical_Emergencies.pdf'},
-  {i:'91391baa19c1127f',t:'Extension Cord Misuse',f:'Extension_Cord_Misuse.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Cord_Misuse.pdf'},
-  {i:'31fd05d82ec995eb',t:'Extension Ladder Habits',f:'Extension_Ladder_Habits.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Ladder_Habits.pdf'},
-  {i:'3d1751e5b5751372',t:'Extension Ladder Setup',f:'Extension_Ladder_Setup.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/Extension_Ladder_Setup.pdf'},
-  {i:'94a554bc87bf5792',t:'culter smarter about mental health',f:'culter-smarter-about-mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 02/culter-smarter-about-mental-health.pdf'},
-  {i:'5d50c44a1cd4486a',t:'Extension Ladders',f:'Extension-Ladders-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Extension-Ladders-Toolbox-Talk.pdf'},
-  {i:'a87e8c3d55f06eca',t:'Fall Protection 2018',f:'Fall Protection Toolbox Talk 2018.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Fall Protection Toolbox Talk 2018.pdf'},
-  {i:'8c8a9b697e588df4',t:'Finding the Right Glove',f:'Finding the Right Glove....pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Finding the Right Glove....pdf'},
-  {i:'1a868063f0f122b3',t:'GFCIs',f:'GFCIs.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/GFCIs.pdf'},
-  {i:'1625f4473dbcba78',t:'Gin Wheels or Pulley Wheels',f:'Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf'},
-  {i:'c317901db4092d56',t:'Ground Pin',f:'Ground_Pin.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Ground_Pin.pdf'},
-  {i:'dd4fb9800b61b87e',t:'Hand Tools Pliers and Wrenches',f:'Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf'},
-  {i:'287f4426cdea5443',t:'Handling Ladders Safely',f:'Handling_Ladders_Safely.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Handling_Ladders_Safely.pdf'},
-  {i:'5c1b1b14284ad377',t:'Heat Stress Toolbox Talks',f:'Heat Stress Toolbox Talks.pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Heat Stress Toolbox Talks.pdf'},
-  {i:'13602e1ebfdb07e3',t:'Identifying Disconnects',f:'Identifying_Disconnects.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Identifying_Disconnects.pdf'},
-  {i:'aa2db8fbfad0101d',t:'If Then Planning',f:'If_Then_Planning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/If_Then_Planning.pdf'},
-  {i:'8040e57e00a683a7',t:'Ladder Types And Duty Ratings',f:'Ladder_Types_And_Duty_Ratings.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Ladder_Types_And_Duty_Ratings.pdf'},
-  {i:'ea97b6c6778b93d2',t:'Listing Labeling',f:'Listing_Labeling.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Listing_Labeling.pdf'},
-  {i:'72959315b017da3b',t:'Mental Fitness',f:'Mental_Fitness.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Mental_Fitness.pdf'},
-  {i:'0f69cb519fb974eb',t:'Mental Rehearsal',f:'Mental_Rehearsal.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/Mental_Rehearsal.pdf'},
-  {i:'707df553b19f81b8',t:'mental health',f:'mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 03/mental-health.pdf'},
-  {i:'53f06914161dfce7',t:'A Frame Ladders',f:'A-Frame-Ladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/A-Frame-Ladders-Toolbox-Talk.pdf'},
-  {i:'e2ea6b2e4d8f1510',t:'AHA Installation of Trolley Beam and Chainfall Hoist',f:'AHA - Installation of Trolley Beam and Chainfall Hoist.pdf',p:5,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/AHA - Installation of Trolley Beam and Chainfall Hoist.pdf'},
-  {i:'89d8028f7d2c96fb',t:'BAMO',f:'BAMO.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/BAMO.pdf'},
-  {i:'9ffcc1100edcf611',t:'Backing Vehicles',f:'Backing-Vehicles-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Backing-Vehicles-Toolbox-Talk.pdf'},
-  {i:'d8cd976cb48fcf4a',t:'Chainsaws',f:'Chainsaws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Chainsaws-Toolbox-Talk-.pdf'},
-  {i:'65661aab523b054f',t:'Cleaning Concrete Trucks',f:'Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf'},
-  {i:'7e39c86d618436c8',t:'Cold Stress',f:'Cold-Stress-Toolbox-Talk-.pptx',p:null,n:'PPTX',s:'Needs Review',src:null,note:'PowerPoint, not a PDF talk - needs a look',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Cold-Stress-Toolbox-Talk-.pptx'},
-  {i:'6f0190d1dfd0c607',t:'How Workers Get Hurt',f:'How Workers Get Hurt.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/How Workers Get Hurt.pdf'},
-  {i:'ba4b639ad4ef7394',t:'How to Use an Eyewash',f:'How to Use an Eyewash.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/How to Use an Eyewash.pdf'},
-  {i:'bc92ceacd9f67c8e',t:'Ladders 1',f:'Ladders 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 1.pdf'},
-  {i:'11c48aad894ceac8',t:'Ladders 2',f:'Ladders 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 2.pdf'},
-  {i:'faf130f408c2b73a',t:'Ladders 3',f:'Ladders 3.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders 3.pdf'},
-  {i:'a365db89779e921b',t:'Ladders Parts 1 thru 3',f:'Ladders Parts 1 thru 3.pdf',p:6,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Ladders Parts 1 thru 3.pdf'},
-  {i:'187b6961ddeac5a1',t:'Sign in sheet',f:'Sign in sheet.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Choice Thread Batch 04/Sign in sheet.pdf'}
+  {i:'4fabfd86963a77d7',t:'Reverse Polarity v2',f:'Reverse_Polarity_v2.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Reverse_Polarity_v2.pdf'},
+  {i:'c76e0d100bdbe323',t:'SE79PDF',f:'SE79PDF.pdf',p:17,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'17 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/SE79PDF.pdf'},
+  {i:'7b6311c716ddb7b7',t:'Safety Alert Hand Laceration',f:'Safety Alert - Hand Laceration.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Safety alert',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Safety Alert - Hand Laceration.pdf'},
+  {i:'05df1426939e2139',t:'Screwdrivers',f:'Screwdrivers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Screwdrivers-Toolbox-Talk.pdf'},
+  {i:'cf831d2766e46035',t:'Step Ladder Safety',f:'Step_Ladder_Safety.pdf',p:6,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Step_Ladder_Safety.pdf'},
+  {i:'61a99481f1fdf24d',t:'Stepladders',f:'Stepladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Stepladders-Toolbox-Talk.pdf'},
+  {i:'ca8f89414467ceb4',t:'Storage Of Portable Ladders',f:'Storage_Of_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Storage_Of_Portable_Ladders.pdf'},
+  {i:'1eb4cae0e52ddf22',t:'Suspended Loads',f:'Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/Suspended Loads.pdf'},
+  {i:'a79352f49a0e8810',t:'substance abuse',f:'substance-abuse.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/substance-abuse.pdf'},
+  {i:'bc48db6df07a4e8d',t:'suicide warnings',f:'suicide-warnings.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 02/suicide-warnings.pdf'},
+  {i:'a23d472d25905b79',t:'MCA Tool Box Talks Volume I',f:'MCA Tool Box Talks Volume I.pdf',p:55,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C08/MCA Tool Box Talks Volume I.pdf'},
+  {i:'5e588888d0f304fd',t:'MCA Tool Box Talks Volume II',f:'MCA Tool Box Talks Volume II.pdf',p:56,n:'PDF',s:'Collection',src:null,note:'56 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C08/MCA Tool Box Talks Volume II.pdf'},
+  {i:'3f9cf5cede12a00d',t:'MCA Tool Box Talks Volume III',f:'MCA Tool Box Talks Volume III.pdf',p:55,n:'PDF',s:'Collection',src:null,note:'55 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C08/MCA Tool Box Talks Volume III.pdf'},
+  {i:'03ff45871304d403',t:'MCA Tool Box Talks Volume IV',f:'MCA Tool Box Talks Volume IV.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C08/MCA Tool Box Talks Volume IV.pdf'},
+  {i:'7f0dd975bc62ace2',t:'MSCA Tool Box Talks Volume I',f:'MSCA Tool Box Talks Volume I.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/MSCA Tool Box Talks Volume I.pdf'},
+  {i:'3c6e47bcd57ee810',t:'MSCA Tool Box Talks Volume II',f:'MSCA Tool Box Talks Volume II.pdf',p:57,n:'PDF',s:'Collection',src:null,note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/MSCA Tool Box Talks Volume II.pdf'},
+  {i:'7f0dd975bc62ace2',t:'MSSE2',f:'MSSE2.pdf',p:57,n:'PDF',s:'Excluded',src:null,note:'duplicate copy of MSCA Tool Box Talks Volume I.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/MSSE2.pdf'},
+  {i:'8957c75667c33851',t:'Mobile Devices While Driving',f:'Mobile-Devices-While-Driving-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Mobile-Devices-While-Driving-Toolbox-Talk.pdf'},
+  {i:'12f355bcfbd20262',t:'Name It Tame It',f:'Name_It_Tame_It.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Name_It_Tame_It.pdf'},
+  {i:'c883132600a845d5',t:'Overhead Power Lines',f:'Overhead_Power_Lines.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Overhead_Power_Lines.pdf'},
+  {i:'e6ec5cfcb10c9fac',t:'Powerline Contact',f:'Powerline-Contact-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Powerline-Contact-Toolbox-Talk.pdf'},
+  {i:'a1b26bfd4ffd6282',t:'PreUse Ladder Inspections',f:'PreUse_Ladder_Inspections.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/PreUse_Ladder_Inspections.pdf'},
+  {i:'30172401ceae8f27',t:'Protecting your hands (PPE)',f:'Protecting your hands (PPE).pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Protecting your hands (PPE).pdf'},
+  {i:'e1776e53ae90c46a',t:'Qualified Signal Person and Rigger Training Courses Offered by SMG',f:'Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf',p:1,n:'PDF',s:'Excluded',src:null,note:'Training material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Qualified Signal Person and Rigger Training Courses Offered by SMG.pdf'},
+  {i:'d2c7f6356c499e9f',t:'Quizzes Engl Mar16 PM 411266',f:'Quizzes Engl Mar16-PM_411266.pdf',p:4,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Quizzes Engl Mar16-PM_411266.pdf'},
+  {i:'35f0155d362c5e7b',t:'Racial discrimination',f:'Racial-discrimination-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/Racial-discrimination-Toolbox-Talk-.pdf'},
+  {i:'f0903aae1dd49dd0',t:'mental health routines',f:'mental-health-routines.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/mental-health-routines.pdf'},
+  {i:'4caef110189b0248',t:'narcan naloxone',f:'narcan-naloxone.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C01/narcan-naloxone.pdf'},
+  {i:'399f36b53d9b7290',t:'Avoiding Distractions',f:'Avoiding Distractions.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Avoiding Distractions.pdf'},
+  {i:'46364d9766f7a08c',t:'Back Injuries Get Your Workers Back in Control',f:'Back Injuries - Get Your Workers Back in Control.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Back Injuries - Get Your Workers Back in Control.pdf'},
+  {i:'06dccc67821ea196',t:'Behavioral Safety Who is Responsible for Safety',f:'Behavioral Safety-Who is Responsible for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Behavioral Safety-Who is Responsible for Safety.pdf'},
+  {i:'229842fcc2ac3029',t:'Blood Borne Pathogens 1 and 2',f:'Blood Borne Pathogens 1 and 2.pdf',p:4,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Blood Borne Pathogens 1 and 2.pdf'},
+  {i:'d936e806c7815a3e',t:'Caught In On Between',f:'Caught In-On-Between.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Caught In-On-Between.pdf'},
+  {i:'640e63bd93fb29b4',t:'Cold Weather Driving',f:'Cold Weather Driving.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Cold Weather Driving.pdf'},
+  {i:'71678685e7e376c4',t:'Common Sense Safety',f:'Common Sense Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Common Sense Safety.pdf'},
+  {i:'1faf21e9bafba6bc',t:'Communicating Safely',f:'Communicating Safely.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Communicating Safely.pdf'},
+  {i:'4fc5304859b7104f',t:'Compressed Air Safety',f:'Compressed Air Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Compressed Air Safety.pdf'},
+  {i:'3c0b0a2a220cc530',t:'Confined Space Part 1',f:'Confined Space Part 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Confined Space Part 1.pdf'},
+  {i:'260a70497af07043',t:'Confined Space Part 2',f:'Confined Space Part 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Confined Space Part 2.pdf'},
+  {i:'0071d88f6d86261f',t:'Construction Site Hygiene',f:'Construction Site Hygiene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Construction Site Hygiene.pdf'},
+  {i:'73a438505f05772c',t:'Crystalline Silica Awareness',f:'Crystalline Silica Awareness.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Crystalline Silica Awareness.pdf'},
+  {i:'f00bcce6ef74a47e',t:'Equipment Hazards Safe Operations of Forklifts',f:'Equipment Hazards - Safe Operations of Forklifts.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Equipment Hazards - Safe Operations of Forklifts.pdf'},
+  {i:'e27299abc50d39a9',t:'Ergonomic Breaks, Rest Periods, and Stretches',f:'Ergonomic Breaks, Rest Periods, and Stretches.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Ergonomic Breaks, Rest Periods, and Stretches.pdf'},
+  {i:'b1bc7e719cb3b36b',t:'Excavation Safety',f:'Excavation Safety.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Excavation Safety.pdf'},
+  {i:'8832865a7d67016c',t:'Extension Cord Safety',f:'Extension Cord Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Extension Cord Safety.pdf'},
+  {i:'dee719fec495262b',t:'Eye and Face Protection',f:'Eye and Face Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Eye and Face Protection.pdf'},
+  {i:'151f1940e4918d98',t:'Fall Protection',f:'Fall Protection.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C06/Fall Protection.pdf'},
+  {i:'7c7301f704cb04db',t:'Arc Welding Safety',f:'Arc Welding Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/Arc Welding Safety.pdf'},
+  {i:'a947f4d8b6e6601e',t:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet',f:'MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf',p:1,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'Quiz or supporting material',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/MCA Tool Box Talks Volume V Item # 4 Corrected Sheet.pdf'},
+  {i:'453560b18cbe70f3',t:'MCA Tool Box Talks Volume V',f:'MCA Tool Box Talks Volume V.pdf',p:62,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'62 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/MCA Tool Box Talks Volume V.pdf'},
+  {i:'dbbc89f2a9ec6fae',t:'MCAA Toolbox Safety Talks Volume VI',f:'MCAA-Toolbox-Safety-Talks-Volume-VI.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/MCAA-Toolbox-Safety-Talks-Volume-VI.pdf'},
+  {i:'4d144c7d6daa50d1',t:'PCA Tool Box Talks Volume I',f:'PCA Tool Box Talks Volume I.pdf',p:58,n:'PDF',s:'Collection',src:null,note:'58 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/PCA Tool Box Talks Volume I.pdf'},
+  {i:'1b680099bc73acfd',t:'PWSE1PDF',f:'PWSE1PDF.pdf',p:29,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'29 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/PWSE1PDF.pdf'},
+  {i:'1b680099bc73acfd',t:'Pipe Welding Tool Box Talks',f:'Pipe Welding Tool Box Talks.pdf',p:29,n:'PDF',s:'Excluded',src:'MCAA / MCA',note:'duplicate copy of PWSE1PDF.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C07/Pipe Welding Tool Box Talks.pdf'},
+  {i:'29947aad37fd1d4e',t:'Suspended Loads2',f:'Suspended Loads2.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Suspended Loads2.pdf'},
+  {i:'6a219f2a0abf814d',t:'Suspended Loads Dangers Overhead',f:'Suspended Loads_Dangers Overhead.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Suspended Loads_Dangers Overhead.pdf'},
+  {i:'436eb9659dcd44a4',t:'Suspended Loads Lifting Chains',f:'Suspended Loads_Lifting Chains.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Suspended Loads_Lifting Chains.pdf'},
+  {i:'f6453311d7d62839',t:'Toolbox Talks for Fab Shop',f:'Toolbox Talks for Fab Shop.pdf',p:57,n:'PDF',s:'Collection',src:'MCAA / MCA',note:'57 pages - contains multiple talks',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Toolbox Talks for Fab Shop.pdf'},
+  {i:'e09bd8b6f81c013e',t:'Weather Effects On Portable Ladders',f:'Weather_Effects_On_Portable_Ladders.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Weather_Effects_On_Portable_Ladders.pdf'},
+  {i:'71bf62cafae7fa1c',t:'Winning the Morning',f:'Winning_the_Morning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Winning_the_Morning.pdf'},
+  {i:'dbd9dd2091be80a3',t:'Wire Rope Inspection',f:'Wire-Rope-Inspection-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Wire-Rope-Inspection-Toolbox-Talk.pdf'},
+  {i:'4f7944e491f6a3e4',t:'Working Around Cranes',f:'Working Around Cranes.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Working Around Cranes.pdf'},
+  {i:'116b65639b5d9640',t:'Working Around Suspended Loads',f:'Working Around Suspended Loads.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Working Around Suspended Loads.pdf'},
+  {i:'d9cff3b213adf58f',t:'Working Near Power On A Ladder',f:'Working_Near_Power_On_A_Ladder.pdf',p:6,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch 01/Working_Near_Power_On_A_Ladder.pdf'},
+  {i:'575ba96cb74b0694',t:'Fall Protection Hole Covers',f:'Fall Protection- Hole Covers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Fall Protection- Hole Covers.pdf'},
+  {i:'053dfbef68c71369',t:'Falling Objects',f:'Falling Objects.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Falling Objects.pdf'},
+  {i:'14048d3c3c31b861',t:'Fatigue',f:'Fatigue.pdf',p:3,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Fatigue.pdf'},
+  {i:'22eaa90603233b6d',t:'Fire Extinguishers and Fire Class Types',f:'Fire Extinguishers and Fire Class Types.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Fire Extinguishers and Fire Class Types.pdf'},
+  {i:'0b235e6980502b81',t:'Fire Prevention & Extinguishing Tips and Care',f:'Fire Prevention & Extinguishing - Tips and Care.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Fire Prevention & Extinguishing - Tips and Care.pdf'},
+  {i:'2e85012c17c6df06',t:'First Aid',f:'First Aid.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/First Aid.pdf'},
+  {i:'30e03ed1f9f0c8e8',t:'Flammable and Combustible Liquids',f:'Flammable and Combustible Liquids.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Flammable and Combustible Liquids.pdf'},
+  {i:'8916ab6a1998d537',t:'Fork Truck Operation',f:'Fork Truck Operation.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Fork Truck Operation.pdf'},
+  {i:'8916ab6a1998d537',t:'Forklift Operation',f:'Forklift Operation.pdf',p:2,n:'PDF',s:'Excluded',src:'Greiner Brothers',note:'duplicate copy of Fork Truck Operation.pdf',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Forklift Operation.pdf'},
+  {i:'52af1d7dc08a3e11',t:'Healthy Worksite',f:'Healthy Worksite.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Healthy Worksite.pdf'},
+  {i:'a303364391a0bc20',t:'High Pressure Air',f:'High Pressure Air.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/High Pressure Air.pdf'},
+  {i:'8d2c250c4dad473a',t:'Hot Work Procedures',f:'Hot Work Procedures.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Hot Work Procedures.pdf'},
+  {i:'3fe0fab391ccf6df',t:'Housekeeping for Safety',f:'Housekeeping for Safety.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/Housekeeping for Safety.pdf'},
+  {i:'6b9f0c24064f96a0',t:'How Can Eye Injuries be Prevented',f:'How Can Eye Injuries be Prevented.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/How Can Eye Injuries be Prevented.pdf'},
+  {i:'6e82f93a1048d9f6',t:'How To Avoid Respiratory Hazards',f:'How To Avoid Respiratory Hazards.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/How To Avoid Respiratory Hazards.pdf'},
+  {i:'8737bd27844462ad',t:'How to Manage Cutting with Oxygen Acetylene',f:'How to Manage Cutting with Oxygen-Acetylene.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C05/How to Manage Cutting with Oxygen-Acetylene.pdf'},
+  {i:'c4ff21d936f61a0c',t:'Compressed Gas Cylinders',f:'Compressed-Gas-Cylinders-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Compressed-Gas-Cylinders-Toolbox-Talk-.pdf'},
+  {i:'dd12d5aa540eb06b',t:'Concrete Silica',f:'Concrete-Silica-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Concrete-Silica-Toolbox-Talk-.pdf'},
+  {i:'904942287994ba10',t:'Confined Space',f:'Confined-Space-ToolBox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Confined-Space-ToolBox-Talk-.pdf'},
+  {i:'7da84d7b9405bed1',t:'Construction Equipment Dangers',f:'Construction Equipment Dangers.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Construction Equipment Dangers.pdf'},
+  {i:'401374c765ceb632',t:'Dark Side Electricity',f:'Dark_Side_Electricity.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Dark_Side_Electricity.pdf'},
+  {i:'0c2bddd703fc0f8b',t:'Double Insulated Tools',f:'Double_Insulated_Tools.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Double_Insulated_Tools.pdf'},
+  {i:'9133d64463992e35',t:'Dump Truck Tipovers',f:'Dump-Truck-Tipovers-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Dump-Truck-Tipovers-Toolbox-Talk.pdf'},
+  {i:'db8ae17a5650e60e',t:'Dump Trucks',f:'Dump-Trucks-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Dump-Trucks-Toolbox-Talk.pdf'},
+  {i:'f3ce5ca5671e9513',t:'Dust',f:'Dust-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Dust-Toolbox-Talk-.pdf'},
+  {i:'f929edf32b57ef11',t:'Earplug',f:'Earplug-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Earplug-Toolbox-Talk-.pdf'},
+  {i:'558dac4f19b91fd5',t:'Electric Tools Sabre Saws',f:'Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Electric-Tools-Sabre-Saws-Toolbox-Talk-.pdf'},
+  {i:'224b903151771a19',t:'Electrical Safety',f:'Electrical-Safety-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Electrical-Safety-Toolbox-Talk.pdf'},
+  {i:'d98b2100ffaa8454',t:'Electrical Emergencies',f:'Electrical_Emergencies.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Electrical_Emergencies.pdf'},
+  {i:'91391baa19c1127f',t:'Extension Cord Misuse',f:'Extension_Cord_Misuse.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Extension_Cord_Misuse.pdf'},
+  {i:'31fd05d82ec995eb',t:'Extension Ladder Habits',f:'Extension_Ladder_Habits.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Extension_Ladder_Habits.pdf'},
+  {i:'3d1751e5b5751372',t:'Extension Ladder Setup',f:'Extension_Ladder_Setup.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/Extension_Ladder_Setup.pdf'},
+  {i:'94a554bc87bf5792',t:'culter smarter about mental health',f:'culter-smarter-about-mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C02/culter-smarter-about-mental-health.pdf'},
+  {i:'5d50c44a1cd4486a',t:'Extension Ladders',f:'Extension-Ladders-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Extension-Ladders-Toolbox-Talk.pdf'},
+  {i:'a87e8c3d55f06eca',t:'Fall Protection 2018',f:'Fall Protection Toolbox Talk 2018.pdf',p:3,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Fall Protection Toolbox Talk 2018.pdf'},
+  {i:'8c8a9b697e588df4',t:'Finding the Right Glove',f:'Finding the Right Glove....pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Finding the Right Glove....pdf'},
+  {i:'1a868063f0f122b3',t:'GFCIs',f:'GFCIs.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/GFCIs.pdf'},
+  {i:'1625f4473dbcba78',t:'Gin Wheels or Pulley Wheels',f:'Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Gin-Wheels-or-Pulley-Wheels-Toolbox-Talk-.pdf'},
+  {i:'c317901db4092d56',t:'Ground Pin',f:'Ground_Pin.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Ground_Pin.pdf'},
+  {i:'dd4fb9800b61b87e',t:'Hand Tools Pliers and Wrenches',f:'Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Hand-Tools-Pliers-and-Wrenches-Toolbox-Talk-.pdf'},
+  {i:'287f4426cdea5443',t:'Handling Ladders Safely',f:'Handling_Ladders_Safely.pdf',p:7,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Handling_Ladders_Safely.pdf'},
+  {i:'5c1b1b14284ad377',t:'Heat Stress Toolbox Talks',f:'Heat Stress Toolbox Talks.pdf',p:1,n:'PDF',s:'Needs Review',src:null,note:'little/no extractable text',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Heat Stress Toolbox Talks.pdf'},
+  {i:'13602e1ebfdb07e3',t:'Identifying Disconnects',f:'Identifying_Disconnects.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Identifying_Disconnects.pdf'},
+  {i:'aa2db8fbfad0101d',t:'If Then Planning',f:'If_Then_Planning.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/If_Then_Planning.pdf'},
+  {i:'8040e57e00a683a7',t:'Ladder Types And Duty Ratings',f:'Ladder_Types_And_Duty_Ratings.pdf',p:7,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Ladder_Types_And_Duty_Ratings.pdf'},
+  {i:'ea97b6c6778b93d2',t:'Listing Labeling',f:'Listing_Labeling.pdf',p:4,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Listing_Labeling.pdf'},
+  {i:'72959315b017da3b',t:'Mental Fitness',f:'Mental_Fitness.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Mental_Fitness.pdf'},
+  {i:'0f69cb519fb974eb',t:'Mental Rehearsal',f:'Mental_Rehearsal.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/Mental_Rehearsal.pdf'},
+  {i:'707df553b19f81b8',t:'mental health',f:'mental-health.pdf',p:2,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C03/mental-health.pdf'},
+  {i:'53f06914161dfce7',t:'A Frame Ladders',f:'A-Frame-Ladders-Toolbox-Talk.pdf',p:2,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/A-Frame-Ladders-Toolbox-Talk.pdf'},
+  {i:'e2ea6b2e4d8f1510',t:'AHA Installation of Trolley Beam and Chainfall Hoist',f:'AHA - Installation of Trolley Beam and Chainfall Hoist.pdf',p:5,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/AHA - Installation of Trolley Beam and Chainfall Hoist.pdf'},
+  {i:'89d8028f7d2c96fb',t:'BAMO',f:'BAMO.pdf',p:3,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/BAMO.pdf'},
+  {i:'9ffcc1100edcf611',t:'Backing Vehicles',f:'Backing-Vehicles-Toolbox-Talk.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Backing-Vehicles-Toolbox-Talk.pdf'},
+  {i:'d8cd976cb48fcf4a',t:'Chainsaws',f:'Chainsaws-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Chainsaws-Toolbox-Talk-.pdf'},
+  {i:'65661aab523b054f',t:'Cleaning Concrete Trucks',f:'Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf',p:1,n:'PDF',s:'Ready',src:'SkillSignal',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Cleaning-Concrete-Trucks-Toolbox-Talk-.pdf'},
+  {i:'7e39c86d618436c8',t:'Cold Stress',f:'Cold-Stress-Toolbox-Talk-.pptx',p:null,n:'PPTX',s:'Needs Review',src:null,note:'PowerPoint, not a PDF talk - needs a look',path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Cold-Stress-Toolbox-Talk-.pptx'},
+  {i:'6f0190d1dfd0c607',t:'How Workers Get Hurt',f:'How Workers Get Hurt.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/How Workers Get Hurt.pdf'},
+  {i:'ba4b639ad4ef7394',t:'How to Use an Eyewash',f:'How to Use an Eyewash.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/How to Use an Eyewash.pdf'},
+  {i:'bc92ceacd9f67c8e',t:'Ladders 1',f:'Ladders 1.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Ladders 1.pdf'},
+  {i:'11c48aad894ceac8',t:'Ladders 2',f:'Ladders 2.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Ladders 2.pdf'},
+  {i:'faf130f408c2b73a',t:'Ladders 3',f:'Ladders 3.pdf',p:2,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Ladders 3.pdf'},
+  {i:'a365db89779e921b',t:'Ladders Parts 1 thru 3',f:'Ladders Parts 1 thru 3.pdf',p:6,n:'PDF',s:'Ready',src:'Greiner Brothers',note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Ladders Parts 1 thru 3.pdf'},
+  {i:'187b6961ddeac5a1',t:'Sign in sheet',f:'Sign in sheet.pdf',p:1,n:'PDF',s:'Ready',src:null,note:null,path:'/Users/michaelcarey/Desktop/Griner Toolbox/Extracted/Source Batch C04/Sign in sheet.pdf'}
       ];
 
       /* Company fixtures. Greiner/Choice/Peine are kept completely separate:
          separate queue, completion mode, history, employees, jobs, settings.
-         Choice roster is the list Tony supplied. Peine's real roster has NOT
+         Choice roster is the list the safety manager supplied. Peine's real roster has NOT
          been received yet, so its people are obvious placeholders. */
   var TBT_COMPANIES = {
     greiner: (function () {
@@ -5249,21 +5249,21 @@
     choice: {
       name: 'Choice', defaultMode: 'group', modeConfigurable: false,
       note: 'Confirmed pilot: one group talk at the Monday morning meeting. ' +
-            'Alex Fyffe, Angel Garcia or Zach France submits the single record.',
+            'Ainsley Frost (Demo), Adrian Gable (Demo) or Zane Fairlie (Demo) submits the single record.',
       groups: ['Monday Group Meeting'],
       employees: [
-        { n: 'Alex Fyffe', g: 'Monday Group Meeting', lead: true },
-        { n: 'Angel Garcia', g: 'Monday Group Meeting', lead: true },
-        { n: 'Zach France', g: 'Monday Group Meeting', lead: true },
-        { n: 'Bobby Douthit', g: 'Monday Group Meeting' },
-        { n: 'Cian McGarr', g: 'Monday Group Meeting' },
-        { n: 'Cenon "T" Heim', g: 'Monday Group Meeting' },
-        { n: 'Darvelle White', g: 'Monday Group Meeting' },
-        { n: 'Joe Mikalouski', g: 'Monday Group Meeting' },
-        { n: 'Jon Wennen', g: 'Monday Group Meeting' },
-        { n: 'Justin Rice', g: 'Monday Group Meeting' },
-        { n: 'Kyle Palmer', g: 'Monday Group Meeting' },
-        { n: 'Nick Barnes', g: 'Monday Group Meeting' }
+        { n: 'Ainsley Frost (Demo)', g: 'Monday Group Meeting', lead: true },
+        { n: 'Adrian Gable (Demo)', g: 'Monday Group Meeting', lead: true },
+        { n: 'Zane Fairlie (Demo)', g: 'Monday Group Meeting', lead: true },
+        { n: 'Bailey Dunmore (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Callum Merrick (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Corey "T" Hale (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Dorian Whitfield (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Jesse Marlow (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Jonah Welles (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Jordan Rowe (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Kelsey Pratt (Demo)', g: 'Monday Group Meeting' },
+        { n: 'Noel Bexley (Demo)', g: 'Monday Group Meeting' }
       ]
     },
     peine: {
@@ -5917,7 +5917,7 @@
     });
 
     return '<div class="tbt-card"><h3>Library</h3>' +
-      '<div class="tbt-sub">' + TBT_LIB.length + ' files from Tony’s email batches · ' +
+      '<div class="tbt-sub">' + TBT_LIB.length + ' files from the safety document library · ' +
         (counts['Ready'] || 0) + ' ready · ' + (counts['Collection'] || 0) + ' collections · ' +
         (counts['Needs Review'] || 0) + ' need review · ' + (counts['Excluded'] || 0) + ' excluded · ' +
         guidedCount + ' with a Guided Talk prepared. ' +
@@ -6565,7 +6565,7 @@
     /* Safety Inspections = one connected workflow:
        Safety Inspections (active reports) | Corrective actions (the real
        findings from those reports, cs_finding_actions backend — the same
-       records the phone Findings tab uses) | Archive (reports Tony has
+       records the phone Findings tab uses) | Archive (reports the safety manager has
        intentionally archived; server-side state on cs_reports, organizational
        only — findings, corrective actions and source PDFs are untouched). */
     if (obsTab !== 'reports' && obsTab !== 'ca' && obsTab !== 'archive') obsTab = 'reports';
@@ -6671,7 +6671,7 @@
         [{ t: 'Finding' }, { t: 'Job' }, { t: 'Found' }, { t: 'Photos', r: 1 }, { t: 'Status', r: 1 }],
         rows3, fnds.length ? 'No findings match these filters.' : 'Nothing flagged. That is the goal.') + '</div></div>';
     } else {
-      // ARCHIVE — reports Tony intentionally archived. Server-side state; the
+      // ARCHIVE — reports the safety manager intentionally archived. Server-side state; the
       // full historical record stays intact and fully openable.
       html = head('Safety Inspections',
         'Safety Inspections moved out of the active list. Everything is preserved — the report, ' +
@@ -7461,7 +7461,7 @@
   var trainExtF = { sub: '', status: '' };
   var trainF = { q: '' };            // internal training: search people by name
 
-  // 90 / 60 / 30-day certification expiration alerts (Tony's explicit ask).
+  // 90 / 60 / 30-day certification expiration alerts (the safety manager's explicit ask).
   // The system knows what is expiring; production notification delivery is
   // configured at rollout — the bands here are computed from live cert data.
   function certExpiryHtml() {
@@ -8915,7 +8915,7 @@
   }
   function pgTemplates() {
     /* Template administration — the receiving dock for the GC-required forms
-       Tony is sending (Shiel Sexton @ Purdue C800, Meyer Najem @ Taylorsville
+       the safety manager is sending (Shiel Sexton @ Purdue C800, Meyer Najem @ Taylorsville
        C808). Two layers:
        1. Standard field forms — live in the field today, company-wide, fixed
           in code. Untouched by anything on this page.
@@ -8965,7 +8965,7 @@
       '<div class="sub">Forms required by a general contractor on specific jobs — Shiel Sexton (Purdue), Meyer Najem (Taylorsville Elementary).</div></div></div>' +
       '<div class="panel-bd flush">' + tableWrap(
       [{ t: 'Template' }, { t: 'Type' }, { t: 'Assigned job(s)' }, { t: 'Source' }, { t: 'Status', r: 1 }, { t: '', r: 1 }],
-      rows, 'No GC templates yet. When Tony sends a GC form — e.g. the Shiel Sexton JHA for Purdue — ' +
+      rows, 'No GC templates yet. When the safety manager sends a GC form — e.g. the Shiel Sexton JHA for Purdue — ' +
         'add it here with its source file and assign it to that job.') + '</div></div>';
     paint(html);
 
@@ -10577,7 +10577,7 @@
   // Company roles see different scopes; the switcher makes the concept visible.
   var ROLES = {
     admin: { user: 'Paul Greiner', title: 'Company Safety Admin', scope: 'Full visibility across all Greiner jobs, employees and analytics.' },
-    mgmt:  { user: 'Tony Greiner', title: 'Company Management', scope: 'Company-level visibility across all jobs and reporting.' },
+    mgmt:  { user: 'Sam Greiner (Demo)', title: 'Company Management', scope: 'Company-level visibility across all jobs and reporting.' },
     super: { user: 'Dave Kruse', title: 'Superintendent', scope: 'Limited to assigned jobs: Purdue Academic Building, Community Health North.' },
     field: { user: 'Field crew', title: 'Field User', scope: 'Assigned field forms only — no company dashboard.' }
   };

@@ -335,10 +335,10 @@
     }),
     choice: [
       { week: WEEK, kind: 'group', company: 'choice', group: 'Monday Group Meeting',
-        presenter: 'Alex Fyffe', at: wdAt(0, 7, 5),
-        roster: ['Alex Fyffe', 'Angel Garcia', 'Zach France', 'Bobby Douthit', 'Cian McGarr',
-                 'Cenon "T" Heim', 'Darvelle White', 'Joe Mikalouski', 'Jon Wennen',
-                 'Justin Rice', 'Kyle Palmer'],
+        presenter: 'Ainsley Frost (Demo)', at: wdAt(0, 7, 5),
+        roster: ['Ainsley Frost (Demo)', 'Adrian Gable (Demo)', 'Zane Fairlie (Demo)', 'Bailey Dunmore (Demo)', 'Callum Merrick (Demo)',
+                 'Corey "T" Hale (Demo)', 'Dorian Whitfield (Demo)', 'Jesse Marlow (Demo)', 'Jonah Welles (Demo)',
+                 'Jordan Rowe (Demo)', 'Kelsey Pratt (Demo)'],
         manual: ['Temp Helper (Labor Ready)'] }
     ],
     peine: PEINE_NAMES.map(function (n, i) {
