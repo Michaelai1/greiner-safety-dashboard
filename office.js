@@ -3336,6 +3336,9 @@
       '.ar-unit{display:flex;gap:8px;align-items:center;margin:4px 0}' +
       '.ar-ta{width:100%;padding:8px 11px;border:1px solid var(--line-2);border-radius:7px;' +
         'background:#fafbfc;font-size:13.5px}' +
+      '.ar-note{background:var(--accent-tt);border:1px solid var(--accent-br,var(--line-2));border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;color:var(--ink-2);margin-bottom:14px}' +
+      '.si-rules{margin-left:8px}.si-rules.on{background:var(--accent);color:#fff;border-color:var(--accent)}' +
+      '.si-rulehd{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:14px}' +
       '.ar-blocked{display:grid;gap:8px}' +
       '.ar-brow{border:1px dashed var(--line-2);border-radius:9px;padding:10px 12px;background:var(--bg);' +
         'opacity:.85;cursor:not-allowed}' +
@@ -3350,18 +3353,28 @@
   }
 
   function pgObsDemo() {
-    if (['req', 'log', 'jha', 'find'].indexOf(siTab) === -1) siTab = 'req';
-    var right = subtabs(siTab, [['req', 'Weekly Requirements'], ['log', 'Submission Log'],
-      ['jha', 'JHA Review'], ['find', 'Findings & Corrective Actions']], 'si');
+    if (['log', 'jha', 'find', 'rules'].indexOf(siTab) === -1) siTab = 'log';
+    /* Weekly Requirements is no longer a main tab — the office reviews what came
+       back, it does not live in a scheduling app. The requirement records and
+       every compliance calculation are unchanged; they are edited behind
+       Compliance Rules, which is where the denominator is configured. */
+    var right = subtabs(siTab === 'rules' ? '' : siTab,
+      [['log', 'Submission Log'], ['jha', 'JHA Review'],
+       ['find', 'Findings & Corrective Actions']], 'si') +
+      '<button class="btn btn-sm si-rules' + (siTab === 'rules' ? ' on' : '') +
+        '" id="si-gorules" title="Configure what the field is required to submit">' +
+        '&#9881; Compliance Rules</button>';
     var html = siStyle() + head('Safety Inspections',
-      'Define what the field must complete, then review what came back.', right);
-    if (siTab === 'req') html += siRequirementsHtml();
+      'Review what the field submitted.', right);
+    if (siTab === 'rules') html += siRequirementsHtml();
     else if (siTab === 'log') html += siLogHtml();
     else if (siTab === 'jha') html += siJhaHtml();
     else html += siFindingsHtml();
     paint(html);
     wireSubtabs('si', function (v) { siTab = v; pgObsDemo(); });
-    if (siTab === 'req') { siWireWeek(pgObsDemo); siWireReq(); }
+    var gr = $('#si-gorules');
+    if (gr) gr.onclick = function () { siTab = siTab === 'rules' ? 'log' : 'rules'; pgObsDemo(); };
+    if (siTab === 'rules') { siWireWeek(pgObsDemo); siWireReq(); }
     else if (siTab === 'log') siWireLog();
     else if (siTab === 'jha') jhaWire();
     else siWireFindings();
@@ -3370,6 +3383,10 @@
   /* ---------------- A · Weekly Requirements ---------------- */
   function siRequirementsHtml() {
     var week = siWeekISO();
+    var intro = '<div class="si-rulehd"><div><b>Compliance Rules</b>' +
+      '<div class="small muted">What the field is required to submit. This is the denominator ' +
+      'behind Daily Safety Compliance — it does not record anything as complete.</div></div>' +
+      '<button class="btn btn-sm" id="si-backlog">&larr; Back to Submission Log</button></div>';
     var reqs = siReqsForWeek(week).filter(function (r) {
       return !siF.job || r.job_id === siF.job;
     });
@@ -3393,7 +3410,7 @@
         '</tr>';
     });
 
-    return '<div class="si-bar">' +
+    return intro + '<div class="si-bar">' +
       siWeekControlHtml() +
       '<select id="si-job" class="si-ctl"><option value="">All jobsites</option>' +
         jobs.map(function (j) {
@@ -3430,6 +3447,7 @@
   }
 
   function siWireReq() {
+    var b = $('#si-backlog'); if (b) b.onclick = function () { siTab = 'log'; pgObsDemo(); };
     var j = $('#si-job'); if (j) j.onchange = function () { siF.job = j.value; pgObsDemo(); };
     var a = $('#si-addreq'); if (a) a.onclick = siAddRequirement;
     $$('[data-si-open]').forEach(function (b) {
@@ -3481,7 +3499,10 @@
         return e.job_id === st.job && (st.form === 'aerial' ? e.kind === 'aerial' : e.kind === 'forklift');
       });
 
-      var h = '<div class="f"><label for="ar-co">Company</label>' +
+      var h = '<div class="ar-note">This creates an <b>expected</b> field inspection for the ' +
+        'selected job and week. It does not mark an inspection complete — the crew still submits ' +
+        'it from the phone.</div>' +
+        '<div class="f"><label for="ar-co">Company</label>' +
         '<select id="ar-co">' + Object.keys(TBT_COMPANIES).map(function (k) {
           return '<option value="' + k + '"' + (st.company === k ? ' selected' : '') + '>' +
             esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
@@ -3563,7 +3584,8 @@
           '<button class="btn" id="ar-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>' +
         '</div>';
 
-      drawer('Add Requirement', 'Define what the field must complete this week', h);
+      drawer('Add Inspection for This Week',
+        'Expected inspection for ' + siWeekLabel(), h);
       wire();
     }
 
@@ -3685,6 +3707,7 @@
         '<option value="flag"' + (siF.flagged === 'flag' ? ' selected' : '') + '>Flagged</option>' +
         '<option value="clean"' + (siF.flagged === 'clean' ? ' selected' : '') + '>Clean</option></select>' +
       '<span class="small muted si-count">' + list.length + ' submission' + (list.length === 1 ? '' : 's') + '</span>' +
+      '<button class="btn si-add" id="si-addinsp">+ Add Inspection for This Week</button>' +
       '</div>' +
       '<div class="panel"><div class="panel-bd flush">' + tableWrap(
         [{ t: 'Form' }, { t: 'Jobsite' }, { t: 'Submitted by' }, { t: 'When' }, { t: 'Result' }, { t: '', r: 1 }],
@@ -3692,6 +3715,7 @@
   }
   function siWireLog() {
     siWireWeek(pgObsDemo);
+    var ai = $('#si-addinsp'); if (ai) ai.onclick = siAddRequirement;
     [['si-job', 'job'], ['si-form', 'form'], ['si-who', 'who'], ['si-flag', 'flagged']].forEach(function (p) {
       var e = $('#' + p[0]);
       if (e) e.onchange = function () { siF[p[1]] = e.value; pgObsDemo(); };
@@ -3789,6 +3813,7 @@
      separately from the records that produce it.
      ==================================================================== */
   var anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '', range: 'week' };
+  var anTab = 'visual';   // Visual Dashboard | All Metrics
 
   /* The window the whole page is filtered to. Presets resolve to real dates so
      every section uses the same range. */
@@ -4085,7 +4110,8 @@
     var s = tb.stats;
 
     var html = anStyle() +
-      '<div class="pg-hd"><div><h2>Analytics <span class="an-pill">Demo Data</span></h2></div></div>';
+      '<div class="pg-hd"><div><h2>Analytics <span class="an-pill">Demo Data</span></h2></div>' +
+      subtabs(anTab, [['visual', 'Visual Dashboard'], ['all', 'All Metrics']], 'an') + '</div>';
 
     /* ---- one compact filter row ---- */
     html += '<div class="an-bar">' +
@@ -4107,6 +4133,13 @@
         '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding</option></select>' +
       '<button class="an-reset" id="an-reset">Reset</button>' +
       '</div>';
+
+    if (anTab === 'all') {
+      html += anAllMetricsHtml();
+      paint(html);
+      anlWire();
+      return;
+    }
 
     /* ---- primary row: the four things that matter ---- */
     html += '<div class="an-grid">';
@@ -4249,6 +4282,162 @@
     anlWire();
   }
 
+  /* ---------------- All Metrics ----------------
+     Every calculated number, grouped, with the previous period beside it.
+     Same records as the Visual Dashboard — both read the same calculators. */
+  function anlPrevious() {
+    // Re-run the calculators over the period immediately before this one.
+    var saved = { range: anF.range, from: anF.from, to: anF.to };
+    var b = anlRangeBounds();
+    var days = anlRangeDays().length;
+    var from = new Date(b.from + 'T12:00:00'), to = new Date(b.from + 'T12:00:00');
+    to.setDate(to.getDate() - 1);
+    from.setDate(from.getDate() - days);
+    anF.range = 'custom';
+    anF.from = window.DEMO.isoDay(from);
+    anF.to = window.DEMO.isoDay(to);
+    var out = { comp: anlCompliance(), jha: anlJhaActivity(), ff: anlFieldForms(),
+                hw: anlHotWork(), lf: anlLifts() };
+    anF.range = saved.range; anF.from = saved.from; anF.to = saved.to;
+    return out;
+  }
+
+  function anRow(metric, value, prev, source, drill) {
+    var d = (typeof value === 'number' && typeof prev === 'number') ? value - prev : null;
+    var chg = d === null ? '<span class="muted">—</span>'
+      : d === 0 ? '<span class="muted">no change</span>'
+      : '<span class="' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ +' : '▼ ') + d + '</span>';
+    return '<tr><td><span class="t-main">' + esc(metric) + '</span></td>' +
+      '<td class="num"><b>' + esc(String(value)) + '</b></td>' +
+      '<td class="num">' + (prev === null || prev === undefined ? '<span class="muted">—</span>' : esc(String(prev))) + '</td>' +
+      '<td class="num">' + chg + '</td>' +
+      '<td class="src">' + esc(source) + '</td>' +
+      '<td class="r">' + (drill
+        ? '<button class="linklike" data-an-drill="' + drill + '">View</button>'
+        : '<span class="muted">—</span>') + '</td></tr>';
+  }
+  function anGroup(title, rows) {
+    return '<div class="am-g"><h3>' + esc(title) + '</h3>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Metric' }, { t: 'Current', r: 1 }, { t: 'Previous', r: 1 }, { t: 'Change', r: 1 },
+         { t: 'Calculation / source' }, { t: '', r: 1 }],
+        rows, 'Nothing to show.') + '</div></div></div>';
+  }
+
+  function anAllMetricsHtml() {
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts(), ca = anlCorrective();
+    var ic = anlIncidents(), p = anlPrevious();
+    var s = tb.stats;
+    var html = '';
+
+    html += anGroup('Daily Compliance', [
+      anRow('Required submissions', comp.required.length, p.comp.required.length,
+        'Daily requirements × elapsed applicable weekdays', 'required'),
+      anRow('Completed', comp.completed.length, p.comp.completed.length,
+        'Job/days with at least one JHA family', 'completed'),
+      anRow('Missed', comp.missed.length, p.comp.missed.length,
+        'Required job/days with no JHA', 'missed'),
+      anRow('Compliance rate', comp.pct + '%', p.comp.pct + '%',
+        'Completed ÷ required', 'completed'),
+      anRow('Not yet due', comp.upcoming.length, null,
+        'Applicable days still ahead in the range', null)
+    ]);
+
+    html += anGroup('JHA Activity', [
+      anRow('Unique JHAs', jha.unique, p.jha.unique, 'Distinct root_jha_id in range', 'jha-unique'),
+      anRow('JHAs revised', jha.revised.length, p.jha.revised.length,
+        'Families with at least one revision', 'jha-revised'),
+      anRow('Revision events', jha.events, p.jha.events,
+        'Sum of revisions across families', 'jha-events'),
+      anRow('Share revised', jha.pctRevised + '%', p.jha.pctRevised + '%',
+        'Revised ÷ unique', 'jha-revised'),
+      anRow('Average revisions per revised JHA', jha.avgPerRevised, p.jha.avgPerRevised,
+        'Revision events ÷ revised families', 'jha-events')
+    ]);
+
+    html += anGroup('Toolbox Talks', [
+      anRow('Talk this week', tb.talk ? tb.talk.t : '—', null,
+        'First queued talk, or auto-selected when the queue is empty', null),
+      anRow('Completion method', s.mode === 'group' ? 'Foreman-led group' : 'Individual', null,
+        'Company setting', null),
+      anRow(s.unitLabel.charAt(0).toUpperCase() + s.unitLabel.slice(1) + ' assigned',
+        s.total, null, s.mode === 'group' ? 'Jobs/groups included' : 'Employees on included groups', 'tb-assigned'),
+      anRow('Completed', s.completed.length, null, 'Submissions this week', 'tb-done'),
+      anRow('Outstanding', s.outstanding.length, null, 'Assigned minus completed', 'tb-out'),
+      anRow('Participation rate', s.pct + '%', null, 'Completed ÷ assigned', 'tb-done'),
+      anRow('Total attendance', s.attendance, null,
+        'Distinct roster attendees + manual entries', 'tb-att'),
+      anRow('Manual attendance', s.manualCount, null,
+        'Attendees not on the assigned roster', 'tb-manual')
+    ]);
+
+    html += anGroup('Field Submissions', [
+      anRow('Total submissions', ff.total, p.ff.total,
+        'All field forms; a JHA family counts once', 'forms'),
+      anRow('Form types used', ff.types.length, p.ff.types.length, 'Distinct form_type in range', 'forms'),
+      anRow('Flagged with defects', ff.withDefects.length, p.ff.withDefects.length,
+        'Submissions where has_defects is true', 'forms-flagged')
+    ].concat(ff.types.map(function (t) {
+      var prev = (p.ff.types.filter(function (x) { return x.type === t.type; })[0] || {}).count;
+      return anRow(t.title, t.count, prev === undefined ? null : prev,
+        'Submissions of this form type', 'forms');
+    })));
+
+    html += anGroup('Hot Work', [
+      anRow('Permits submitted', hw.count, p.hw.count, 'form_type = hotwork', 'hot-all'),
+      anRow('Jobs with hot work', Object.keys(hw.jobs).length, Object.keys(p.hw.jobs).length,
+        'Distinct jobs on those permits', 'hot-all'),
+      anRow('Flagged for follow-up', hw.flagged.length, p.hw.flagged.length,
+        'Permits with defects recorded', 'hot-flagged'),
+      anRow('Requirement type', 'Activity-based', null,
+        'Never required on a day with no hot work', null)
+    ]);
+
+    html += anGroup('Lift Inspections', [
+      anRow('Total inspections', lf.count, p.lf.count, 'form_type aerial or forklift', 'lift-all'),
+      anRow('Aerial lift', lf.aerial.length, p.lf.aerial.length, 'form_type = aerial', 'lift-all'),
+      anRow('Forklift', lf.forklift.length, p.lf.forklift.length, 'form_type = forklift', 'lift-all'),
+      anRow('Units inspected', lf.units.length, p.lf.units.length, 'Distinct asset_id', 'lift-all'),
+      anRow('Failed / defects found', lf.flagged.length, p.lf.flagged.length,
+        'Inspections with defects recorded', 'lift-flagged')
+    ]);
+
+    var today = window.DEMO.isoDay(window.DEMO.dayOffset(0));
+    html += anGroup('Corrective Actions', [
+      anRow('Open', ca.open.length, null, 'Status not closed, from inspection findings', 'ca-open'),
+      anRow('Overdue', ca.overdue.length, null, 'Open with a due date before today', 'ca-overdue'),
+      anRow('Closed', ca.closed.length, null, 'Status closed', 'ca-closed'),
+      anRow('Total on record', ca.all.length, null, 'All corrective actions with a source record', 'ca-open'),
+      anRow('From incidents', 0, null, 'No incidents have been submitted', null)
+    ]);
+
+    html += anGroup('Incidents', [
+      anRow('Incidents entered ' + ic.year, ic.incidents.length, null,
+        'Records in the incident table for this year', null),
+      anRow('Days since last recordable', ic.daysSinceRecordable === null
+        ? 'No baseline recorded' : ic.daysSinceRecordable, null,
+        'Needs the date of the last recordable incident', null),
+      anRow('Recordkeeping start', ic.recordkeepingStart || 'Not supplied', null,
+        'Needed so zero reads as "none in this period"', null)
+    ]);
+
+    html += anGroup('Near Misses', [
+      anRow('Near misses entered ' + ic.year, ic.nearMisses.length, null,
+        'Records in the near-miss table for this year', null),
+      anRow('Open / under review', ic.nearMisses.filter(function (n) { return n.status !== 'closed'; }).length,
+        null, 'Status not closed', null),
+      anRow('High potential', ic.nearMisses.filter(function (n) { return n.severity === 'high'; }).length,
+        null, 'Severity recorded as high', null)
+    ]);
+
+    html += anGroup('Data Readiness', ANL_DATA_NEEDED.map(function (d) {
+      return anRow(d[0], 'Not supplied', null, d[1], null);
+    }));
+
+    return html;
+  }
+
   /* Date-range control: one button, presets plus custom. */
   var AN_RANGES = [['week', 'This week'], ['last', 'Last week'], ['30', 'Last 30 days'],
                    ['month', 'This month'], ['custom', 'Custom range']];
@@ -4367,12 +4556,19 @@
       '.an-needrow{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--bg)}' +
       '.an-needrow .t{font-weight:650;font-size:12.5px;color:var(--ink)}' +
       '.an-needrow .w{font-size:11.5px;color:var(--ink-4);margin-top:2px;line-height:1.5}' +
+      '.am-g{margin-bottom:16px}' +
+      '.am-g h3{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--ink-2);' +
+        'text-transform:uppercase;letter-spacing:.04em}' +
+      '.am-g td.num,.am-g th.num{text-align:right;font-variant-numeric:tabular-nums}' +
+      '.am-g td.src{font-size:11.5px;color:var(--ink-4);max-width:320px}' +
+      '.am-g .up{color:#16a34a;font-weight:650}.am-g .down{color:#b45309;font-weight:650}' +
       /* Narrow screens: the subtab strip scrolls rather than forcing the page wide. */
       '@media (max-width:820px){.pg-hd{flex-wrap:wrap}.subtabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.subtabs button{white-space:nowrap}}' +
       '</style>';
   }
 
   function anlWire() {
+    wireSubtabs('an', function (v) { anTab = v; pgAnalyticsDemo(); });
     var c = $('#an-company');
     if (c) c.onchange = function () { anF.company = c.value; anF.job = ''; pgAnalyticsDemo(); };
     var j = $('#an-job'); if (j) j.onchange = function () { anF.job = j.value; pgAnalyticsDemo(); };
@@ -4408,7 +4604,7 @@
   /* A card either opens the workspace view that owns it, or the record list
      behind the number. */
   function anGo(which) {
-    var toSi = { compliance: 'req', jhareview: 'jha', findings: 'find' };
+    var toSi = { compliance: 'rules', jhareview: 'jha', findings: 'find' };
     if (toSi[which]) {
       siTab = toSi[which];
       if (anF.job) siF.job = anF.job;
@@ -4987,23 +5183,36 @@
          Choice roster is the list Tony supplied. Peine's real roster has NOT
          been received yet, so its people are obvious placeholders. */
   var TBT_COMPANIES = {
-    greiner: {
-      name: 'Greiner Brothers', defaultMode: 'group', modeConfigurable: true,
-      note: 'Completion mode is configurable for this demo.',
-      groups: ['Demo Job A — Level 2 Fit-out', 'Demo Job B — Central Plant', 'Demo Job C — Service'],
-      employees: [
-        { n: 'Demo Foreman', g: 'Demo Job A — Level 2 Fit-out', lead: true },
-        { n: 'Alex Rivera (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
-        { n: 'Jordan Blake (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
-        { n: 'Sam Whitfield (Demo)', g: 'Demo Job A — Level 2 Fit-out' },
-        { n: 'Casey Nolan (Demo)', g: 'Demo Job B — Central Plant', lead: true },
-        { n: 'Taylor Reed (Demo)', g: 'Demo Job B — Central Plant' },
-        { n: 'Morgan Ellis (Demo)', g: 'Demo Job B — Central Plant' },
-        { n: 'Riley Shaw (Demo)', g: 'Demo Job C — Service', lead: true },
-        { n: 'Quinn Harper (Demo)', g: 'Demo Job C — Service' },
-        { n: 'Drew Baxter (Demo)', g: 'Demo Job C — Service' }
-      ]
-    },
+    greiner: (function () {
+      /* Twelve crews across the six demo jobs. The weekly talk is delivered per
+         crew, which is what makes participation measurable at finer than a whole
+         job at a time. Rosters are generated from the crew list so every total
+         comes from records rather than a written-down number. */
+      var CREWS = [
+        ['Demo Job A \u2014 Level 2 Fit-out \u00b7 Crew 1', ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)', 'Sam Whitfield (Demo)']],
+        ['Demo Job A \u2014 Level 2 Fit-out \u00b7 Crew 2', ['Nico Vasquez (Demo)', 'Priya Raman (Demo)', 'Tomas Berg (Demo)']],
+        ['Demo Job B \u2014 Central Plant \u00b7 Mechanical', ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)']],
+        ['Demo Job B \u2014 Central Plant \u00b7 Controls', ['Hana Okamoto (Demo)', 'Luis Ferreira (Demo)']],
+        ['Demo Job C \u2014 Service \u00b7 North', ['Riley Shaw (Demo)', 'Quinn Harper (Demo)']],
+        ['Demo Job C \u2014 Service \u00b7 South', ['Drew Baxter (Demo)', 'Marta Kowalski (Demo)']],
+        ['Demo Job D \u2014 Clinic Addition \u00b7 Crew 1', ['Jamie Fontaine (Demo)', 'Reese Okafor (Demo)', 'Parker Lindqvist (Demo)']],
+        ['Demo Job D \u2014 Clinic Addition \u00b7 Underground', ['Obi Adeyemi (Demo)', 'Lena Brandt (Demo)']],
+        ['Demo Job E \u2014 Warehouse Reroof \u00b7 Roofing', ['Sky Vandermolen (Demo)', 'Devin Castellanos (Demo)', 'Ari Solberg (Demo)']],
+        ['Demo Job F \u2014 Pump Station \u00b7 Process', ['Rowan Achterberg (Demo)', 'Emery Delacroix (Demo)']],
+        ['Demo Job F \u2014 Pump Station \u00b7 Electrical', ['Sasha Whitmore (Demo)', 'Kai Nakamura (Demo)']],
+        ['Shop & Yard', ['Bo Lindgren (Demo)', 'Frankie Mbeki (Demo)', 'Dana Ruiz (Demo)']]
+      ];
+      var employees = [];
+      CREWS.forEach(function (c) {
+        c[1].forEach(function (n, i) { employees.push({ n: n, g: c[0], lead: i === 0 }); });
+      });
+      return {
+        name: 'Greiner Brothers', defaultMode: 'group', modeConfigurable: true,
+        note: 'Completion mode is configurable for this demo.',
+        groups: CREWS.map(function (c) { return c[0]; }),
+        employees: employees
+      };
+    })(),
     choice: {
       name: 'Choice', defaultMode: 'group', modeConfigurable: false,
       note: 'Confirmed pilot: one group talk at the Monday morning meeting. ' +
@@ -5297,6 +5506,43 @@
         'font-size:13.5px;font-weight:650;color:var(--ink-4);cursor:pointer}' +
       '.tbt-tab.on{background:var(--accent);border-color:var(--accent);color:#fff}' +
       '.tbt-fmtnote{font-size:12px;color:var(--ink-4);margin-top:6px}' +
+      /* current week: the strongest element on the page */
+      '.tbt-now{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:var(--accent);' +
+        'color:#fff;border-radius:14px;padding:18px 20px;margin-bottom:16px}' +
+      '.tbt-now-main{flex:1;min-width:220px}' +
+      '.tbt-now .lbl{font-size:11px;font-weight:800;letter-spacing:.06em;opacity:.85}' +
+      '.tbt-now .ttl{font-size:26px;font-weight:800;margin-top:3px;line-height:1.15}' +
+      '.tbt-now .meta{font-size:12.5px;opacity:.92;margin-top:6px}' +
+      '.tbt-now-side{display:flex;align-items:center;gap:16px}' +
+      '.tbt-now .stat{text-align:right}' +
+      '.tbt-now .stat b{display:block;font-size:28px;font-weight:800;line-height:1}' +
+      '.tbt-now .stat span{font-size:11.5px;opacity:.9}' +
+      '.tbt-replace{background:#fff;border-color:#fff;color:var(--accent);font-weight:700;height:40px}' +
+      '.tbt-sched{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}' +
+      '@media (max-width:1100px){.tbt-sched{grid-template-columns:1fr}}' +
+      '.tbt-cardhd{display:flex;align-items:center;gap:12px;margin-bottom:2px}' +
+      '.tbt-cardhd h3{margin:0;flex:1}' +
+      '.tbt-qacts{display:flex;gap:4px;flex:0 0 auto}' +
+      '.tbt-qacts .ico{width:30px;height:30px;border:1px solid var(--line-2);background:#fff;' +
+        'border-radius:7px;cursor:pointer;color:var(--ink-3);font-size:13px;line-height:1}' +
+      '.tbt-qacts .ico:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}' +
+      '.tbt-qacts .ico:disabled{opacity:.35;cursor:default}' +
+      '.tbt-qacts .rm:hover{border-color:var(--fail);color:var(--fail)}' +
+      '.tbt-qrow.is-auto{opacity:.7;border-style:dashed}' +
+      '.tbt-qrow .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px}' +
+      '.tbt-qrow .fn{font-size:11.5px;color:var(--ink-5);font-weight:400}' +
+      // grid children default to min-width:auto; without this the wide library
+      // table pushes the whole page past the viewport instead of scrolling itself
+      '.tbt-sched>*{min-width:0}.tbt-sched .tbt-card{max-width:100%}' +
+      '.tbt-libwrap{max-height:520px;overflow:auto;border-radius:10px;max-width:100%}' +
+      '.tbt-fmtcell{white-space:nowrap}.tbt-actcell{white-space:nowrap}' +
+      '.tbt-libwrap td,.tbt-libwrap th{padding-left:10px;padding-right:10px}' +
+      '.tbt-libwrap table{width:100%;table-layout:fixed}' +
+      '.tbt-libwrap td:first-child{word-break:break-word}' +
+      '.tbt-libwrap .tbt-fmtcell{width:104px;white-space:normal}' +
+      '.tbt-libwrap .tbt-actcell{width:132px}' +
+      '.tbt-libwrap .tbt-pill{display:inline-block;margin:0 0 3px}' +
+      '.tbt-libwrap .tw{overflow-x:auto}' +
       /* Narrow screens: the subtab strip scrolls rather than forcing the page wide. */
       '@media (max-width:820px){.pg-hd{flex-wrap:wrap}.subtabs{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.subtabs button{white-space:nowrap}}' +
       '.tbt-manual{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:999px;' +
@@ -5323,13 +5569,7 @@
       }).join('') + '</div>';
 
     if (tbtTab === 'schedule') {
-      html += '<div class="tbt-next"><div class="lbl">THIS WEEK · ' + esc(TBT_COMPANIES[TBT.company].name) + '</div>' +
-        '<div class="ttl">' + (nextDoc ? esc(nextDoc.t) : 'Nothing eligible') + '</div>' +
-        '<div style="font-size:12.5px;opacity:.9;margin-top:4px">Monday ' + esc(tbtMondayLabel(0)) +
-        (next && next.auto ? ' · auto-selected (queue empty)' : '') +
-        ' · ' + co.queue.length + ' week' + (co.queue.length === 1 ? '' : 's') + ' remaining in the queue</div></div>';
-      html += '<div class="tbt-grid"><div>' + tbtQueueHtml(co) + '</div><div>' +
-        tbtConfigHtml(co, def, nextDoc) + '</div></div>';
+      html += tbtScheduleHtml(co, def, nextDoc, next);
     } else if (tbtTab === 'completion') {
       html += '<div class="tbt-kpi">' +
         '<div><b>' + stats.total + '</b><span>' + esc(stats.unitLabel) + ' assigned</span></div>' +
@@ -5344,11 +5584,238 @@
         '</div>';
       html += tbtCompletionHtml(co, def, week, stats);
     } else {
-      html += tbtLibraryHtml(co);
+      html += '<div class="tbt-grid"><div>' + tbtLibraryHtml(co) + '</div><div>' +
+        tbtConfigHtml(co, def, nextDoc) + '</div></div>';
     }
 
     paint(html);
     tbtWire();
+  }
+
+  /* ---------------- Schedule: current week, upcoming, available ----------
+     The three questions this screen has to answer without scrolling:
+     what is running this week, what is next, and how do I add another. */
+  var tbtLibF = { q: '', view: 'ready' };
+
+  function tbtScheduleHtml(co, def, nextDoc, next) {
+    return tbtCurrentWeekHtml(co, def, nextDoc, next) +
+      '<div class="tbt-sched">' +
+        '<div>' + tbtUpcomingHtml(co) + '</div>' +
+        '<div>' + tbtAvailableHtml(co) + '</div>' +
+      '</div>';
+  }
+
+  /* A · Current week — the strongest thing on the page. */
+  function tbtCurrentWeekHtml(co, def, talk, next) {
+    var g = talk ? tbtGuidedOf(talk.i) : null;
+    var week = tbtMondayLabel(0);
+    var stats = tbtCompletionStats(co, def, tbtMondayISO(0));
+    return '<div class="tbt-now">' +
+      '<div class="tbt-now-main">' +
+        '<div class="lbl">THIS WEEK · ' + esc(week) + '</div>' +
+        '<div class="ttl">' + (talk ? esc(talk.t) : 'Nothing scheduled') + '</div>' +
+        '<div class="meta">' + esc(TBT_COMPANIES[TBT.company].name) +
+          ' · ' + (co.mode === 'group' ? 'Foreman-led group' : 'Individual completion') +
+          ' · ' + esc(tbtFormatLabel(co.format || 'doc')) +
+          (talk ? (g ? '' : ' (Guided Talk not prepared)') : '') +
+          (next && next.auto ? ' · auto-selected' : '') + '</div>' +
+      '</div>' +
+      '<div class="tbt-now-side">' +
+        '<div class="stat"><b>' + stats.pct + '%</b><span>' + stats.completed.length + ' of ' +
+          stats.total + ' ' + esc(stats.unitLabel) + '</span></div>' +
+        '<button class="btn tbt-replace" id="tbt-replace">Replace Talk</button>' +
+      '</div></div>';
+  }
+
+  /* B · Upcoming weeks. Drag still works; every action also has a button. */
+  function tbtUpcomingHtml(co) {
+    var rows = co.queue.map(function (id, i) {
+      var d = tbtById(id), g = d ? tbtGuidedOf(d.i) : null;
+      return '<div class="tbt-qrow" draggable="true" data-tbt-qi="' + i + '">' +
+        '<span class="tbt-when">' + esc(tbtMondayLabel(i)) + '</span>' +
+        '<div class="nm">' + (d ? esc(d.t) : '(missing)') +
+          '<div class="fn">' + (d ? esc(d.f) : '') +
+            ' · ' + (g ? 'Original + Guided' : 'Original only') +
+            ' · ' + (co.mode === 'group' ? 'Group' : 'Individual') + '</div></div>' +
+        '<div class="tbt-qacts">' +
+          '<button class="ico" data-tbt-up="' + i + '"' + (i === 0 ? ' disabled' : '') +
+            ' title="Move up" aria-label="Move up">&uarr;</button>' +
+          '<button class="ico" data-tbt-down="' + i + '"' + (i === co.queue.length - 1 ? ' disabled' : '') +
+            ' title="Move down" aria-label="Move down">&darr;</button>' +
+          '<button class="ico rm" data-tbt-del="' + i + '" title="Remove" aria-label="Remove">&times;</button>' +
+        '</div></div>';
+    });
+    // The next few auto-selected weeks, so the fallback is visible.
+    var auto = '';
+    for (var n = co.queue.length; n < co.queue.length + 2; n++) {
+      var a = tbtTalkForWeek(co, n), ad = a && tbtById(a.id);
+      if (!ad) break;
+      auto += '<div class="tbt-qrow is-auto" data-tbt-auto="' + n + '">' +
+        '<span class="tbt-when">' + esc(tbtMondayLabel(n)) + '</span>' +
+        '<div class="nm">' + esc(ad.t) + '<div class="fn">' + esc(ad.f) + '</div></div>' +
+        '<span class="small muted">auto</span></div>';
+    }
+    return '<div class="tbt-card"><div class="tbt-cardhd"><h3>Upcoming talks</h3>' +
+      '<button class="btn btn-gold" id="tbt-addtalk">+ Add Talk to Schedule</button></div>' +
+      '<div class="tbt-sub">Drag to reorder, or use the arrows. ' + co.queue.length +
+        ' week' + (co.queue.length === 1 ? '' : 's') + ' scheduled.</div>' +
+      '<div class="tbt-queue" id="tbt-queue">' +
+        (rows.length ? rows.join('') : '<div class="empty" style="padding:16px">Nothing scheduled.</div>') +
+        auto + '</div>' +
+      '<div style="margin-top:10px;display:flex"><button class="btn btn-sm" id="tbt-reset" ' +
+        'style="margin-left:auto">Reset Demo Schedule</button></div></div>';
+  }
+
+  /* C · The library, filtered, with a one-click add. */
+  function tbtAvailableHtml(co) {
+    var VIEWS = [['ready', 'Ready to schedule'], ['guided', 'Guided available'],
+                 ['doconly', 'Original only'], ['unused', 'Never used'],
+                 ['recent', 'Recently used'], ['Collection', 'Collections'],
+                 ['Needs Review', 'Needs review'], ['Excluded', 'Excluded']];
+    var lastUsed = {};
+    (co.history || []).forEach(function (h) {
+      if (!lastUsed[h.talkId] || h.week > lastUsed[h.talkId]) lastUsed[h.talkId] = h.week; });
+    (co.completions || []).forEach(function (c) {
+      if (!c.talkId) return;
+      if (!lastUsed[c.talkId] || c.week > lastUsed[c.talkId]) lastUsed[c.talkId] = c.week; });
+
+    var q = (tbtLibF.q || '').toLowerCase();
+    var view = tbtLibF.view;
+    var list = TBT_LIB.filter(function (d) {
+      if (view === 'ready') { if (d.s !== 'Ready') return false; }
+      else if (view === 'guided') { if (!tbtGuidedOf(d.i)) return false; }
+      else if (view === 'doconly') { if (d.s !== 'Ready' || tbtGuidedOf(d.i)) return false; }
+      else if (view === 'unused') { if (d.s !== 'Ready' || lastUsed[d.i]) return false; }
+      else if (view === 'recent') { if (!lastUsed[d.i]) return false; }
+      else if (d.s !== view) return false;
+      if (!q) return true;
+      return (d.t + ' ' + d.f + ' ' + (TBT_TOPIC[d.i] || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    var schedulable = view === 'ready' || view === 'guided' || view === 'doconly' ||
+                      view === 'unused' || view === 'recent';
+
+    var rows = list.slice(0, 60).map(function (d) {
+      var g = tbtGuidedOf(d.i);
+      var queued = co.queue.indexOf(d.i) !== -1;
+      // Fewer, denser columns so the Add button stays on screen rather than
+      // scrolling off the right edge of the panel.
+      return '<tr>' +
+        '<td><span class="t-main">' + esc(d.t) + '</span>' +
+          '<div class="small muted">' + esc(TBT_TOPIC[d.i] || d.f) +
+          ' · ' + (d.p ? d.p + 'p' : '—') +
+          ' · ' + (lastUsed[d.i] ? 'used ' + esc(lastUsed[d.i]) : 'never used') + '</div></td>' +
+        '<td class="tbt-fmtcell">' +
+          (d.s === 'Ready' ? '<span class="tbt-pill tbt-ready">Original</span>' : tbtStatusPill(d.s)) +
+          (g ? ' <span class="tbt-pill tbt-g-yes">Guided</span>' : '') + '</td>' +
+        '<td class="r tbt-actcell">' +
+          '<button class="btn btn-sm" data-tbt-preview="' + esc(d.i) + '">Preview</button> ' +
+          (d.s === 'Ready'
+            ? '<button class="btn btn-sm btn-gold" data-tbt-add="' + esc(d.i) + '"' +
+              (queued ? ' disabled title="Already scheduled"' : '') + '>' +
+              (queued ? 'Scheduled' : 'Add') + '</button>'
+            : '<span class="small muted">Not schedulable</span>') + '</td></tr>';
+    });
+
+    return '<div class="tbt-card"><h3>Available Toolbox Talks</h3>' +
+      '<div class="tbt-sub">' + list.length + ' shown' +
+        (schedulable ? '' : ' · these are not schedulable until approved') + '.</div>' +
+      '<div class="fbar" style="margin-bottom:10px">' +
+        '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+        '<input id="tbt-q" placeholder="Search by title or topic…" value="' + esc(tbtLibF.q) + '"></div>' +
+        '<select id="tbt-view">' + VIEWS.map(function (v) {
+          return '<option value="' + esc(v[0]) + '"' + (view === v[0] ? ' selected' : '') + '>' +
+            esc(v[1]) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="tbt-libwrap"><div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Talk' }, { t: 'Format' }, { t: '', r: 1 }], rows, 'No talks match.') + '</div></div></div>' +
+      (list.length > 60 ? '<div class="small muted" style="margin-top:8px">Showing the first 60 of ' +
+        list.length + '. Narrow the search to see the rest.</div>' : '') + '</div>';
+  }
+
+  /* Add / replace a scheduled talk. */
+  function tbtAddTalk(preId, preWeek) {
+    var co = tbtCo();
+    var st = { company: TBT.company, talk: preId || '', week: preWeek === undefined ? co.queue.length : preWeek,
+               mode: co.mode, format: co.format || 'doc' };
+    function render() {
+      var elig = tbtEligible();
+      var weeks = [];
+      for (var i = 0; i < 12; i++) {
+        weeks.push([i, tbtMondayLabel(i) + (co.queue[i] ? ' — ' + (tbtById(co.queue[i]) || {}).t : ' — open')]);
+      }
+      var taken = co.queue[st.week];
+      var dup = taken && taken === st.talk;
+      var g = st.talk ? tbtGuidedOf(st.talk) : null;
+      var h = '<div class="f"><label for="at-co">Company</label>' +
+          '<select id="at-co">' + Object.keys(TBT_COMPANIES).map(function (k) {
+            return '<option value="' + k + '"' + (st.company === k ? ' selected' : '') + '>' +
+              esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
+          '<p class="small muted" style="margin:.35rem 0 0">Each company keeps its own schedule.</p></div>' +
+        '<div class="f"><label for="at-talk">Talk</label>' +
+          '<select id="at-talk"><option value="">Choose a talk…</option>' +
+          elig.map(function (d) {
+            return '<option value="' + esc(d.i) + '"' + (st.talk === d.i ? ' selected' : '') + '>' +
+              esc(d.t) + '</option>'; }).join('') + '</select>' +
+          (st.talk ? '<p class="small muted" style="margin:.35rem 0 0">' +
+            (g ? 'Original Document and Guided Talk (' + g.sections + ' sections) available.'
+               : 'Original Document only — Guided Talk not prepared for this talk.') + '</p>' : '') +
+        '</div>' +
+        '<div class="f"><label for="at-week">Week</label>' +
+          '<select id="at-week">' + weeks.map(function (w) {
+            return '<option value="' + w[0] + '"' + (st.week === w[0] ? ' selected' : '') + '>' +
+              esc(w[1]) + '</option>'; }).join('') + '</select>' +
+          (taken ? '<p class="small" style="margin:.35rem 0 0;color:#b45309">' +
+            (dup ? 'That talk is already scheduled for this week.'
+                 : 'This week already has <b>' + esc((tbtById(taken) || {}).t || '') +
+                   '</b>. Adding will replace it.') + '</p>' : '') +
+        '</div>' +
+        '<div class="f"><label for="at-mode">Completion method</label>' +
+          '<select id="at-mode"' + (TBT_COMPANIES[st.company].modeConfigurable ? '' : ' disabled') + '>' +
+          '<option value="group"' + (st.mode === 'group' ? ' selected' : '') + '>Foreman-led group</option>' +
+          '<option value="individual"' + (st.mode === 'individual' ? ' selected' : '') + '>Individual employee</option>' +
+          '</select></div>' +
+        '<div class="f"><label for="at-format">Content format</label>' +
+          '<select id="at-format">' + TBT_FORMATS.map(function (f) {
+            return '<option value="' + f[0] + '"' + (st.format === f[0] ? ' selected' : '') + '>' +
+              esc(f[1]) + '</option>'; }).join('') + '</select></div>' +
+        '<div style="margin-top:16px">' +
+          '<button class="btn btn-gold" id="at-save" style="width:100%;justify-content:center"' +
+            (dup ? ' disabled' : '') + '>' +
+            (taken && !dup ? 'Replace scheduled talk' : 'Add to schedule') + '</button>' +
+          '<button class="btn" id="at-cancel" style="width:100%;justify-content:center;margin-top:8px">Cancel</button>' +
+        '</div>';
+      drawer('Add Talk to Schedule', TBT_COMPANIES[st.company].name, h);
+      wire();
+    }
+    function wire() {
+      var c = $('#at-co'); if (c) c.onchange = function () {
+        TBT.company = st.company = this.value; tbtSave();
+        co = tbtCo(); st.mode = co.mode; st.format = co.format || 'doc'; render(); };
+      var t = $('#at-talk'); if (t) t.onchange = function () { st.talk = this.value; render(); };
+      var w = $('#at-week'); if (w) w.onchange = function () { st.week = +this.value; render(); };
+      var m = $('#at-mode'); if (m) m.onchange = function () { st.mode = this.value; };
+      var f = $('#at-format'); if (f) f.onchange = function () { st.format = this.value; };
+      var x = $('#at-cancel'); if (x) x.onclick = closeDrawer;
+      var sv = $('#at-save');
+      if (sv) sv.onclick = function () {
+        if (!st.talk) { toast('Choose a talk first.'); return; }
+        var replacing = co.queue[st.week];
+        if (replacing === st.talk) { toast('That talk is already scheduled for this week.'); return; }
+        // A talk may only sit in one week per company.
+        var already = co.queue.indexOf(st.talk);
+        if (already !== -1 && already !== st.week) co.queue.splice(already, 1, null);
+        while (co.queue.length < st.week) co.queue.push(null);
+        co.queue[st.week] = st.talk;
+        co.queue = co.queue.filter(function (x2) { return x2; });
+        if (TBT_COMPANIES[st.company].modeConfigurable) co.mode = st.mode;
+        co.format = st.format;
+        tbtSave(); closeDrawer();
+        toast((replacing ? 'Replaced' : 'Scheduled') + ': ' + (tbtById(st.talk) || {}).t +
+          ' — ' + tbtMondayLabel(st.week) + ' (demo only).');
+        pgTalksDemo();
+      };
+    }
+    render();
   }
 
   function tbtStatusPill(s) {
@@ -5646,9 +6113,23 @@
     $$('[data-tbt-view]').forEach(function (b) {
       b.onclick = function () { tbtViewSubmission(b.getAttribute('data-tbt-view')); };
     });
+    var at = $('#tbt-addtalk'); if (at) at.onclick = function () { tbtAddTalk(); };
+    var rp = $('#tbt-replace');
+    if (rp) rp.onclick = function () { tbtAddTalk(tbtCo().queue[0] || '', 0); };
+    var vw = $('#tbt-view');
+    if (vw) vw.onchange = function () { tbtLibF.view = vw.value; pgTalksDemo(); };
+    $$('[data-tbt-up]').forEach(function (b) {
+      b.onclick = function () { var i = +b.getAttribute('data-tbt-up'); tbtQueueMove(i, i - 1); };
+    });
+    $$('[data-tbt-down]').forEach(function (b) {
+      b.onclick = function () { var i = +b.getAttribute('data-tbt-down'); tbtQueueMove(i, i + 1); };
+    });
     var sel = $('#tbt-company');
     if (sel) sel.onchange = function () { TBT.company = sel.value; tbtF.group = ''; tbtSave(); pgTalksDemo(); };
-    wireSearch('tbt-q', function (v) { tbtF.q = v; pgTalksDemo(); });
+    wireSearch('tbt-q', function (v) {
+      if (tbtTab === 'schedule') tbtLibF.q = v; else tbtF.q = v;
+      pgTalksDemo();
+    });
     var st = $('#tbt-status'); if (st) st.onchange = function () { tbtF.status = st.value; pgTalksDemo(); };
     var md = $('#tbt-mode'); if (md) md.onchange = function () { tbtCo().mode = md.value; tbtSave(); pgTalksDemo(); };
     $$('[data-tbt-grp]').forEach(function (c) {

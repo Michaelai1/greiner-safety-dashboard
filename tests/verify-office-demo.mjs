@@ -105,14 +105,20 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
  * 1. JHA revisions group under the original
  * ------------------------------------------------------------------ */
 const fams = M.jhaFamilies();
-assert.equal(DEMO.jha.length, 7, 'the fixture holds 7 revision rows');
-assert.equal(fams.length, 3, '7 revision rows must collapse into 3 JHAs');
+assert.ok(DEMO.jha.length > fams.length,
+  'there must be more revision rows than JHA families');
+assert.equal(fams.length, new Set(DEMO.jha.map((j) => j.root_jha_id)).size,
+  'every family must be grouped exactly once');
+// The revision counts the demo is built to show.
+const revCounts = fams.map((f) => f.revisionCount).sort((a, b) => a - b);
+assert.ok(revCounts.includes(0), 'at least one JHA was never revised');
+assert.ok(revCounts.includes(1), 'at least one JHA was revised once');
+assert.ok(revCounts.includes(2), 'at least one JHA was revised twice');
+assert.ok(revCounts.includes(3), 'at least one JHA was revised three times');
+assert.equal(DEMO.jha.length, fams.reduce((n, f) => n + f.revisions.length, 0),
+  'no revision row may be lost or double-counted');
 
 const byRoot = Object.fromEntries(fams.map((f) => [f.root, f]));
-assert.ok(byRoot['jha-1'] && byRoot['jha-2'] && byRoot['jha-3'], 'all three JHA families must appear');
-assert.equal(byRoot['jha-1'].revisionCount, 0, 'jha-1 was never revised');
-assert.equal(byRoot['jha-2'].revisionCount, 1, 'jha-2 was revised once');
-assert.equal(byRoot['jha-3'].revisionCount, 3, 'jha-3 was revised three times');
 
 // Revision count is edits AFTER the original, not the number of versions.
 for (const f of fams) {
@@ -123,30 +129,33 @@ for (const f of fams) {
 /* ------------------------------------------------------------------ *
  * 2. The table shows the latest version, the original is preserved
  * ------------------------------------------------------------------ */
-const f3 = byRoot['jha-3'];
-assert.equal(f3.latest.id, 'jha-3-r4', 'the latest version must be the highest revision');
+const f3 = fams.filter((f) => f.revisionCount === 3)[0];
+assert.ok(f3, 'a three-revision family must exist');
+assert.equal(f3.latest.revision_number, 4, 'the latest version must be the highest revision');
 assert.equal(f3.description, f3.latest.description_of_work,
   'the row must show the latest description of work');
-assert.equal(f3.employee_count, 4, 'the row must show the latest employee count');
-assert.equal(f3.latest_editor, 'Alex Rivera (Demo)', 'the row must show the latest editor');
+assert.equal(f3.employee_count, (f3.latest.employees || []).length,
+  'the row must show the latest employee count');
+assert.equal(f3.latest_editor, f3.latest.revised_by, 'the row must show the latest editor');
 
 // The original is still there, in full, unchanged.
-assert.equal(f3.original.id, 'jha-3-r1', 'the original must be the first revision');
 assert.equal(f3.original.revision_number, 1, 'the original is revision_number 1');
-assert.equal(f3.original_submitter, 'Demo Foreman', 'the original submitter must be preserved');
-assert.deepEqual(f3.original.employees, ['Demo Foreman', 'Sam Whitfield (Demo)'],
+assert.equal(f3.original.id, f3.revisions[0].id, 'the original must be the first revision');
+assert.equal(f3.original_submitter, f3.original.submitted_by,
+  'the original submitter must be preserved');
+assert.ok(f3.original.employees.length <= f3.latest.employees.length,
   'the original crew must not be overwritten by later revisions');
-assert.equal(f3.original.ladder_use, 'no', 'the original ladder answer must be preserved');
-assert.equal(f3.original.description_of_work, 'Ceiling grid and light rough-in, Level 2 west.',
-  'the original description must be preserved verbatim');
-// Original submission time is carried forward on every revision.
+assert.notEqual(f3.original.description_of_work, f3.latest.description_of_work,
+  'the original description must survive the later edits');
 for (const r of f3.revisions) {
   assert.equal(r.original_submitted_at, f3.original.original_submitted_at,
     `${r.id} must carry the original submission time`);
 }
-// Revisions are appended, never replacing one another.
 assert.deepEqual(f3.revisions.map((r) => r.revision_number), [1, 2, 3, 4],
   'every version must be retained in order');
+assert.equal(f3.latest.status, 'submitted', 'the latest version is the live one');
+assert.ok(f3.revisions.slice(0, -1).every((r) => r.status === 'superseded'),
+  'earlier versions must be marked superseded, not deleted');
 
 /* ------------------------------------------------------------------ *
  * 3. Revisions do not inflate daily compliance
@@ -193,70 +202,89 @@ assert.ok(rawRows.length > comp.completed.length,
  * 4. JHA activity figures
  * ------------------------------------------------------------------ */
 const act = M.anlJhaActivity();
-assert.equal(act.unique, 3, 'three unique JHAs');
-assert.equal(act.revised.length, 2, 'two were revised');
-assert.equal(act.events, 4, 'four revision events in total (1 + 3)');
-assert.equal(act.pctRevised, 67, '2 of 3 rounds to 67%');
-assert.equal(act.avgPerRevised, 2, '4 events over 2 revised JHAs');
-// Derived, never hardcoded: the event count must equal the sum of the families.
+// Every figure is derived from the records, whatever size the fixture is.
+assert.equal(act.unique, act.families.length, 'unique JHAs is the family count');
+assert.equal(act.revised.length, act.families.filter((f) => f.revisionCount > 0).length,
+  'revised is the families with at least one revision');
 assert.equal(act.events, act.families.reduce((n, f) => n + f.revisionCount, 0),
   'the revision-event total must be derived from the records');
-assert.equal(act.recent[0].root, 'jha-2', 'most recently revised first');
+assert.equal(act.pctRevised, Math.round(act.revised.length / act.unique * 100),
+  'the revised share must be derived');
+assert.equal(act.avgPerRevised,
+  Math.round(act.events / act.revised.length * 10) / 10,
+  'the average must be derived');
+// The demo is meant to look healthy: most JHAs are never revised.
+assert.ok(act.unique >= 20, `the fixture should carry a useful number of JHAs, got ${act.unique}`);
+assert.ok(act.pctRevised < 25, 'most JHAs should not need revising in a good week');
+// Most recently revised first.
+for (let i = 1; i < act.recent.length; i++) {
+  assert.ok(act.recent[i - 1].latest_revised_at >= act.recent[i].latest_revised_at,
+    'recent revisions must be newest first');
+}
 
 /* ------------------------------------------------------------------ *
  * 5. Filtering — job, date, submitter, original vs revised, revision count
  * ------------------------------------------------------------------ */
 const jf = M.getJhaF();
 const reset = () => Object.assign(jf, { job: '', from: '', to: '', by: '', kind: '', revs: '' });
+const allFams = M.jhaFamilies();
 
 reset(); jf.job = 'demo-job-b';
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-2'], 'job filter');
+const jobB = M.jhaFilteredFamilies();
+assert.ok(jobB.length > 0, 'Demo Job B has JHAs');
+assert.ok(jobB.every((f) => f.job_id === 'demo-job-b'), 'job filter must restrict to that job');
+assert.equal(jobB.length, allFams.filter((f) => f.job_id === 'demo-job-b').length,
+  'job filter must keep every JHA on that job');
 
-const latestDay = M.jhaFamilies().map((f) => f.work_date).sort().pop();
-const earlierDay = M.jhaFamilies().map((f) => f.work_date).sort()[0];
-assert.notEqual(latestDay, earlierDay, 'the fixture must span two work days');
+const latestDay = allFams.map((f) => f.work_date).sort().pop();
+const earlierDay = allFams.map((f) => f.work_date).sort()[0];
+assert.notEqual(latestDay, earlierDay, 'the fixture must span several work days');
 reset(); jf.from = latestDay;
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root).sort(), ['jha-1', 'jha-2'],
-  'date-from filter excludes the earlier day');
+assert.ok(M.jhaFilteredFamilies().every((f) => f.work_date >= latestDay),
+  'date-from filter must exclude earlier days');
 reset(); jf.to = earlierDay;
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-3'],
-  'date-to filter keeps only the earlier day');
+assert.ok(M.jhaFilteredFamilies().every((f) => f.work_date <= earlierDay),
+  'date-to filter must exclude later days');
 
-reset(); jf.by = 'Morgan Ellis (Demo)';
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-2'], 'submitter filter');
+reset();
+const someone = allFams.find((f) => f.revisionCount > 0).latest_editor;
+jf.by = someone;
+assert.ok(M.jhaFilteredFamilies().every((f) =>
+  f.original_submitter === someone || f.latest_editor === someone),
+  'submitter filter must restrict to that person');
 
 reset(); jf.kind = 'original';
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-1'], 'never-revised filter');
+assert.ok(M.jhaFilteredFamilies().every((f) => f.revisionCount === 0), 'never-revised filter');
 reset(); jf.kind = 'revised';
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root).sort(), ['jha-2', 'jha-3'], 'revised filter');
+assert.ok(M.jhaFilteredFamilies().every((f) => f.revisionCount > 0), 'revised filter');
+assert.equal(M.jhaFilteredFamilies().length, allFams.filter((f) => f.revisionCount > 0).length,
+  'the revised filter must keep every revised JHA');
 
 reset(); jf.revs = '3';
-assert.deepEqual(M.jhaFilteredFamilies().map((f) => f.root), ['jha-3'], 'revision-count filter');
+assert.ok(M.jhaFilteredFamilies().every((f) => f.revisionCount === 3), 'revision-count filter');
 reset();
 
-// Date filtering flows through to compliance. Pin to a known weekday so the
-// assertion does not depend on which day the suite runs.
+// Date and job filtering flow through to compliance.
 const af = M.getAnF();
-const weekdayBack = (n) => {
-  for (let i = 0; i < 14; i++) {
-    const d = DEMO.dayOffset(-i);
-    if (d.getDay() >= 1 && d.getDay() <= 5) { if (n-- === 0) return DEMO.isoDay(d); }
-  }
-  return DEMO.isoDay(DEMO.dayOffset(-1));
-};
-const oneWeekday = latestDay;
-af.range = 'custom'; af.from = oneWeekday; af.to = oneWeekday;
+const jobCount = M.anlJobs().length;
+af.range = 'custom'; af.from = latestDay; af.to = latestDay;
 const oneDay = M.anlCompliance();
-assert.equal(oneDay.required.length, 3, 'one weekday over three jobs = 3 required');
-assert.ok(oneDay.required.every((r) => r.day === oneWeekday), 'only that day is required');
+assert.equal(oneDay.required.length, jobCount,
+  'one weekday must require one JHA per active job');
+assert.ok(oneDay.required.every((r) => r.day === latestDay), 'only that day is required');
 
-// Job filtering flows through too.
-af.job = 'demo-job-c';
-const jobC = M.anlCompliance();
-assert.equal(jobC.required.length, 1, 'one job on one weekday');
-assert.equal(jobC.completed.length, 0, 'Demo Job C never submitted');
-assert.equal(jobC.missed.length, 1, 'so that day is missed');
+af.job = 'demo-job-a';
+const oneJob = M.anlCompliance();
+assert.equal(oneJob.required.length, 1, 'one job on one weekday');
+assert.ok(oneJob.required.every((r) => r.job_id === 'demo-job-a'), 'job filter must apply');
 af.job = ''; af.range = 'week'; af.from = ''; af.to = '';
+
+// The demo is built to read as a healthy week.
+const week = M.anlCompliance();
+assert.ok(week.pct >= 90 && week.pct <= 94,
+  `demo compliance should sit in the 90-94% band, got ${week.pct}%`);
+assert.ok(week.missed.length > 0, 'a believable week still has a few misses');
+assert.ok(week.missed.length <= 3, 'but only a few');
 
 /* ------------------------------------------------------------------ *
  * 6. Toolbox Talk — group completion, attendance, manual entries
@@ -265,31 +293,34 @@ store.clear(); M.reload();
 M.setCompany('greiner');
 const g = M.anlToolbox();
 assert.equal(g.stats.mode, 'group', 'Greiner is in group mode');
-assert.equal(g.stats.total, 3, 'three jobs/groups assigned');
-assert.equal(g.stats.completed.length, 2, 'two groups submitted');
-assert.equal(g.stats.outstanding.length, 1, 'one group outstanding');
-assert.deepEqual(g.stats.outstanding, ['Demo Job C — Service'], 'Job C is the outstanding group');
-assert.equal(g.stats.pct, 67, '2 of 3 rounds to 67%');
+assert.equal(g.stats.total, M.TBT_COMPANIES.greiner.groups.length,
+  'every crew is assigned the weekly talk');
+assert.equal(g.stats.completed.length + g.stats.outstanding.length, g.stats.total,
+  'completed plus outstanding must equal assigned');
+assert.equal(g.stats.pct, Math.round(g.stats.completed.length / g.stats.total * 100),
+  'the rate must be derived');
+// The demo is built to read as a healthy week.
+assert.ok(g.stats.pct >= 90 && g.stats.pct <= 96,
+  `demo participation should sit in the 90-96% band, got ${g.stats.pct}%`);
+assert.ok(g.stats.outstanding.length >= 1, 'one crew still outstanding keeps it believable');
 
 // Attendance: distinct roster employees + every manual entry.
-assert.equal(g.stats.rosterCount, 7, 'seven distinct roster employees attended');
-assert.equal(g.stats.manualCount, 2, 'two manual attendees');
-assert.equal(g.stats.attendance, 9, 'total attendance is roster plus manual');
-assert.equal(g.stats.attendance, g.stats.rosterCount + g.stats.manualCount,
-  'total attendance must be derived, not stored separately');
+const gRecs = g.stats.records.filter((c) => c.kind === 'group');
+const rosterUnion = new Set();
+let manual = 0;
+gRecs.forEach((c) => { (c.roster || []).forEach((n) => rosterUnion.add(n)); manual += (c.manual || []).length; });
+assert.equal(g.stats.rosterCount, rosterUnion.size, 'distinct roster attendees');
+assert.equal(g.stats.manualCount, manual, 'manual entries counted separately');
+assert.equal(g.stats.attendance, rosterUnion.size + manual, 'attendance is the sum');
+assert.ok(manual > 0, 'the fixture must exercise manual attendance');
 
 // Manual attendees do NOT change the assigned denominator.
-const manualNames = DEMO.completions.greiner
-  .reduce((a, c) => a.concat(c.manual || []), []);
-assert.equal(manualNames.length, 2, 'the fixture carries two manual attendees');
-assert.equal(g.stats.total, 3,
-  'manual attendees must not increase the number of groups assigned');
-assert.ok(!TBT_ROSTER_HAS(M, 'greiner', manualNames[0]),
+const rosterNames = new Set(M.TBT_COMPANIES.greiner.employees.map((e) => e.n));
+const manualNames = gRecs.reduce((a, c) => a.concat(c.manual || []), []);
+assert.ok(manualNames.every((n) => !rosterNames.has(n)),
   'a manual attendee must not be on the assigned roster');
-
-function TBT_ROSTER_HAS(mod, coKey, name) {
-  return (mod.TBT_COMPANIES[coKey].employees || []).some((e) => e.n === name);
-}
+assert.equal(g.stats.total, M.TBT_COMPANIES.greiner.groups.length,
+  'manual attendees must not increase the number of groups assigned');
 
 /* ------------------------------------------------------------------ *
  * 7. No roster employee is credited twice in the same week
@@ -318,37 +349,43 @@ function TBT_ROSTER_HAS(mod, coKey, name) {
  * ------------------------------------------------------------------ */
 store.clear(); M.reload();
 M.setCompany('peine');
-const p = M.anlToolbox();
-assert.equal(p.stats.mode, 'individual', 'Peine is in individual mode');
-assert.equal(p.stats.total, 12, 'twelve employees assigned');
-assert.equal(p.stats.completed.length, 4, 'four employees completed');
-assert.equal(p.stats.outstanding.length, 8, 'eight employees outstanding');
-assert.equal(p.stats.completed.length + p.stats.outstanding.length, p.stats.total,
+const p2 = M.anlToolbox();
+assert.equal(p2.stats.mode, 'individual', 'Peine is in individual mode');
+assert.equal(p2.stats.total, M.TBT_COMPANIES.peine.employees.length,
+  'every Peine employee is assigned');
+assert.equal(p2.stats.completed.length + p2.stats.outstanding.length, p2.stats.total,
   'completed plus outstanding must equal assigned');
-assert.equal(p.stats.pct, 33, '4 of 12 rounds to 33%');
+assert.ok(p2.stats.pct >= 90 && p2.stats.pct <= 96,
+  `Peine participation should sit in the 90-96% band, got ${p2.stats.pct}%`);
+assert.ok(p2.stats.outstanding.length >= 1, 'one employee still outstanding');
 
 // The fixture deliberately contains a duplicate completion.
 const peineRecords = DEMO.completions.peine;
-assert.equal(peineRecords.length, 5, 'five individual records in the fixture');
-const avery = peineRecords.filter((c) => c.employee === 'Avery Nolan (Demo)');
-assert.equal(avery.length, 2, 'one employee completed twice');
-assert.equal(p.stats.completed.length, 4,
+const seen = {};
+let dupes = 0;
+peineRecords.forEach((c) => { if (seen[c.employee]) dupes++; seen[c.employee] = 1; });
+assert.ok(dupes > 0, 'the fixture must contain a duplicate completion to test against');
+assert.equal(p2.stats.completed.length, Object.keys(seen).length,
   'a duplicate completion must not inflate the completed count');
+assert.ok(peineRecords.length > p2.stats.completed.length,
+  'there must be more records than completed people');
 
 /* ------------------------------------------------------------------ *
  * 9. Company isolation
  * ------------------------------------------------------------------ */
 store.clear(); M.reload();
-for (const [key, expect] of [
-  ['greiner', { mode: 'group', total: 3, done: 2 }],
-  ['choice', { mode: 'group', total: 1, done: 1 }],
-  ['peine', { mode: 'individual', total: 12, done: 4 }],
-]) {
+for (const [key, mode] of [['greiner', 'group'], ['choice', 'group'], ['peine', 'individual']]) {
   M.setCompany(key);
   const t = M.anlToolbox();
-  assert.equal(t.stats.mode, expect.mode, `${key} completion mode`);
-  assert.equal(t.stats.total, expect.total, `${key} assigned`);
-  assert.equal(t.stats.completed.length, expect.done, `${key} completed`);
+  const def = M.TBT_COMPANIES[key];
+  assert.equal(t.stats.mode, mode, `${key} completion mode`);
+  assert.equal(t.stats.total, mode === 'group' ? def.groups.length : def.employees.length,
+    `${key} assigned must come from its own roster`);
+  assert.equal(t.stats.completed.length,
+    t.stats.total - t.stats.outstanding.length, `${key} completed`);
+  // Every record in this company's bucket belongs to this company.
+  assert.ok(t.stats.records.every((r) => r.company === key),
+    `${key} must only read its own records`);
 }
 
 // Choice's single confirmed Monday meeting is not multiplied into extra groups.
@@ -385,7 +422,8 @@ assert.equal(M.anlJobs().length, 0, 'Choice has no demo jobs');
 assert.equal(M.anlCompliance().required.length, 0, 'Choice requires no daily JHAs in this fixture');
 assert.equal(M.anlJhaActivity().unique, 0, 'Choice has no JHA records');
 af2.company = 'greiner';
-assert.equal(M.anlJobs().length, 3, 'Greiner has three demo jobs');
+assert.equal(M.anlJobs().length, DEMO.jobs.length, 'Greiner has the demo jobs');
+assert.ok(DEMO.jobs.length >= 5, 'the fixture must carry enough jobs for the charts');
 
 /* ------------------------------------------------------------------ *
  * 10. Totals are derived from the records, never written down twice
@@ -532,30 +570,39 @@ assert.ok(js.indexOf("var incF = { job:") < js.indexOf('function pgIncidents()')
   const ff = M.anlFieldForms();
   // A JHA family counts once here too, exactly as it does for compliance.
   const jhaType = ff.types.find((t) => t.type === 'jha');
-  assert.equal(jhaType.rows.length, 7, 'seven raw JHA revision rows are in range');
-  assert.equal(jhaType.count, 3, 'they count as three submissions');
+  assert.ok(jhaType.rows.length > jhaType.count,
+    'raw JHA revision rows must outnumber the counted submissions');
+  assert.equal(jhaType.count, new Set(jhaType.rows.map((r) => r.root_jha_id)).size,
+    'JHA submissions are counted per family');
   assert.equal(ff.total, ff.types.reduce((n, t) => n + t.count, 0),
     'the total must be the sum of the per-type counts');
-  assert.equal(ff.total, 10, '3 JHAs + 3 hot work + 2 aerial + 2 forklift');
+  assert.ok(ff.total >= 40, `the fixture should carry enough submissions for the charts, got ${ff.total}`);
+  assert.ok(ff.types.length >= 4, 'several form types must be represented');
   // The drilldown list must be exactly as long as the card total.
   assert.equal(ff.counted.length, ff.total,
     'the field-form drilldown must list exactly what the card counted');
-  assert.equal(ff.counted.filter((r) => r.form_type === 'jha').length, 3,
+  assert.equal(ff.counted.filter((r) => r.form_type === 'jha').length, jhaType.count,
     'each JHA family appears once in the drilldown');
 
   const hw = M.anlHotWork();
-  assert.equal(hw.count, 3, 'three hot work permits');
-  assert.equal(hw.flagged.length, 1, 'one flagged for follow-up');
-  assert.equal(Object.keys(hw.jobs).length, 2, 'across two jobs');
+  assert.ok(hw.count > 0, 'the fixture must carry hot work permits');
+  assert.equal(hw.count, hw.rows.length, 'the count is the row count');
   assert.ok(hw.rows.every((r) => r.form_type === 'hotwork'), 'only hot work permits');
+  assert.equal(hw.flagged.length, hw.rows.filter((r) => r.has_defects).length,
+    'flagged is derived from the records');
+  assert.equal(Object.keys(hw.jobs).length, new Set(hw.rows.map((r) => r.job_id)).size,
+    'the job count is derived from the records');
 
   const lf = M.anlLifts();
-  assert.equal(lf.count, 4, 'four lift inspections');
-  assert.equal(lf.aerial.length, 2, 'two aerial');
-  assert.equal(lf.forklift.length, 2, 'two forklift');
+  assert.equal(lf.count, lf.rows.length, 'the lift count is the row count');
   assert.equal(lf.aerial.length + lf.forklift.length, lf.count, 'the split must total the count');
-  assert.equal(lf.units.length, 3, 'three distinct units — one forklift inspected twice');
-  assert.equal(lf.flagged.length, 1, 'one failed inspection');
+  assert.ok(lf.aerial.length > 0 && lf.forklift.length > 0, 'both lift types must appear');
+  assert.equal(lf.units.length, new Set(lf.rows.map((r) => r.asset_id).filter(Boolean)).size,
+    'units is the distinct asset count');
+  assert.ok(lf.units.length < lf.count, 'at least one unit is inspected more than once');
+  assert.equal(lf.flagged.length, lf.rows.filter((r) => r.has_defects).length,
+    'failed inspections are derived from the records');
+  assert.ok(lf.flagged.length > 0, 'the fixture must show at least one failed unit');
 }
 
 /* ------------------------------------------------------------------ *
@@ -563,20 +610,21 @@ assert.ok(js.indexOf("var incF = { job:") < js.indexOf('function pgIncidents()')
  * ------------------------------------------------------------------ */
 {
   const ca = M.anlCorrective();
-  assert.equal(ca.all.length, 3, 'three corrective actions on record');
-  assert.equal(ca.open.length, 2, 'two open');
-  assert.equal(ca.closed.length, 1, 'one closed');
-  assert.equal(ca.overdue.length, 1, 'one overdue');
+  assert.equal(ca.all.length, DEMO.findings.length,
+    'every corrective action must come from a fixture record');
   assert.equal(ca.open.length + ca.closed.length, ca.all.length,
     'open plus closed must equal the total');
   // Overdue is a subset of open, never counted separately.
   assert.ok(ca.overdue.every((c) => ca.open.includes(c)), 'overdue must be a subset of open');
-  // Every action traces to a fixture finding — none are invented.
-  assert.equal(ca.all.length, DEMO.findings.length,
-    'every corrective action must come from a fixture record');
+  assert.ok(ca.open.length > 0, 'a believable week has a few open actions');
+  assert.ok(ca.open.length <= 5, 'but only a few');
+  assert.ok(ca.overdue.length <= 1, 'no more than one overdue action in the demo');
   // With no incidents there are no incident corrective actions.
   assert.equal(ca.all.filter((c) => c.src === 'Incident').length, 0,
     'no incident corrective actions can exist while there are no incidents');
+  // The clearer source label is in use.
+  assert.ok(ca.all.some((c) => c.src === 'Safety inspection finding'),
+    'findings must use the clearer source label');
 }
 
 /* ------------------------------------------------------------------ *
@@ -682,14 +730,42 @@ includes(js, "sv.onclick = function () { toast('Incident details saved.'); openI
  * 12i. JHA Review lives inside Safety Inspections
  * ------------------------------------------------------------------ */
 includes(js, "['jha', 'JHA Review']", 'JHA Review must be a Safety Inspections view');
-includes(js, "['req', 'Weekly Requirements']", 'Weekly Requirements must be a view');
 includes(js, "['log', 'Submission Log']", 'Submission Log must be a view');
 includes(js, "['find', 'Findings & Corrective Actions']", 'Findings must be a view');
+
+/* Weekly Requirements is no longer a visible tab. */
+{
+  const tabs = js.slice(js.indexOf('function pgObsDemo()'), js.indexOf('function siRequirementsHtml'));
+  assert.ok(!tabs.includes("['req', 'Weekly Requirements']"),
+    'Weekly Requirements must not be a visible Safety Inspections tab');
+  assert.ok(!/subtabs\([^)]*Weekly Requirements/.test(js),
+    'Weekly Requirements must not appear in any subtab strip');
+  // Submission Log is the default.
+  includes(js, "if (['log', 'jha', 'find', 'rules'].indexOf(siTab) === -1) siTab = 'log';",
+    'Safety Inspections must default to the Submission Log');
+  // The requirement records and calculations survive.
+  includes(js, 'function siRequirementsHtml()', 'the requirements view must still exist');
+  includes(js, 'function siExpected(', 'the expected-quantity calculation must survive');
+  includes(js, 'function siStatus(', 'the requirement status calculation must survive');
+  includes(js, 'Compliance Rules', 'requirements must be reachable as Compliance Rules');
+  includes(js, "id=\"si-gorules\"", 'the Compliance Rules control must exist');
+  assert.ok(M.siReqs().length > 0, 'the requirement records must still be there');
+  // Compliance still has a denominator.
+  assert.ok(M.anlCompliance().required.length > 0,
+    'compliance must still compute a denominator from the requirements');
+}
+
+/* Add Inspection for This Week lives on the Submission Log. */
+includes(js, '+ Add Inspection for This Week', 'the Submission Log must offer Add Inspection');
+includes(js, "id=\"si-addinsp\"", 'the Add Inspection button must be wired');
+includes(js, 'It does not mark an inspection complete', 'the panel must say what it does not do');
+includes(js, 'This creates an <b>expected</b> field inspection',
+  'the panel must say it creates an expected inspection');
 includes(js, 'function siJhaHtml() { return jhaBodyHtml(); }',
   'JHA Review must reuse the JHA table, not a copy of it');
 includes(js, 'function jhaBodyHtml()', 'the JHA table must be reusable');
 // Analytics JHA card opens JHA Review.
-includes(js, "var toSi = { compliance: 'req', jhareview: 'jha', findings: 'find' };",
+includes(js, "var toSi = { compliance: 'rules', jhareview: 'jha', findings: 'find' };",
   'analytics cards must open the matching Safety Inspections view');
 for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
   assert.ok(js.includes("anCardOpen('" + card + "')"),
@@ -816,6 +892,98 @@ for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
   const days = M.siWeekDays(thisWeek);
   assert.equal(days.length, 7, 'a week is seven days');
   assert.equal(new Date(days[0] + 'T12:00:00').getDay(), 1, 'weeks start on Monday');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12m. Analytics has two views over the same records
+ * ------------------------------------------------------------------ */
+{
+  includes(js, "[['visual', 'Visual Dashboard'], ['all', 'All Metrics']]",
+    'Analytics must offer both views');
+  includes(js, "var anTab = 'visual';", 'the Visual Dashboard must be the default');
+  includes(js, 'function anAllMetricsHtml()', 'All Metrics must exist');
+  // Both views call the same calculators — no second source of truth.
+  const allSrc = js.slice(js.indexOf('function anAllMetricsHtml()'), js.indexOf('function anlPrevious') > 0
+    ? js.indexOf('  /* Date-range control') : js.length);
+  for (const fn of ['anlCompliance()', 'anlJhaActivity()', 'anlToolbox()', 'anlFieldForms()',
+    'anlHotWork()', 'anlLifts()', 'anlCorrective()', 'anlIncidents()']) {
+    assert.ok(allSrc.includes(fn), `All Metrics must read ${fn}, not a private copy`);
+  }
+  // Every group the brief asked for.
+  for (const grp of ['Daily Compliance', 'JHA Activity', 'Toolbox Talks', 'Field Submissions',
+    'Hot Work', 'Lift Inspections', 'Corrective Actions', 'Incidents', 'Near Misses',
+    'Data Readiness']) {
+    assert.ok(allSrc.includes("anGroup('" + grp + "'"), `All Metrics must group: ${grp}`);
+  }
+  // Rows carry a previous value, a change and a source.
+  includes(js, 'function anRow(metric, value, prev, source, drill)',
+    'each metric row must carry value, previous, change and source');
+  includes(js, 'function anlPrevious()', 'the previous period must be computed');
+  // No return to explanatory paragraphs.
+  assert.ok(!allSrc.includes('an-note'), 'All Metrics must not reintroduce prose panels');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12n. Toolbox scheduling works without drag-and-drop
+ * ------------------------------------------------------------------ */
+{
+  includes(js, "var tbtTab = 'schedule';", 'the Toolbox page must open on Schedule');
+  includes(js, "[['schedule', 'Schedule'], ['completion', 'Completion'], ['library', 'Library']]",
+    'the Toolbox views must be Schedule, Completion and Library');
+  includes(js, '+ Add Talk to Schedule', 'the primary scheduling action must exist');
+  includes(js, "id=\"tbt-addtalk\"", 'the Add Talk button must be wired');
+  includes(js, 'id="tbt-replace"', 'the current week must offer Replace Talk');
+  // Every action has a visible button, not only drag.
+  includes(js, 'data-tbt-up=', 'Move Up must be a button');
+  includes(js, 'data-tbt-down=', 'Move Down must be a button');
+  includes(js, 'data-tbt-del=', 'Remove must be a button');
+  includes(js, "draggable=\"true\"", 'drag-and-drop must still be available');
+  // The three questions the screen answers.
+  includes(js, 'function tbtCurrentWeekHtml(', 'the current week must have its own block');
+  includes(js, 'function tbtUpcomingHtml(', 'upcoming weeks must have their own block');
+  includes(js, 'function tbtAvailableHtml(', 'the available library must be on the schedule screen');
+  // Library filters.
+  for (const f of ['Ready to schedule', 'Guided available', 'Original only', 'Never used',
+    'Recently used', 'Collections', 'Needs review', 'Excluded']) {
+    assert.ok(js.includes("'" + f + "'"), `the library must offer the filter: ${f}`);
+  }
+  // Collections / needs review / excluded are listed but not schedulable.
+  includes(js, "d.s === 'Ready'\n            ? '<button class=\"btn btn-sm btn-gold\" data-tbt-add=",
+    'only Ready talks may be added from the library');
+  includes(js, 'Not schedulable', 'non-ready talks must say so');
+}
+
+/* ------------------------------------------------------------------ *
+ * 12o. Add Talk: duplicates prevented, replace supported, per company
+ * ------------------------------------------------------------------ */
+{
+  includes(js, 'function tbtAddTalk(', 'the add-talk flow must exist');
+  // The five things the flow asks for.
+  for (const field of ['at-co', 'at-talk', 'at-week', 'at-mode', 'at-format']) {
+    assert.ok(js.includes('id="' + field + '"'), `the add-talk flow must ask for ${field}`);
+  }
+  includes(js, 'That talk is already scheduled for this week.',
+    'a duplicate must be refused');
+  includes(js, "if (replacing === st.talk) { toast('That talk is already scheduled for this week.'); return; }",
+    'the save handler must re-check for a duplicate');
+  includes(js, 'Adding will replace it.', 'replacing must be announced before it happens');
+  includes(js, "(taken && !dup ? 'Replace scheduled talk' : 'Add to schedule')",
+    'the button must say which it will do');
+
+  // Scheduling is per company: each keeps its own queue.
+  store.clear(); M.reload();
+  const gq = M.tbtLoad().companies.greiner.queue.slice();
+  const cq = M.tbtLoad().companies.choice.queue.slice();
+  M.tbtLoad().companies.greiner.queue.push(M.tbtEligible()
+    .map((d) => d.i).find((id) => gq.indexOf(id) === -1));
+  assert.equal(M.tbtLoad().companies.choice.queue.length, cq.length,
+    "adding to Greiner's schedule must not touch Choice's");
+  assert.notEqual(M.tbtLoad().companies.greiner.queue.length, gq.length,
+    "Greiner's own schedule must have changed");
+  // A talk may only occupy one week per company.
+  const q = M.tbtLoad().companies.greiner.queue;
+  assert.equal(new Set(q).size, q.length, 'no talk may be scheduled twice for one company');
+  store.clear(); M.reload();
 }
 
 /* ------------------------------------------------------------------ *

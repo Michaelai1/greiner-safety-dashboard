@@ -57,239 +57,217 @@
   }
 
   /* ---------- jobs ------------------------------------------------------- */
+  /* ---------- jobs -------------------------------------------------------
+     Six active demo jobsites. Everything else is generated against these, so
+     the totals on every page come from the records rather than a constant. */
   var JOBS = [
-    { id: 'demo-job-a', name: 'Demo Job A — Level 2 Fit-out', job_number: 'DEMO-A',
-      status: 'active', company: 'greiner' },
-    { id: 'demo-job-b', name: 'Demo Job B — Central Plant', job_number: 'DEMO-B',
-      status: 'active', company: 'greiner' },
-    { id: 'demo-job-c', name: 'Demo Job C — Service', job_number: 'DEMO-C',
-      status: 'active', company: 'greiner' }
+    { id: 'demo-job-a', name: 'Demo Job A — Level 2 Fit-out', job_number: 'DEMO-A', status: 'active', company: 'greiner' },
+    { id: 'demo-job-b', name: 'Demo Job B — Central Plant',   job_number: 'DEMO-B', status: 'active', company: 'greiner' },
+    { id: 'demo-job-c', name: 'Demo Job C — Service',         job_number: 'DEMO-C', status: 'active', company: 'greiner' },
+    { id: 'demo-job-d', name: 'Demo Job D — Clinic Addition', job_number: 'DEMO-D', status: 'active', company: 'greiner' },
+    { id: 'demo-job-e', name: 'Demo Job E — Warehouse Reroof', job_number: 'DEMO-E', status: 'active', company: 'greiner' },
+    { id: 'demo-job-f', name: 'Demo Job F — Pump Station',    job_number: 'DEMO-F', status: 'active', company: 'greiner' }
   ];
+
+  var CREW = {
+    'demo-job-a': ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)', 'Sam Whitfield (Demo)'],
+    'demo-job-b': ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'],
+    'demo-job-c': ['Riley Shaw (Demo)', 'Quinn Harper (Demo)', 'Drew Baxter (Demo)'],
+    'demo-job-d': ['Jamie Fontaine (Demo)', 'Reese Okafor (Demo)', 'Parker Lindqvist (Demo)'],
+    'demo-job-e': ['Sky Vandermolen (Demo)', 'Devin Castellanos (Demo)'],
+    'demo-job-f': ['Rowan Achterberg (Demo)', 'Emery Delacroix (Demo)', 'Sasha Whitmore (Demo)']
+  };
 
   /* ---------- JHA fixtures ------------------------------------------------
-     Three JHA families, each an original plus its revisions. A family is ONE
-     daily JHA no matter how many revisions it carries — that rule is applied
-     in the dashboard, and these records are what it is applied to.
+     One JHA family per job per workday, except the two deliberate gaps below.
+     A family is ONE daily JHA however many revisions it carries, which is the
+     rule the dashboard applies to these records.
 
-       jha-1  original only            (Demo Job A, today)
-       jha-2  original + 1 revision    (Demo Job B, today)
-       jha-3  original + 3 revisions   (Demo Job A, yesterday)
-
-     changes[] records what actually differed between one revision and the one
-     before it. Where the demo cannot support a real field comparison the entry
-     is omitted and the office labels it unavailable rather than inventing one.
-     ---------------------------------------------------------------------- */
-  var JHA = [
-    /* ---- family 1: never revised ---- */
-    { id: 'jha-1-r1', root_jha_id: 'jha-1', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(0),
-      original_submitted_at: wdAt(0, 6, 40), revised_at: wdAt(0, 6, 40),
-      submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'submitted',
-      description_of_work: 'Overhead duct hangers, Level 2 east corridor.',
-      employees: ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)'],
-      tasks: ['Overhead drilling', 'Material handling'],
-      hazards: ['Falling Objects', 'Elevated Load or Work'],
-      actions: ['Hard hats and exclusion zone', 'Tag and inspect rigging'],
-      ladder_use: 'yes', photos: ['duct-hanger-layout.jpg'], changes: null },
-
-    /* ---- family 2: revised once ---- */
-    { id: 'jha-2-r1', root_jha_id: 'jha-2', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: wdISO(0),
-      original_submitted_at: wdAt(0, 6, 55), revised_at: wdAt(0, 6, 55),
-      submitted_by: 'Casey Nolan (Demo)', revised_by: 'Casey Nolan (Demo)', status: 'superseded',
-      description_of_work: 'Chilled water pump replacement, mechanical room 1.',
-      employees: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)'],
-      tasks: ['Pump removal', 'Rigging'],
-      hazards: ['Elevated Load or Work', 'Potential Release of Energy Kinetic/Gravity'],
-      actions: ['Lockout/tagout before break', 'Rigging plan reviewed'],
-      ladder_use: 'no', photos: [], changes: null },
-    { id: 'jha-2-r2', root_jha_id: 'jha-2', previous_revision_id: 'jha-2-r1', revision_number: 2,
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant', work_date: wdISO(0),
-      original_submitted_at: wdAt(0, 6, 55), revised_at: wdAt(0, 11, 20),
-      submitted_by: 'Casey Nolan (Demo)', revised_by: 'Morgan Ellis (Demo)', status: 'submitted',
-      description_of_work: 'Chilled water pump replacement, mechanical room 1. Added hot work for bracket removal.',
-      employees: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'],
-      tasks: ['Pump removal', 'Rigging', 'Cutting / grinding'],
-      hazards: ['Elevated Load or Work', 'Potential Release of Energy Kinetic/Gravity', 'Fire / Hot Work'],
-      actions: ['Lockout/tagout before break', 'Rigging plan reviewed', 'Fire watch and extinguisher on site'],
-      ladder_use: 'no', photos: ['bracket-cut-location.jpg'],
-      changes: { tasks_added: ['Cutting / grinding'], tasks_removed: [],
-                 hazards_added: ['Fire / Hot Work'], hazards_removed: [],
-                 actions_added: ['Fire watch and extinguisher on site'], actions_removed: [],
-                 employees_added: ['Morgan Ellis (Demo)'], employees_removed: [],
-                 ladder_changed: false, photos_added: 1 } },
-
-    /* ---- family 3: revised three times ---- */
-    { id: 'jha-3-r1', root_jha_id: 'jha-3', previous_revision_id: null, revision_number: 1,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
-      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 6, 30),
-      submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'superseded',
-      description_of_work: 'Ceiling grid and light rough-in, Level 2 west.',
-      employees: ['Demo Foreman', 'Sam Whitfield (Demo)'],
-      tasks: ['Ceiling grid'], hazards: ['Falling Objects'],
-      actions: ['Hard hats'], ladder_use: 'no', photos: [], changes: null },
-    { id: 'jha-3-r2', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r1', revision_number: 2,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
-      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 9, 15),
-      submitted_by: 'Demo Foreman', revised_by: 'Demo Foreman', status: 'superseded',
-      description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added.',
-      employees: ['Demo Foreman', 'Sam Whitfield (Demo)'],
-      tasks: ['Ceiling grid', 'Light fixture rough-in'],
-      hazards: ['Falling Objects', 'Elevated Load or Work'],
-      actions: ['Hard hats', 'Ladder inspected before use'],
-      ladder_use: 'yes', photos: ['grid-layout.jpg'],
-      changes: { tasks_added: ['Light fixture rough-in'], tasks_removed: [],
-                 hazards_added: ['Elevated Load or Work'], hazards_removed: [],
-                 actions_added: ['Ladder inspected before use'], actions_removed: [],
-                 employees_added: [], employees_removed: [],
-                 ladder_changed: true, photos_added: 1 } },
-    { id: 'jha-3-r3', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r2', revision_number: 3,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
-      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 12, 5),
-      submitted_by: 'Demo Foreman', revised_by: 'Alex Rivera (Demo)', status: 'superseded',
-      description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added. Second crew joined.',
-      employees: ['Demo Foreman', 'Sam Whitfield (Demo)', 'Jordan Blake (Demo)', 'Alex Rivera (Demo)'],
-      tasks: ['Ceiling grid', 'Light fixture rough-in'],
-      hazards: ['Falling Objects', 'Elevated Load or Work'],
-      actions: ['Hard hats', 'Ladder inspected before use'],
-      ladder_use: 'yes', photos: ['grid-layout.jpg'],
-      changes: { tasks_added: [], tasks_removed: [],
-                 hazards_added: [], hazards_removed: [],
-                 actions_added: [], actions_removed: [],
-                 employees_added: ['Jordan Blake (Demo)', 'Alex Rivera (Demo)'], employees_removed: [],
-                 ladder_changed: false, photos_added: 0 } },
-    { id: 'jha-3-r4', root_jha_id: 'jha-3', previous_revision_id: 'jha-3-r3', revision_number: 4,
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out', work_date: wdISO(1),
-      original_submitted_at: wdAt(1, 6, 30), revised_at: wdAt(1, 14, 40),
-      submitted_by: 'Demo Foreman', revised_by: 'Alex Rivera (Demo)', status: 'submitted',
-      description_of_work: 'Ceiling grid and light rough-in, Level 2 west. Ladder work added. Second crew joined. Scissor lift swapped in for ladder.',
-      employees: ['Demo Foreman', 'Sam Whitfield (Demo)', 'Jordan Blake (Demo)', 'Alex Rivera (Demo)'],
-      tasks: ['Ceiling grid', 'Light fixture rough-in'],
-      hazards: ['Falling Objects', 'Elevated Load or Work'],
-      actions: ['Hard hats', 'Scissor lift with harness'],
-      ladder_use: 'no', photos: ['grid-layout.jpg', 'lift-setup.jpg'],
-      changes: { tasks_added: [], tasks_removed: [],
-                 hazards_added: [], hazards_removed: [],
-                 actions_added: ['Scissor lift with harness'], actions_removed: ['Ladder inspected before use'],
-                 employees_added: [], employees_removed: [],
-                 ladder_changed: true, photos_added: 1 } }
+     Three families carry revisions so the revision views have something real:
+     one revised once, one revised three times, one revised twice.            */
+  var JHA_GAPS = [                      // job/day pairs with no JHA at all
+    { job: 'demo-job-e', day: 2 },
+    { job: 'demo-job-c', day: 4 }
+  ];
+  var JHA_REVISED = {                   // family key -> how many revisions
+    'demo-job-b|0': 1,
+    'demo-job-a|1': 3,
+    'demo-job-d|3': 2
+  };
+  var WORK = [
+    ['Overhead duct hangers, Level 2 east corridor.', ['Overhead drilling', 'Material handling'],
+     ['Falling Objects', 'Elevated Load or Work'], ['Hard hats and exclusion zone', 'Tag and inspect rigging']],
+    ['Chilled water pump replacement, mechanical room 1.', ['Pump removal', 'Rigging'],
+     ['Elevated Load or Work', 'Potential Release of Energy Kinetic/Gravity'],
+     ['Lockout/tagout before break', 'Rigging plan reviewed']],
+    ['Ceiling grid and light rough-in, Level 2 west.', ['Ceiling grid', 'Light fixture rough-in'],
+     ['Falling Objects'], ['Hard hats', 'Ladder inspected before use']],
+    ['Underground sanitary tie-in, north lot.', ['Excavation', 'Pipe setting'],
+     ['Confined Spaces', 'Difficult Access'], ['Trench box in place', 'Atmospheric testing']],
+    ['Roof curb demolition and patching.', ['Demolition', 'Material handling'],
+     ['Falling Objects', 'Environmental Extremes'], ['Warning line and spotter', 'Hydration breaks']],
+    ['Pump skid alignment and grouting.', ['Alignment', 'Grouting'],
+     ['Potential Release of Energy Kinetic/Gravity'], ['Lockout/tagout before break']]
   ];
 
-  /* ---------- other field submissions ------------------------------------
-     Enough non-JHA submissions that Field Form Activity, Hot Work Activity and
-     Lift Inspection Activity all have something real to count. Demo Job C
-     submits nothing, which is what makes it show as missed.                */
-  var OTHER_SUBS = [
-    /* --- hot work permits --- */
-    { id: 'hw-1', form_type: 'hotwork', form_title: 'Hot Work Permit',
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Morgan Ellis (Demo)', submitted_at: wdAt(0, 11, 30),
-      has_defects: false, defect_count: 0 },
-    { id: 'hw-2', form_type: 'hotwork', form_title: 'Hot Work Permit',
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Demo Foreman', submitted_at: wdAt(1, 8, 5),
-      has_defects: true, defect_count: 1 },
-    { id: 'hw-3', form_type: 'hotwork', form_title: 'Hot Work Permit',
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Casey Nolan (Demo)', submitted_at: wdAt(1, 13, 10),
-      has_defects: false, defect_count: 0 },
+  var JHA = [];
+  (function buildJha() {
+    JOBS.forEach(function (job, ji) {
+      for (var day = 0; day < 5; day++) {
+        var skipped = JHA_GAPS.some(function (g) { return g.job === job.id && g.day === day; });
+        if (skipped) continue;
+        var root = 'jha-' + job.job_number.toLowerCase().replace('demo-', '') + '-' + day;
+        var revs = JHA_REVISED[job.id + '|' + day] || 0;
+        var w = WORK[ji % WORK.length];
+        var crew = CREW[job.id];
+        var openedAt = wdAt(day, 6, 30 + ji * 5);
+        for (var r = 1; r <= revs + 1; r++) {
+          var last = r === revs + 1;
+          JHA.push({
+            id: root + '-r' + r, root_jha_id: root,
+            previous_revision_id: r === 1 ? null : root + '-r' + (r - 1),
+            revision_number: r,
+            job_id: job.id, job_name: job.name, work_date: wdISO(day),
+            original_submitted_at: openedAt,
+            revised_at: r === 1 ? openedAt : wdAt(day, 9 + r, 10 * r),
+            submitted_by: crew[0], revised_by: r === 1 ? crew[0] : crew[Math.min(r - 1, crew.length - 1)],
+            status: last ? 'submitted' : 'superseded',
+            description_of_work: w[0] + (r > 1 ? ' Revision ' + (r - 1) + ' added scope.' : ''),
+            employees: crew.slice(0, Math.min(2 + r, crew.length)),
+            tasks: w[1].slice(0, r === 1 ? 1 : w[1].length),
+            hazards: w[2].slice(0, r === 1 ? 1 : w[2].length),
+            actions: w[3].slice(0, r === 1 ? 1 : w[3].length),
+            ladder_use: r > 1 && r % 2 === 0 ? 'yes' : 'no',
+            photos: r > 1 ? ['site-' + r + '.jpg'] : [],
+            changes: r === 1 ? null : {
+              tasks_added: w[1].slice(1, 2), tasks_removed: [],
+              hazards_added: w[2].slice(1, 2), hazards_removed: [],
+              actions_added: w[3].slice(1, 2), actions_removed: [],
+              employees_added: crew.slice(Math.min(1 + r, crew.length - 1), Math.min(2 + r, crew.length)),
+              employees_removed: [], ladder_changed: r % 2 === 0, photos_added: 1
+            }
+          });
+        }
+      }
+    });
+  })();
 
-    /* --- lift inspections: aerial and forklift --- */
-    { id: 'lift-1', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Alex Rivera (Demo)', submitted_at: wdAt(0, 6, 50),
-      has_defects: false, defect_count: 0, asset_id: 'DEMO-SL-1930-01' },
-    { id: 'lift-2', form_type: 'aerial', form_title: 'Aerial Lift Inspection',
-      job_id: 'demo-job-a', job_name: 'Demo Job A — Level 2 Fit-out',
-      inspector_name: 'Jordan Blake (Demo)', submitted_at: wdAt(1, 6, 45),
-      has_defects: true, defect_count: 2, asset_id: 'DEMO-SL-1930-02' },
-    { id: 'lift-3', form_type: 'forklift', form_title: 'Forklift Inspection',
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Taylor Reed (Demo)', submitted_at: wdAt(0, 7, 5),
-      has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' },
-    { id: 'lift-4', form_type: 'forklift', form_title: 'Forklift Inspection',
-      job_id: 'demo-job-b', job_name: 'Demo Job B — Central Plant',
-      inspector_name: 'Taylor Reed (Demo)', submitted_at: wdAt(1, 7, 0),
-      has_defects: false, defect_count: 0, asset_id: 'DEMO-FL-05' }
-  ];
+  /* ---------- other field submissions ------------------------------------ */
+  var OTHER_SUBS = [];
+  (function buildOther() {
+    function add(id, type, title, job, who, day, h, m, defects, asset) {
+      var j = JOBS.filter(function (x) { return x.id === job; })[0];
+      OTHER_SUBS.push({ id: id, form_type: type, form_title: title,
+        job_id: job, job_name: j.name, inspector_name: who,
+        submitted_at: wdAt(day, h, m), has_defects: !!defects,
+        defect_count: defects || 0, asset_id: asset || null });
+    }
+    // Hot work: activity-based, so only on the days it actually happened.
+    add('hw-1', 'hotwork', 'Hot Work Permit', 'demo-job-b', 'Morgan Ellis (Demo)', 0, 11, 30, 0);
+    add('hw-2', 'hotwork', 'Hot Work Permit', 'demo-job-a', 'Demo Foreman', 1, 8, 5, 1);
+    add('hw-3', 'hotwork', 'Hot Work Permit', 'demo-job-b', 'Casey Nolan (Demo)', 1, 13, 10, 0);
+    add('hw-4', 'hotwork', 'Hot Work Permit', 'demo-job-f', 'Rowan Achterberg (Demo)', 2, 9, 40, 0);
+    add('hw-5', 'hotwork', 'Hot Work Permit', 'demo-job-e', 'Sky Vandermolen (Demo)', 3, 10, 15, 0);
+    add('hw-6', 'hotwork', 'Hot Work Permit', 'demo-job-b', 'Morgan Ellis (Demo)', 4, 7, 55, 0);
+    // Aerial lifts: per unit, on days used.
+    add('al-1', 'aerial', 'Aerial Lift Inspection', 'demo-job-a', 'Alex Rivera (Demo)', 0, 6, 50, 0, 'DEMO-SL-1930-01');
+    add('al-2', 'aerial', 'Aerial Lift Inspection', 'demo-job-a', 'Jordan Blake (Demo)', 1, 6, 45, 2, 'DEMO-SL-1930-02');
+    add('al-3', 'aerial', 'Aerial Lift Inspection', 'demo-job-a', 'Alex Rivera (Demo)', 2, 6, 48, 0, 'DEMO-SL-1930-01');
+    add('al-4', 'aerial', 'Aerial Lift Inspection', 'demo-job-a', 'Jordan Blake (Demo)', 3, 6, 52, 0, 'DEMO-SL-1930-02');
+    add('al-5', 'aerial', 'Aerial Lift Inspection', 'demo-job-a', 'Alex Rivera (Demo)', 4, 6, 47, 0, 'DEMO-SL-1930-01');
+    add('al-6', 'aerial', 'Aerial Lift Inspection', 'demo-job-d', 'Reese Okafor (Demo)', 1, 7, 10, 0, 'DEMO-BL-45-01');
+    add('al-7', 'aerial', 'Aerial Lift Inspection', 'demo-job-d', 'Reese Okafor (Demo)', 3, 7, 12, 0, 'DEMO-BL-45-01');
+    add('al-8', 'aerial', 'Aerial Lift Inspection', 'demo-job-e', 'Devin Castellanos (Demo)', 4, 7, 20, 0, 'DEMO-SL-1930-03');
+    // Forklifts.
+    add('fl-1', 'forklift', 'Forklift Inspection', 'demo-job-b', 'Taylor Reed (Demo)', 0, 7, 5, 0, 'DEMO-FL-05');
+    add('fl-2', 'forklift', 'Forklift Inspection', 'demo-job-b', 'Taylor Reed (Demo)', 1, 7, 0, 0, 'DEMO-FL-05');
+    add('fl-3', 'forklift', 'Forklift Inspection', 'demo-job-b', 'Taylor Reed (Demo)', 2, 7, 3, 0, 'DEMO-FL-05');
+    add('fl-4', 'forklift', 'Forklift Inspection', 'demo-job-b', 'Taylor Reed (Demo)', 4, 7, 6, 0, 'DEMO-FL-05');
+    add('fl-5', 'forklift', 'Forklift Inspection', 'demo-job-f', 'Sasha Whitmore (Demo)', 2, 7, 30, 1, 'DEMO-FL-11');
+    add('fl-6', 'forklift', 'Forklift Inspection', 'demo-job-f', 'Sasha Whitmore (Demo)', 4, 7, 28, 0, 'DEMO-FL-11');
+    // Job site analysis checklist: once a week per job that uses it.
+    add('jsa-1', 'jobsiteanalysis', 'Job Site Analysis Checklist', 'demo-job-d', 'Jamie Fontaine (Demo)', 0, 8, 0, 0);
+    add('jsa-2', 'jobsiteanalysis', 'Job Site Analysis Checklist', 'demo-job-e', 'Sky Vandermolen (Demo)', 0, 8, 20, 0);
+    add('jsa-3', 'jobsiteanalysis', 'Job Site Analysis Checklist', 'demo-job-f', 'Rowan Achterberg (Demo)', 1, 8, 10, 0);
+  })();
 
-  /* ---------- corrective actions ------------------------------------------
-     These come from inspection findings, which is the one corrective-action
-     source that carries real records today. They are NOT incident corrective
-     actions: there are no incidents, so there are none of those.
-
-     One is overdue (due yesterday, still open), one is open and not yet due,
-     one is closed. The dashboard counts these; nothing is written down twice.
-     ---------------------------------------------------------------------- */
+  /* ---------- corrective actions -----------------------------------------
+     From inspection findings, the one corrective-action source that carries
+     real records today. Three open (one of them overdue) and three closed.  */
   var FINDINGS = [
     { id: 'find-1', job_id: 'demo-job-a', sub_id: null,
       description: 'Aerial lift 1930-02 failed pre-use: horn inoperative and one guardrail pin missing.',
       corrective: 'Tag out of service, replace pin and repair horn before next use.',
-      due: isoDay(dayOffset(-1)), status: 'open', imported: false,
+      due: isoDay(dayOffset(-2)), status: 'open', imported: false,
       source: 'Aerial Lift Inspection', photos_list: [] },
     { id: 'find-2', job_id: 'demo-job-a', sub_id: null,
       description: 'Hot work on Level 2 east: fire watch left the area before the 30-minute watch ended.',
       corrective: 'Re-brief crew on fire watch duration; foreman to confirm at next hot work permit.',
-      due: isoDay(dayOffset(3)), status: 'open', imported: false,
+      due: isoDay(dayOffset(4)), status: 'open', imported: false,
       source: 'Hot Work Permit', photos_list: [] },
-    { id: 'find-3', job_id: 'demo-job-b', sub_id: null,
+    { id: 'find-3', job_id: 'demo-job-f', sub_id: null,
+      description: 'Forklift FL-11: seatbelt retractor sticking.',
+      corrective: 'Retractor replaced; unit returned to service after re-inspection.',
+      due: isoDay(dayOffset(3)), status: 'open', imported: false,
+      source: 'Forklift Inspection', photos_list: [] },
+    { id: 'find-4', job_id: 'demo-job-b', sub_id: null,
       description: 'Housekeeping: offcuts and banding left in the mechanical room walkway.',
       corrective: 'Area cleared and daily clean-up assigned to the plant crew.',
+      due: isoDay(dayOffset(-6)), status: 'closed', imported: false,
+      source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-5)) },
+    { id: 'find-5', job_id: 'demo-job-d', sub_id: null,
+      description: 'Excavation spoil pile stored closer than two feet from the trench edge.',
+      corrective: 'Spoil relocated and crew re-briefed on setback before work resumed.',
+      due: isoDay(dayOffset(-4)), status: 'closed', imported: false,
+      source: 'Job Site Analysis Checklist', photos_list: [], closed: isoDay(dayOffset(-4)) },
+    { id: 'find-6', job_id: 'demo-job-e', sub_id: null,
+      description: 'Roof warning line set short of the required six-foot offset at the north edge.',
+      corrective: 'Line repositioned and re-measured by the foreman the same morning.',
       due: isoDay(dayOffset(-3)), status: 'closed', imported: false,
-      source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-2)) }
+      source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-3)) }
   ];
 
-  /* ---------- equipment on the demo jobs ---------------------------------
-     Only units that exist here can carry a per-unit inspection requirement.  */
+  /* ---------- equipment on the demo jobs --------------------------------- */
   var EQUIPMENT = [
     { unit: 'DEMO-SL-1930-01', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
     { unit: 'DEMO-SL-1930-02', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
-    { unit: 'DEMO-FL-05', kind: 'forklift', label: 'Warehouse forklift', job_id: 'demo-job-b' }
+    { unit: 'DEMO-BL-45-01', kind: 'aerial', label: 'Boom lift 45ft', job_id: 'demo-job-d' },
+    { unit: 'DEMO-SL-1930-03', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-e' },
+    { unit: 'DEMO-FL-05', kind: 'forklift', label: 'Warehouse forklift', job_id: 'demo-job-b' },
+    { unit: 'DEMO-FL-11', kind: 'forklift', label: 'Rough terrain forklift', job_id: 'demo-job-f' }
   ];
 
   /* ---------- weekly inspection requirements ------------------------------
-     What the office has told the field to complete this week. Only forms with
-     a real field workflow appear here: JHA, Hot Work, Aerial, Forklift and the
-     Job Site Analysis Checklist. Hot work is activity-based, so it is never
-     "missed" on a day with no hot work.                                      */
-  var REQUIREMENTS = [
-    { id: 'req-jha-a', company: 'greiner', job_id: 'demo-job-a', form: 'jha', type: 'daily',
-      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
-      notes: 'Before work starts each morning.', week: null, status: 'active' },
-    { id: 'req-jha-b', company: 'greiner', job_id: 'demo-job-b', form: 'jha', type: 'daily',
-      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
-      notes: '', week: null, status: 'active' },
-    { id: 'req-jha-c', company: 'greiner', job_id: 'demo-job-c', form: 'jha', type: 'daily',
-      weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null, due_time: '07:30',
-      notes: '', week: null, status: 'active' },
-    { id: 'req-hw-b', company: 'greiner', job_id: 'demo-job-b', form: 'hotwork', type: 'activity',
-      weekdays: [], units: [], start: null, end: null, due_time: null,
-      notes: 'Only when cutting, welding or grinding takes place.', week: null, status: 'active' },
-    { id: 'req-lift-a', company: 'greiner', job_id: 'demo-job-a', form: 'aerial', type: 'equipment',
-      weekdays: [1, 2, 3, 4, 5], units: ['DEMO-SL-1930-01', 'DEMO-SL-1930-02'],
+     The denominator behind Daily Safety Compliance. A daily JHA on every
+     active job, plus activity-based hot work and per-unit lift checks.      */
+  var REQUIREMENTS = [];
+  (function buildReqs() {
+    JOBS.forEach(function (j) {
+      REQUIREMENTS.push({ id: 'req-jha-' + j.id, company: 'greiner', job_id: j.id, form: 'jha',
+        type: 'daily', weekdays: [1, 2, 3, 4, 5], units: [], start: null, end: null,
+        due_time: '07:30', notes: 'Before work starts each morning.', week: null, status: 'active' });
+    });
+    REQUIREMENTS.push({ id: 'req-hw-b', company: 'greiner', job_id: 'demo-job-b', form: 'hotwork',
+      type: 'activity', weekdays: [], units: [], start: null, end: null, due_time: null,
+      notes: 'Only when cutting, welding or grinding takes place.', week: null, status: 'active' });
+    REQUIREMENTS.push({ id: 'req-lift-a', company: 'greiner', job_id: 'demo-job-a', form: 'aerial',
+      type: 'equipment', weekdays: [1, 2, 3, 4, 5], units: ['DEMO-SL-1930-01', 'DEMO-SL-1930-02'],
       start: null, end: null, due_time: null, notes: 'Pre-use, per unit, on days used.',
-      week: null, status: 'active' },
-    { id: 'req-fl-b', company: 'greiner', job_id: 'demo-job-b', form: 'forklift', type: 'equipment',
-      weekdays: [1, 2, 3, 4, 5], units: ['DEMO-FL-05'], start: null, end: null, due_time: null,
-      notes: '', week: null, status: 'active' }
-  ];
+      week: null, status: 'active' });
+    REQUIREMENTS.push({ id: 'req-fl-b', company: 'greiner', job_id: 'demo-job-b', form: 'forklift',
+      type: 'equipment', weekdays: [1, 2, 3, 4, 5], units: ['DEMO-FL-05'], start: null, end: null,
+      due_time: null, notes: '', week: null, status: 'active' });
+  })();
 
   /* ---------- incidents and near misses -----------------------------------
-     Deliberately empty. Greiner has an incident workflow — schema, intake form,
-     witnesses, documents and corrective actions all exist — but there have been
-     no submissions, so there are no records to show. Nothing is invented here;
-     the dashboard renders a zero-data state instead.
-
-     INCIDENT_BASELINE is the date of the last OSHA-recordable incident. It is
-     null because nobody has supplied it yet, and "Days Since Last Recordable"
-     must say so rather than showing 0 days.
-     ---------------------------------------------------------------------- */
+     Deliberately empty. Greiner has an incident workflow — schema, intake
+     form, witnesses, documents and corrective actions all exist — but there
+     have been no submissions, so there are no records. Nothing is invented;
+     the dashboard renders a zero-data state instead.                        */
   var INCIDENTS = [];
   var NEAR_MISSES = [];
   var INCIDENT_BASELINE = {
-    last_recordable: null,        // date of Greiner's last OSHA-recordable incident
-    last_lost_time: null,         // date of Greiner's last lost-time incident
-    recordkeeping_start: null     // when incident recordkeeping began in this system
+    last_recordable: null, last_lost_time: null, recordkeeping_start: null
   };
 
   /* ---------- Toolbox Talk completions ------------------------------------
@@ -305,19 +283,52 @@
   var WEEK = mondayISO(0);
   var TALK_ID = null;   // filled in by the office page from its own library
 
+  /* Greiner: 11 of its 12 crews submitted this week. Shop & Yard has not,
+     which is the single outstanding group. Two crews recorded a manual
+     attendee who is not on the assigned roster.
+
+     Choice ran its single confirmed Monday meeting. Peine is individual:
+     11 of 12 employees completed, and one record is deliberately duplicated
+     to prove the same person is never counted twice. */
+  var GREINER_CREWS = [
+    ['Demo Job A \u2014 Level 2 Fit-out \u00b7 Crew 1', 'Demo Foreman',
+      ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)', 'Sam Whitfield (Demo)'],
+      ['Temp Helper (Labor Ready)']],
+    ['Demo Job A \u2014 Level 2 Fit-out \u00b7 Crew 2', 'Nico Vasquez (Demo)',
+      ['Nico Vasquez (Demo)', 'Priya Raman (Demo)', 'Tomas Berg (Demo)'], []],
+    ['Demo Job B \u2014 Central Plant \u00b7 Mechanical', 'Casey Nolan (Demo)',
+      ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'], []],
+    ['Demo Job B \u2014 Central Plant \u00b7 Controls', 'Hana Okamoto (Demo)',
+      ['Hana Okamoto (Demo)', 'Luis Ferreira (Demo)'], []],
+    ['Demo Job C \u2014 Service \u00b7 North', 'Riley Shaw (Demo)',
+      ['Riley Shaw (Demo)', 'Quinn Harper (Demo)'], []],
+    ['Demo Job C \u2014 Service \u00b7 South', 'Drew Baxter (Demo)',
+      ['Drew Baxter (Demo)', 'Marta Kowalski (Demo)'], []],
+    ['Demo Job D \u2014 Clinic Addition \u00b7 Crew 1', 'Jamie Fontaine (Demo)',
+      ['Jamie Fontaine (Demo)', 'Reese Okafor (Demo)', 'Parker Lindqvist (Demo)'], []],
+    ['Demo Job D \u2014 Clinic Addition \u00b7 Underground', 'Obi Adeyemi (Demo)',
+      ['Obi Adeyemi (Demo)', 'Lena Brandt (Demo)'], ['Visiting Engineer (Demo)']],
+    ['Demo Job E \u2014 Warehouse Reroof \u00b7 Roofing', 'Sky Vandermolen (Demo)',
+      ['Sky Vandermolen (Demo)', 'Devin Castellanos (Demo)', 'Ari Solberg (Demo)'], []],
+    ['Demo Job F \u2014 Pump Station \u00b7 Process', 'Rowan Achterberg (Demo)',
+      ['Rowan Achterberg (Demo)', 'Emery Delacroix (Demo)'], []],
+    ['Demo Job F \u2014 Pump Station \u00b7 Electrical', 'Sasha Whitmore (Demo)',
+      ['Sasha Whitmore (Demo)', 'Kai Nakamura (Demo)'], []]
+    // 'Shop & Yard' intentionally absent: the one outstanding crew.
+  ];
+
+  /* These must match Peine's roster in office.js exactly, or a completion
+     would belong to nobody. Lennox Ayers is deliberately absent: the single
+     outstanding individual. */
+  var PEINE_NAMES = ['Avery Nolan (Demo)', 'Bailey Cruz (Demo)', 'Cameron Diaz-Lee (Demo)',
+    'Devon Marsh (Demo)', 'Emerson Pike (Demo)', 'Finley Ward (Demo)', 'Gray Hollis (Demo)',
+    'Harper Vance (Demo)', 'Indigo Reese (Demo)', 'Jules Barrett (Demo)', 'Kai Lindstrom (Demo)'];
+
   var COMPLETIONS = {
-    greiner: [
-      // Job A completed, with two manual attendees who are not on the roster.
-      { week: WEEK, kind: 'group', company: 'greiner', group: 'Demo Job A — Level 2 Fit-out',
-        presenter: 'Demo Foreman', at: wdAt(0, 6, 15),
-        roster: ['Demo Foreman', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)', 'Sam Whitfield (Demo)'],
-        manual: ['Temp Helper (Labor Ready)', 'Visiting Engineer (Demo)'] },
-      // Job B completed, roster only.
-      { week: WEEK, kind: 'group', company: 'greiner', group: 'Demo Job B — Central Plant',
-        presenter: 'Casey Nolan (Demo)', at: wdAt(0, 6, 25),
-        roster: ['Casey Nolan (Demo)', 'Taylor Reed (Demo)', 'Morgan Ellis (Demo)'], manual: [] }
-      // Job C submitted nothing: it is the outstanding group.
-    ],
+    greiner: GREINER_CREWS.map(function (c, i) {
+      return { week: WEEK, kind: 'group', company: 'greiner', group: c[0], presenter: c[1],
+               roster: c[2].slice(), manual: c[3].slice(), at: wdAt(0, 6, 10 + i * 3) };
+    }),
     choice: [
       { week: WEEK, kind: 'group', company: 'choice', group: 'Monday Group Meeting',
         presenter: 'Alex Fyffe', at: wdAt(0, 7, 5),
@@ -326,14 +337,12 @@
                  'Justin Rice', 'Kyle Palmer'],
         manual: ['Temp Helper (Labor Ready)'] }
     ],
-    peine: [
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: wdAt(0, 6, 50) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Bailey Cruz (Demo)', at: wdAt(0, 7, 2) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Cameron Diaz-Lee (Demo)', at: wdAt(0, 7, 18) },
-      { week: WEEK, kind: 'individual', company: 'peine', employee: 'Devon Marsh (Demo)', at: wdAt(0, 8, 1) },
+    peine: PEINE_NAMES.map(function (n, i) {
+      return { week: WEEK, kind: 'individual', company: 'peine', employee: n, at: wdAt(0, 6, 40 + i * 4) };
+    }).concat([
       // Same employee again, same week: must NOT be counted twice.
       { week: WEEK, kind: 'individual', company: 'peine', employee: 'Avery Nolan (Demo)', at: wdAt(0, 9, 30) }
-    ]
+    ])
   };
 
   /* ---------- the transport ---------------------------------------------- */
