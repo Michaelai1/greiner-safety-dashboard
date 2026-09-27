@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Peine — Phase 1 Preview</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="wrap narrow">
+  <h1>Peine — Phase 1 Preview <span class="pill">Demo Data</span></h1>
+  <p class="lead">Weekly Toolbox Talks delivered to each field employee by personalized text link,
+  with completion tracking, reminders and basic training-document management.</p>
+
+  <div class="grid g2" style="margin-bottom:20px">
+    <a class="card" href="./phone/" style="text-decoration:none;color:inherit">
+      <h2>Field walkthrough &rarr;</h2>
+      <p class="small muted" style="margin:0">Start from the text message an employee receives,
+      tap through to the talk, and submit. No login.</p>
+    </a>
+    <a class="card" href="./office/" style="text-decoration:none;color:inherit">
+      <h2>Office dashboard &rarr;</h2>
+      <p class="small muted" style="margin:0">Overview, Toolbox Talks and Training Documents.
+      Deliberately narrow for Phase 1.</p>
+    </a>
+  </div>
+
+  <div class="card">
+    <h3>What Phase 1 does</h3>
+    <ul style="margin:0;padding-left:19px;color:var(--ink2);font-size:14px">
+      <li>A personalized text goes out Monday at 8:00 AM. The send time is configurable.</li>
+      <li>The employee taps their own link straight into their assigned talk — <b>no PIN, no login</b>.</li>
+      <li>The talk can be shown as the original document, as a Guided Talk, or both.</li>
+      <li>They acknowledge and submit individually, and see a confirmation.</li>
+      <li>If it is still incomplete, a reminder goes at 48 hours and then every 24 hours.</li>
+      <li>Monday 7:00 AM, an admin digest lists everything still unsigned.</li>
+      <li>The office sees completion, timings and active engagement time per person.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Production security design</h3>
+    <p class="small" style="color:var(--ink2)">Not built in this demo — this is the design the live
+    build must follow.</p>
+    <ul style="margin:0;padding-left:19px;color:var(--ink2);font-size:13.5px">
+      <li>Each link carries a <b>random signed or hashed assignment token</b>, tied to exactly one
+      employee and one Toolbox Talk assignment.</li>
+      <li>Tokens <b>expire</b>. An expired token opens nothing.</li>
+      <li>A token must <b>never contain or reveal a phone number or an employee ID</b>, and must not
+      be guessable from another token.</li>
+      <li>There is <b>no generic public submission URL</b>. Without a valid token there is nothing
+      to submit to.</li>
+      <li>Tokens in this demo are fictional, generated locally, and reach nothing.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Future expansion — not in Phase 1</h3>
+    <p class="small" style="margin:0;color:var(--ink2)">A reusable PIN portal can be added later to
+    give employees a standing way in — training records, previous talks, inspections and other
+    workflows. Phase 1 deliberately stops at the single-purpose secure link, because it needs no
+    account, no password reset and no support burden. <b>The PIN portal is not built and is not
+    included in Phase 1 pricing.</b></p>
+  </div>
+
+  <div class="card" id="pricing">
+    <h3>Scope and pricing</h3>
+    <div class="grid g2" style="margin-bottom:12px">
+      <div class="card" style="margin:0;background:var(--bg)">
+        <div class="kpi"><b id="p-impl">—</b><span>one-time implementation</span></div>
+      </div>
+      <div class="card" style="margin:0;background:var(--bg)">
+        <div class="kpi"><b id="p-mo">—</b><span>per month, beginning at launch</span></div>
+      </div>
+    </div>
+    <h3 style="margin-top:4px">Included</h3>
+    <ul id="p-inc" style="margin:0 0 14px;padding-left:19px;color:var(--ink2);font-size:13.5px"></ul>
+    <h3>Not included</h3>
+    <ul id="p-exc" style="margin:0;padding-left:19px;color:var(--ink2);font-size:13.5px"></ul>
+    <div class="note amber" style="margin-top:14px">Pricing is shown here on the scope page, separate
+    from the operational dashboard, so the working screens stay about the work.</div>
+  </div>
+
+  <div class="note">All names, tokens, timestamps, training records and figures in this preview are
+  fictional. Nothing here reads or writes production, calls a webhook, or makes any network request.</div>
+</div>
+<a class="home" href="../">&larr; Demo home</a>
+<script src="./data.js"></script>
+<script>
+(function () {
+  var P = window.PEINE, $ = function (s) { return document.querySelector(s); };
+  $('#p-impl').textContent = '$' + P.PRICING.implementation;
+  $('#p-mo').textContent = '$' + P.PRICING.monthly;
+  $('#p-inc').innerHTML = P.PRICING.includes.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+  $('#p-exc').innerHTML = P.PRICING.excludes.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+})();
+</script>
+</body>
+</html>

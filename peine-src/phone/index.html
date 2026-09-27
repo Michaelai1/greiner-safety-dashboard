@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Peine — Toolbox Talk</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  body{background:#0f172a}
+  .phone{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg)}
+  .bar{height:auto;background:none;overflow:visible;margin:0}
+  .topbar{background:#b45309;color:#fff;text-align:center;font-size:12px;font-weight:700;padding:8px 12px}
+  .pad{padding:16px}
+  .sms{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+  .sms .from{font-size:11px;color:var(--ink3);font-weight:700;letter-spacing:.04em}
+  .bub{background:#e8eaed;border-radius:16px;padding:11px 13px;margin-top:9px;font-size:14px;line-height:1.5}
+  .bub a{word-break:break-all;font-weight:600}
+  .sms .meta{font-size:11px;color:var(--ink4);margin-top:7px}
+  .doc{background:#fff;border:1px solid #d5dbe3;border-radius:12px;padding:14px;margin-bottom:14px}
+  .doc h3{color:#111827;font-size:18px;text-transform:none;letter-spacing:0;margin:0 0 2px}
+  .doc .sub{color:#4b5563;font-size:12px;margin-bottom:11px;word-break:break-word}
+  .pg{display:block;width:100%;height:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fff}
+  .pager{display:flex;gap:8px;align-items:center;margin-top:11px}
+  .pager .c{flex:1;text-align:center;font-size:13px;font-weight:700;color:#111827}
+  .fmt{display:flex;gap:6px;margin-bottom:12px}
+  .fmt button{flex:1;min-height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;
+    font:inherit;font-weight:700;font-size:12.5px;color:var(--ink3);cursor:pointer}
+  .fmt button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .sec h4{color:#111827;font-size:17px;margin:4px 0 8px;text-transform:none;letter-spacing:0}
+  .sec p{color:#1f2937;font-size:15px;line-height:1.6;margin:0 0 10px}
+  .sec .bul{position:relative;padding-left:17px}
+  .sec .bul::before{content:"•";position:absolute;left:4px;color:#4b5563;font-weight:700}
+  .src{color:#6b7280;font-size:11.5px;font-weight:600;border-top:1px solid #e5e7eb;padding-top:8px;margin-top:11px}
+  .chk{display:flex;gap:10px;align-items:flex-start;min-height:48px;padding:11px 13px;border:1.5px solid #9aa4b2;
+    border-radius:10px;background:#f3f4f6;color:#111827;font-size:14.5px;font-weight:650;cursor:pointer;margin-bottom:12px}
+  .chk.on{border-color:#15803d;background:#dcfce7;color:#14532d}
+  .chk input{width:20px;height:20px;flex:0 0 auto;margin-top:1px}
+  .done{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:20px;text-align:center}
+  .done b{display:block;font-size:19px;color:#065f46;margin-bottom:6px}
+  .eng{font-size:11.5px;color:var(--ink3);text-align:center;margin-top:10px}
+  .prog{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin:10px 0 6px}
+  .prog i{display:block;height:100%;background:var(--ok)}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="topbar">PEINE PHASE 1 · DEMO DATA — nothing is saved</div>
+  <div class="pad" id="app"></div>
+</div>
+<a class="home" href="../">&larr; Peine demo</a>
+<script src="../data.js"></script>
+<script>
+(function () {
+  'use strict';
+  var P = window.PEINE;
+  var app = document.getElementById('app');
+  var params = new URLSearchParams(location.search);
+
+  /* ---------- state ---------- */
+  var token = params.get('t') || '';
+  var assign = token ? P.assignmentByToken(token) : null;
+  var view = assign ? 'talk' : 'sms';
+  var format = 'doc';      // doc | guided
+  var page = 0;
+  var section = 0;
+  var secDone = [];
+  var ack = false;
+  var submitted = null;
+
+  /* Sections shown in Guided format. Verbatim from the source document — the
+     same eight sections already prepared in the safe demo bundle. */
+  var SECTIONS = [
+    ['Fall Protection', ['It may seem that a job can be performed more efficiently without spending the time to protect against falls. However, falls remain one of the top causes of fatalities in construction. Workers have fallen off edges of every description, especially floors and roofs, and through openings in floors, roofs, and walls. Fall protection is required whenever a worker faces serious risk of injury, including:', '* on structures where a worker could fall more than 7 feet', '* on thrustouts, trusses, beams, purlins, and plates at heights over 15 feet', '* on a sloped roof'], 'page 1'],
+    ['Use Barriers', ['To prevent accidental falls at worksites, guardrails and toeboards or other effective barriers to falls should be used. However, there will be areas where guardrails or other barriers are not feasible. In these cases, workers must use approved personal fall protection systems or positioning devices.'], 'page 1'],
+    ['Fall Arrests', ["Two basic types of person fall protection systems that require tie off are fall arrest and travel restraint. Fall arrest systems stop a fall within a few feet of the worker's original position. A full body harness is required with a fall arrest system. The system typically consists of a full body harness, a lanyard, a rope grab, a lifeline, and a lifeline anchor. A fall arrest system must be worn when working on a rolling scaffold that is being moved or when a worker is getting on, working from or getting off suspended access equipment."], 'page 1'],
+    ['Travel Restraints', ['A travel restraint system prevents falls by restraining a worker from getting too close to an unprotected edge. This system usually consists of a safety belt or full body harness, a lanyard, a rope grab, a lifeline, and a lifeline anchor.'], 'page 1'],
+    ['Safety Nets', ['When conventional fall protection or personal fall protection are not practical, safety nets must be used instead. Before using safety nets, check to see that the nets are hung with enough clearance to prevent a falling person from hitting the surface or structure below.'], 'page 1'],
+    ['Net Locations', ['Safety nets should be placed within 10 vertical feet and never more than 30 feet below the working surface. Nets must extend at least eight feet beyond the building or structure. If the vertical distance from the working level to the net is greater than 5 feet, then the net must extend 10 feet beyond the building. A net from 10 feet to 30 feet below the working surface must extend 13 feet.'], 'pages 1–2'],
+    ['Right Equipment, Right Job', ['If you use any type of fall protection equipment, including personal fall protection or safety nets, be sure to check that you are using the right equipment for the job, labeled as meeting the requirements of the American National Standards Institute (ANSI), and that the equipment is in good condition.'], 'page 2'],
+    ['Fall Protection Saves Lives', ['Whenever feasible, employers should always set up temporary floors, guardrails, toeboards, or other physical barriers to falls, instead of having workers rely on tying off and nets for fall protection. When not feasible, personal fall protection or safety nets must be used. No work should proceed unless the necessary fall protection is in place. The use of fall protection can prevent serious injury and save your life.'], 'page 2']
+  ];
+
+  /* ---------- engagement: foreground time only ----------
+     The clock runs only while the page is actually visible. Backgrounding the
+     tab, switching apps or locking the screen stops it. This measures time the
+     page was open and in front of the person — not reading, not comprehension. */
+  var eng = { activeMs: 0, since: null, firstOpen: null, lastActive: null, sectionsSeen: {} };
+  function engStart() {
+    if (eng.since === null && !document.hidden) {
+      eng.since = Date.now();
+      if (!eng.firstOpen) eng.firstOpen = new Date();
+    }
+  }
+  function engStop() {
+    if (eng.since !== null) {
+      eng.activeMs += Date.now() - eng.since;
+      eng.since = null;
+      eng.lastActive = new Date();
+    }
+  }
+  function engNow() { return eng.activeMs + (eng.since === null ? 0 : Date.now() - eng.since); }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) engStop(); else engStart();
+    paintEng();
+  });
+  window.addEventListener('pagehide', engStop);
+  window.addEventListener('blur', function () { engStop(); paintEng(); });
+  window.addEventListener('focus', function () { engStart(); paintEng(); });
+  function paintEng() {
+    var el = document.getElementById('eng');
+    if (el) {
+      el.textContent = 'Active engagement time ' + P.mins(engNow()) +
+        (document.hidden ? ' · paused (page not visible)' : '');
+    }
+  }
+  setInterval(paintEng, 1000);
+  window.__peineEngagement = {
+    ms: engNow, paused: function () { return eng.since === null; },
+    stop: engStop, start: engStart, state: eng
+  };
+
+  /* ---------- render ---------- */
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function render() {
+    if (view === 'sms') return renderSms();
+    if (view === 'done') return renderDone();
+    return renderTalk();
+  }
+
+  /* 1 · the text message */
+  function renderSms() {
+    var who = P.FIELD[0];
+    var talk = P.talkById(P.SCHEDULE[0].talkId);
+    var link = './?t=' + who.token;
+    app.innerHTML =
+      '<div class="sms">' +
+        '<div class="from">TEXT MESSAGE &middot; sample</div>' +
+        '<div class="bub">Peine Safety: Hi ' + esc(who.name.split(' ')[0]) +
+          ', your Toolbox Talk for this week is <b>' + esc(talk.title) + '</b>. ' +
+          'Tap to read and sign off:<br><a href="' + link + '" id="tap">peinesafety.app/t/' +
+          esc(who.token.slice(5, 17)) + '</a></div>' +
+        '<div class="meta">Sent ' + P.fmt(P.SEND_AT) + ' &middot; to ' + esc(who.name) +
+          ' &middot; link is personal to this one talk</div>' +
+      '</div>' +
+      '<a class="btn btn-primary" href="' + link + '" style="width:100%">Tap the link</a>' +
+      '<div class="note" style="margin-top:14px">No PIN and no login in Phase 1. The link itself is ' +
+        'the credential: one employee, one talk, and it expires. It carries no phone number and no ' +
+        'employee ID.</div>' +
+      '<div class="note amber" style="margin-top:10px"><b>Future expansion.</b> A reusable PIN portal ' +
+        'could later give employees a standing way in for training records, previous talks, ' +
+        'inspections and other workflows. Not built, and not part of Phase 1.</div>' +
+      '<div class="card" style="margin-top:14px"><h3>Other sample recipients</h3>' +
+        P.FIELD.slice(1, 4).map(function (p) {
+          return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0">' +
+            '<span style="flex:1;font-size:13.5px">' + esc(p.name) + '</span>' +
+            '<a class="btn btn-sm" href="./?t=' + p.token + '">Open their link</a></div>';
+        }).join('') + '</div>';
+    engStop();
+  }
+
+  /* 2 · the talk */
+  function renderTalk() {
+    var talk = P.talkById(assign.talkId);
+    var who = P.employeeById(assign.employeeId);
+    var canGuided = talk.guided;
+    if (!canGuided) format = 'doc';
+    var readDone = format === 'guided'
+      ? secDone.filter(Boolean).length === SECTIONS.length
+      : page === talk.pages - 1;
+
+    var body = '<div class="card" style="padding:12px 14px;margin-bottom:12px">' +
+        '<div style="font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--ink3)">THIS WEEK</div>' +
+        '<div style="font-size:18px;font-weight:800;margin-top:2px">' + esc(talk.title) + '</div>' +
+        '<div class="small muted">' + esc(who.name) + ' &middot; ' + esc(who.crew) + '</div></div>';
+
+    if (canGuided) {
+      body += '<div class="fmt">' +
+        '<button data-fmt="doc" class="' + (format === 'doc' ? 'on' : '') + '">Original Document</button>' +
+        '<button data-fmt="guided" class="' + (format === 'guided' ? 'on' : '') + '">Guided Talk</button></div>';
+    }
+
+    if (format === 'guided') {
+      var s = SECTIONS[section];
+      body += '<div class="doc"><h3>' + esc(talk.title) + '</h3>' +
+        '<div class="sub">' + esc(talk.file) + ' &middot; ' + esc(s[2]) + '</div>' +
+        '<div class="sec"><h4>' + esc(s[0]) + '</h4>' +
+        s[1].map(function (p) {
+          return /^\*/.test(p)
+            ? '<p class="bul">' + esc(p.replace(/^\*\s*/, '')) + '</p>'
+            : '<p>' + esc(p) + '</p>'; }).join('') +
+        '<div class="src">From ' + esc(talk.file) + ', ' + esc(s[2]) + '</div></div>' +
+        '<label class="chk ' + (secDone[section] ? 'on' : '') + '" style="margin-top:11px">' +
+          '<input type="checkbox" id="secchk"' + (secDone[section] ? ' checked' : '') + '>' +
+          '<span>I reviewed this section</span></label>' +
+        '<div class="pager">' +
+          '<button class="btn btn-sm" id="prev"' + (section === 0 ? ' disabled' : '') + '>&larr; Previous</button>' +
+          '<div class="c">Section ' + (section + 1) + ' of ' + SECTIONS.length + '</div>' +
+          '<button class="btn btn-sm" id="next"' + (section >= SECTIONS.length - 1 ? ' disabled' : '') + '>Next &rarr;</button>' +
+        '</div></div>' +
+        '<div class="prog"><i style="width:' +
+          Math.round(secDone.filter(Boolean).length / SECTIONS.length * 100) + '%"></i></div>' +
+        '<div class="small muted" style="text-align:center;margin-bottom:10px">' +
+          secDone.filter(Boolean).length + ' of ' + SECTIONS.length + ' sections reviewed</div>';
+    } else {
+      body += '<div class="doc"><h3>' + esc(talk.title) + '</h3>' +
+        '<div class="sub">' + esc(talk.file) + ' &middot; page ' + (page + 1) + ' of ' + talk.pages + '</div>' +
+        '<img class="pg" id="pg" alt="' + esc(talk.title) + ', page ' + (page + 1) + '" src="' +
+          esc(talk.images[page]) + '">' +
+        '<div class="pager">' +
+          '<button class="btn btn-sm" id="prev"' + (page === 0 ? ' disabled' : '') + '>&larr; Previous</button>' +
+          '<div class="c">Page ' + (page + 1) + ' of ' + talk.pages + '</div>' +
+          '<button class="btn btn-sm" id="next"' + (page >= talk.pages - 1 ? ' disabled' : '') + '>Next &rarr;</button>' +
+        '</div></div>';
+    }
+
+    body += '<label class="chk ' + (ack ? 'on' : '') + '">' +
+        '<input type="checkbox" id="ack"' + (ack ? ' checked' : '') + (readDone ? '' : ' disabled') + '>' +
+        '<span>I have read and understood this Toolbox Talk.</span></label>' +
+      (readDone ? '' : '<div class="small muted" style="margin:-4px 0 12px">' +
+        (format === 'guided' ? 'Review every section first.' : 'Read to the last page first.') + '</div>') +
+      '<button class="btn btn-primary" id="submit" style="width:100%"' + (ack ? '' : ' disabled') + '>Submit my acknowledgement</button>' +
+      '<div class="eng" id="eng"></div>';
+
+    app.innerHTML = body;
+    engStart(); paintEng();
+    eng.sectionsSeen[format === 'guided' ? 'sec-' + section : 'page-' + page] = 1;
+
+    var f = app.querySelectorAll('[data-fmt]');
+    Array.prototype.forEach.call(f, function (b) {
+      b.onclick = function () { format = b.getAttribute('data-fmt'); render(); };
+    });
+    var pv = document.getElementById('prev');
+    if (pv) pv.onclick = function () {
+      if (format === 'guided') { if (section > 0) section--; } else if (page > 0) page--;
+      render();
+    };
+    var nx = document.getElementById('next');
+    if (nx) nx.onclick = function () {
+      if (format === 'guided') { if (section < SECTIONS.length - 1) section++; }
+      else if (page < P.talkById(assign.talkId).pages - 1) page++;
+      render();
+    };
+    var sc = document.getElementById('secchk');
+    if (sc) sc.onchange = function () { secDone[section] = this.checked; render(); };
+    var ak = document.getElementById('ack');
+    if (ak) ak.onchange = function () { ack = this.checked; render(); };
+    var sb = document.getElementById('submit');
+    if (sb) sb.onclick = function () {
+      if (!ack) return;
+      engStop();
+      submitted = new Date();
+      view = 'done';
+      render();
+    };
+  }
+
+  /* 3 · confirmation */
+  function renderDone() {
+    var talk = P.talkById(assign.talkId);
+    var who = P.employeeById(assign.employeeId);
+    app.innerHTML = '<div class="done">' +
+        '<b>Signed off</b>' +
+        '<div style="font-size:13.5px;color:#065f46">' + esc(talk.title) + '</div>' +
+        '<div style="font-size:13px;color:#047857;margin-top:7px">' + esc(who.name) + '<br>' +
+          P.fmt(submitted) + '</div>' +
+        '<div style="font-size:12px;color:#047857;margin-top:10px;font-weight:700">' +
+          'Nothing was saved — this is a demo.</div>' +
+      '</div>' +
+      '<div class="card" style="margin-top:14px"><h3>What the office records</h3>' +
+        kv('Delivered', P.fmt(assign.delivered)) +
+        kv('First opened', P.fmt(eng.firstOpen)) +
+        kv('Sections / pages viewed', String(Object.keys(eng.sectionsSeen).length)) +
+        kv('Active engagement time', P.mins(engNow())) +
+        kv('Acknowledged', P.fmt(submitted)) +
+        kv('Elapsed since delivery', elapsed(assign.delivered, submitted)) +
+      '</div>' +
+      '<div class="note" style="margin-top:12px"><b>Active engagement time</b> is time this page was ' +
+        'open and visible. Time while the app was in the background, the screen was locked, or the ' +
+        'page was closed is excluded. It is not proof of reading and not proof of comprehension.</div>' +
+      '<a class="btn" href="./" style="width:100%;margin-top:12px">Start the walkthrough again</a>';
+  }
+  function kv(k, v) {
+    return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
+  }
+  function elapsed(a, b) {
+    if (!a || !b) return '—';
+    var m = Math.round((new Date(b) - new Date(a)) / 60000);
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60);
+    return h + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

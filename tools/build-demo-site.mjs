@@ -70,7 +70,11 @@ function scrub(src, label) {
   s = s.replace(/'\/Users\/[^']*\/([^/']+)\/([^/']+\.(?:pdf|PDF))'/g, "'$1/$2'");
   s = s.replace(/"\/Users\/[^"]*\/([^/"]+)\/([^/"]+\.(?:pdf|PDF))"/g, '"$1/$2"');
   s = s.replace(/'\/Users\/[^']*'/g, "'(local source, not published)'");
-  // 3. the production hostname, wherever it is mentioned
+  // 3. contact details — a company-looking email or number must not sit on a
+  //    public demo, even as a placeholder
+  s = s.replace(/[\w.+-]+@(?!example\.)[\w-]+\.[a-z]{2,}/gi, 'safety@example.invalid');
+  s = s.replace(/\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g, '(555) 010-0000');
+  // 4. the production hostname, wherever it is mentioned
   s = s.replace(/https?:\/\/greiner\.creeksidesafety\.com[^'"\s]*/gi, DEAD_URL);
   s = s.replace(/greiner\.creeksidesafety\.com/gi, 'demo.invalid');
   // 4. n8n / webhook endpoints — blanked at runtime in demo mode, but they must
@@ -211,6 +215,33 @@ function noindex(html) {
   }
 }
 
+/* ---------- Peine Phase 1 preview ---------- */
+{
+  const SRC = path.join(DASH, 'peine-src');
+  // sibling of /greiner/, so the routes are /peine/, /peine/phone/, /peine/office/
+  const DEST = path.join(ROOT_OUT, 'peine');
+  const copy = (from, to) => {
+    for (const e of fs.readdirSync(from, { withFileTypes: true })) {
+      const f = path.join(from, e.name), t = path.join(to, e.name);
+      if (e.isDirectory()) { mk(t); copy(f, t); continue; }
+      if (/\.(html|js|css)$/.test(e.name)) write(t, noindex(scrub(read(f), 'peine/' + e.name)));
+      else { mk(to); fs.copyFileSync(f, t); }
+    }
+  };
+  mk(DEST); copy(SRC, DEST);
+
+  // the Toolbox Talk page images the walkthrough shows
+  const assets = path.join(PHONE, 'demo-assets/toolbox-talks');
+  const dest = path.join(DEST, 'assets/toolbox-talks');
+  for (const e of fs.readdirSync(assets, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    mk(path.join(dest, e.name));
+    for (const f of fs.readdirSync(path.join(assets, e.name))) {
+      fs.copyFileSync(path.join(assets, e.name, f), path.join(dest, e.name, f));
+    }
+  }
+}
+
 /* ---------- landing page ---------- */
 write(path.join(OUT, 'index.html'), `<!DOCTYPE html>
 <html lang="en">
@@ -246,8 +277,8 @@ write(path.join(OUT, 'index.html'), `<!DOCTYPE html>
 <body>
 <div class="wrap">
   <h1>Greiner Safety — Feature Demo <span class="pill">Demo Data</span></h1>
-  <p class="lead">A read-only walkthrough of the new safety features. Everything here is fake
-  data on a disconnected build.</p>
+  <p class="lead">Read-only walkthroughs of the new safety features. Everything here is fake data
+  on a disconnected build.</p>
 
   <div class="grid">
     <a class="card" href="phone/">
@@ -288,8 +319,17 @@ write(path.join(ROOT_OUT, '_headers'), "/*\n  X-Robots-Tag: noindex, nofollow\n"
   write(path.join(ROOT_OUT, 'index.html'),
     '<!DOCTYPE html><meta charset="utf-8">' +
     '<meta name="robots" content="noindex, nofollow">' +
-    '<meta http-equiv="refresh" content="0; url=./greiner/">' +
-    '<title>Greiner Feature Demo</title>' +
-    '<a href="./greiner/">Greiner feature demo</a>');
+    '<title>Safety Feature Demos</title>' +
+    '<style>body{font:15px/1.6 system-ui;margin:0;background:#f4f6f9;color:#0f172a}' +
+    '.w{max-width:620px;margin:0 auto;padding:44px 20px}a{display:block;background:#fff;' +
+    'border:1px solid #e2e8f0;border-radius:13px;padding:18px;margin-bottom:13px;' +
+    'text-decoration:none;color:inherit}a:hover{border-color:#1e3a8a}b{font-size:17px}' +
+    'span{color:#64748b;font-size:13.5px}</style>' +
+    '<div class="w"><h1 style="font-size:23px;margin:0 0 18px">Safety Feature Demos</h1>' +
+    '<a href="./greiner/"><b>Greiner Brothers</b><br><span>Hot Work, JHA, Toolbox Talks, ' +
+    'office dashboard and analytics.</span></a>' +
+    '<a href="./peine/"><b>Peine &mdash; Phase 1</b><br><span>Weekly Toolbox Talks by secure ' +
+    'text link, engagement analytics, training documents, scope and pricing.</span></a>' +
+    '<p style="color:#64748b;font-size:13px">Demo data only. Nothing here reaches production.</p></div>');
 
 console.log('demo-site built at ' + path.relative(DASH, ROOT_OUT) + ' (content under /greiner/)');

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Peine — Safety Office</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Peine Safety <span class="pill">Demo Data</span></h1>
+  <p class="lead">Phase 1 — deliberately narrow: this week's talk, who has signed it, and training documents.</p>
+  <div class="tabs" id="tabs"></div>
+  <div id="main"></div>
+</div>
+<div id="sheet"></div>
+<a class="home" href="../">&larr; Peine demo</a>
+<script src="../data.js"></script>
+<script>
+(function () {
+  'use strict';
+  var P = window.PEINE;
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var tab = 'overview';
+  var trainFilter = '';
+  var NOW = new Date();
+
+  /* ---------- shared derivations ---------- */
+  function stats() {
+    var a = P.ASSIGNMENTS;
+    var done = a.filter(function (x) { return x.submitted; });
+    var out = a.filter(function (x) { return !x.submitted; });
+    var over = a.filter(function (x) { return P.isOverdue(x, NOW); });
+    var times = done.map(function (x) { return x.activeMs; }).sort(function (p, q) { return p - q; });
+    var avg = times.length ? Math.round(times.reduce(function (s, v) { return s + v; }, 0) / times.length) : null;
+    var med = times.length ? (times.length % 2
+      ? times[(times.length - 1) / 2]
+      : Math.round((times[times.length / 2 - 1] + times[times.length / 2]) / 2)) : null;
+    return { all: a, done: done, out: out, over: over, avg: avg, med: med,
+             pct: a.length ? Math.round(done.length / a.length * 100) : 0 };
+  }
+  function allReminders() {
+    var out = [];
+    P.ASSIGNMENTS.forEach(function (a) {
+      P.remindersFor(a, NOW).forEach(function (t) {
+        out.push({ at: t, who: P.employeeById(a.employeeId).name, kind: 'Reminder' });
+      });
+    });
+    P.ASSIGNMENTS.forEach(function (a) {
+      out.push({ at: a.delivered, who: P.employeeById(a.employeeId).name, kind: 'Initial text' });
+    });
+    return out.sort(function (x, y) { return y.at - x.at; });
+  }
+
+  /* ---------- 1 · Overview ---------- */
+  function overview() {
+    var s = stats();
+    var talk = P.talkById(P.SCHEDULE[0].talkId);
+    var soon = P.TRAINING.map(function (t) { return { t: t, st: P.certStatus(t, NOW) }; })
+      .filter(function (x) { return x.st.key !== 'current'; })
+      .sort(function (a, b) { return a.st.days - b.st.days; });
+    var recent = allReminders().slice(0, 6);
+
+    return '<div class="card"><h3>This week&rsquo;s assigned talk</h3>' +
+        '<div style="font-size:21px;font-weight:800">' + esc(talk.title) + '</div>' +
+        '<div class="small muted">Week of ' + P.fmtDate(P.MONDAY) + ' &middot; ' +
+          esc(talk.file) + ' &middot; ' +
+          (talk.guided ? 'Original document and Guided Talk available' : 'Original document only') +
+          ' &middot; sent ' + P.fmt(P.SEND_AT) + '</div></div>' +
+
+      '<div class="grid g4">' +
+        kpi(s.done.length, 'completed', 'ok', s.pct + '% participation', s.pct) +
+        kpi(s.out.length, 'outstanding', s.out.length ? 'warn' : 'ok', 'of ' + s.all.length + ' field employees') +
+        kpi(s.over.length, 'overdue', s.over.length ? 'bad' : 'ok', 'past the first reminder') +
+        kpi(P.mins(s.avg), 'average active engagement', '', 'median ' + P.mins(s.med)) +
+      '</div>' +
+
+      '<div class="grid g2">' +
+        '<div class="card"><h3>Upcoming training expirations</h3>' +
+          (soon.length ? '<div class="tw"><table><thead><tr><th>Employee</th><th>Document</th>' +
+            '<th>Expires</th><th>Status</th></tr></thead><tbody>' +
+            soon.slice(0, 7).map(function (x) {
+              return '<tr><td>' + esc(P.employeeById(x.t.employeeId).name) + '</td>' +
+                '<td>' + esc(x.t.name) + '</td><td>' + P.fmtDate(x.t.expires) + '</td>' +
+                '<td>' + tag(x.st) + '</td></tr>'; }).join('') +
+            '</tbody></table></div>' : '<p class="small muted">Nothing expiring.</p>') +
+          (soon.length > 7 ? '<p class="small muted" style="margin:8px 0 0">' +
+            (soon.length - 7) + ' more in Training Documents.</p>' : '') + '</div>' +
+
+        '<div class="card"><h3>Latest notification activity</h3>' +
+          '<div class="tw"><table><thead><tr><th>When</th><th>Type</th><th>Employee</th></tr></thead><tbody>' +
+          recent.map(function (r) {
+            return '<tr><td>' + P.fmt(r.at) + '</td><td>' +
+              (r.kind === 'Reminder' ? '<span class="tag t-warn">Reminder</span>'
+                                     : '<span class="tag t-info">Initial text</span>') +
+              '</td><td>' + esc(r.who) + '</td></tr>'; }).join('') +
+          '</tbody></table></div></div>' +
+      '</div>' +
+      '<div class="note">Every figure on this page is calculated from the fictional demo records. ' +
+      'No training requirement by role is configured, so no compliance percentage is calculated.</div>';
+  }
+  function kpi(v, label, tone, sub, bar) {
+    return '<div class="card kpi"><b class="' + (tone || '') + '">' + esc(String(v)) + '</b>' +
+      '<span>' + esc(label) + '</span>' +
+      (bar !== undefined ? '<div class="bar"><i style="width:' + bar + '%"></i></div>' : '') +
+      (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>';
+  }
+  function tag(st) {
+    var c = st.key === 'expired' ? 't-bad' : st.key === 'soon' ? 't-warn' : 't-ok';
+    return '<span class="tag ' + c + '">' + esc(st.label) + '</span>';
+  }
+
+  /* ---------- 2 · Toolbox Talks ---------- */
+  function talks() {
+    var s = stats();
+    var rows = P.ASSIGNMENTS.map(function (a) {
+      var p = P.employeeById(a.employeeId);
+      var over = P.isOverdue(a, NOW);
+      var st = a.submitted ? '<span class="tag t-ok">Completed</span>'
+        : over ? '<span class="tag t-bad">Overdue</span>'
+               : '<span class="tag t-warn">Outstanding</span>';
+      return '<tr><td><span class="t-main">' + esc(p.name) + '</span>' +
+          '<div class="small muted">' + esc(p.crew) + '</div></td>' +
+        '<td>' + st + '</td>' +
+        '<td>' + (a.opened ? P.fmt(a.opened) : '<span class="muted">never opened</span>') + '</td>' +
+        '<td class="num">' + (a.activeMs ? P.mins(a.activeMs) : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (a.submitted ? P.fmt(a.submitted) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="num">' + P.remindersFor(a, NOW).length + '</td>' +
+        '<td><button class="btn btn-sm" data-tl="' + esc(a.employeeId) + '">Timeline</button></td></tr>';
+    });
+
+    return '<div class="grid g4">' +
+        kpi(s.done.length, 'completed', 'ok', s.pct + '% participation', s.pct) +
+        kpi(s.out.length, 'outstanding', s.out.length ? 'warn' : 'ok') +
+        kpi(s.over.length, 'overdue', s.over.length ? 'bad' : 'ok') +
+        kpi(P.FIELD.length, 'field employees', '', 'only field employees are assigned talks') +
+      '</div>' +
+
+      '<div class="grid g2">' +
+      '<div class="card"><h3>Upcoming schedule</h3>' +
+        '<div id="sched"></div>' +
+        '<p class="small muted" style="margin:10px 0 0">Reorder with the arrows. Format applies to ' +
+        'the whole week. Guided Talk is only offered where it has been prepared.</p></div>' +
+
+      '<div class="card"><h3>Monday admin digest preview</h3>' +
+        '<div class="note amber" style="margin-bottom:10px">Sends ' + P.fmt(P.DIGEST_AT) +
+          ' to ' + P.ADMINS.length + ' administrators.</div>' +
+        '<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;' +
+          'background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px;line-height:1.6">' +
+          '<b>Peine Safety — unsigned Toolbox Talks</b><br>' +
+          'Week of ' + P.fmtDate(P.MONDAY) + ' &middot; ' + esc(P.talkById(P.SCHEDULE[0].talkId).title) + '<br><br>' +
+          (s.out.length
+            ? s.out.map(function (a) {
+                var p = P.employeeById(a.employeeId);
+                return '&bull; ' + esc(p.name) + ' — ' +
+                  (a.opened ? 'opened, not signed' : 'never opened') +
+                  ' (' + P.remindersFor(a, NOW).length + ' reminders)'; }).join('<br>')
+            : 'Everyone has signed.') +
+          '<br><br>' + s.done.length + ' of ' + s.all.length + ' complete (' + s.pct + '%).' +
+        '</div></div></div>' +
+
+      '<div class="card"><h3>Field roster &middot; ' + P.FIELD.length + ' employees</h3>' +
+        '<div class="tw"><table><thead><tr><th>Employee</th><th>Status</th><th>First opened</th>' +
+        '<th class="num">Active time</th><th>Submitted</th><th class="num">Reminders</th><th></th>' +
+        '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
+        '<p class="small muted" style="margin:10px 0 0"><b>Active engagement time</b> is time the ' +
+        'page was open and visible. Backgrounded, closed and locked-screen time is excluded. It is ' +
+        'not proof of reading or comprehension.</p></div>';
+  }
+
+  function schedHtml() {
+    return P.SCHEDULE.map(function (row, i) {
+      var t = P.talkById(row.talkId);
+      var wk = new Date(P.MONDAY.getTime()); wk.setDate(wk.getDate() + row.week * 7);
+      return '<div style="display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid var(--line);' +
+        'border-radius:9px;margin-bottom:7px;background:var(--card)">' +
+        '<span class="small muted" style="white-space:nowrap">' + P.fmtDate(wk) + '</span>' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:650;font-size:13.5px">' + esc(t.title) + '</div>' +
+          '<div class="small muted">' + esc(t.file) + ' &middot; ' +
+          (t.guided ? 'guided available' : 'original only') + '</div></div>' +
+        '<select class="ctl" data-fmt="' + i + '" style="min-height:34px;font-size:12px">' +
+          ['doc', 'guided', 'both'].map(function (f) {
+            var lbl = f === 'doc' ? 'Original' : f === 'guided' ? 'Guided' : 'Both';
+            var dis = (f !== 'doc' && !t.guided) ? ' disabled' : '';
+            return '<option value="' + f + '"' + (row.format === f ? ' selected' : '') + dis + '>' + lbl + '</option>';
+          }).join('') + '</select>' +
+        '<button class="btn btn-sm" data-up="' + i + '"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>' +
+        '<button class="btn btn-sm" data-down="' + i + '"' + (i === P.SCHEDULE.length - 1 ? ' disabled' : '') + '>&darr;</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------- 3 · Training Documents ---------- */
+  function training() {
+    var rows = P.TRAINING.map(function (t) { return { t: t, st: P.certStatus(t, NOW) }; })
+      .filter(function (x) { return !trainFilter || x.st.key === trainFilter; })
+      .sort(function (a, b) { return a.st.days - b.st.days; });
+    var counts = { current: 0, soon: 0, expired: 0 };
+    P.TRAINING.forEach(function (t) { counts[P.certStatus(t, NOW).key]++; });
+
+    return '<div class="grid g4">' +
+        kpi(P.TRAINING.length, 'documents on file', '') +
+        kpi(counts.current, 'current', 'ok') +
+        kpi(counts.soon, 'expiring soon', counts.soon ? 'warn' : 'ok', 'within 60 days') +
+        kpi(counts.expired, 'expired', counts.expired ? 'bad' : 'ok') +
+      '</div>' +
+      '<div class="fbar">' +
+        '<select class="ctl" id="tfilter">' +
+          '<option value="">All documents</option>' +
+          '<option value="current"' + (trainFilter === 'current' ? ' selected' : '') + '>Current</option>' +
+          '<option value="soon"' + (trainFilter === 'soon' ? ' selected' : '') + '>Expiring soon</option>' +
+          '<option value="expired"' + (trainFilter === 'expired' ? ' selected' : '') + '>Expired</option>' +
+        '</select>' +
+        '<span class="small muted">' + rows.length + ' shown</span>' +
+        '<button class="btn btn-sm" id="upload" style="margin-left:auto">+ Upload document</button>' +
+      '</div>' +
+      '<div class="tw"><table><thead><tr><th>Employee</th><th>Document</th><th>Issued</th>' +
+        '<th>Expires</th><th>Status</th><th></th></tr></thead><tbody>' +
+        (rows.length ? rows.map(function (x) {
+          return '<tr><td><span class="t-main">' + esc(P.employeeById(x.t.employeeId).name) + '</span></td>' +
+            '<td>' + esc(x.t.name) + '</td>' +
+            '<td>' + P.fmtDate(x.t.issued) + '</td>' +
+            '<td>' + P.fmtDate(x.t.expires) + '</td>' +
+            '<td>' + tag(x.st) + '</td>' +
+            '<td><button class="btn btn-sm" data-emp="' + esc(x.t.employeeId) + '">Employee</button></td></tr>';
+        }).join('') : '<tr><td colspan="6" class="muted">Nothing matches.</td></tr>') +
+        '</tbody></table></div>' +
+      '<div class="note" style="margin-top:12px">Training <b>requirements by role are not configured</b>, ' +
+      'so no compliance percentage is calculated. These are document records only: what is on file, ' +
+      'when it was issued, and when it expires.</div>';
+  }
+
+  /* ---------- side sheets ---------- */
+  function sheet(title, sub, body) {
+    $('#sheet').innerHTML = '<div class="scrim" id="scrim"></div><div class="sheet">' +
+      '<div class="sheet-hd"><div><h2>' + esc(title) + '</h2>' +
+        (sub ? '<div class="small muted">' + esc(sub) + '</div>' : '') +
+      '</div><button class="x" id="closex" aria-label="Close">&times;</button></div>' +
+      '<div class="sheet-bd">' + body + '</div></div>';
+    $('#scrim').onclick = close; $('#closex').onclick = close;
+  }
+  function close() { $('#sheet').innerHTML = ''; }
+
+  function timeline(empId) {
+    var a = P.ASSIGNMENTS.filter(function (x) { return x.employeeId === empId; })[0];
+    var p = P.employeeById(empId);
+    var rem = P.remindersFor(a, NOW);
+    var ev = [{ t: a.delivered, w: 'Initial text sent', k: 'on' }];
+    rem.forEach(function (r, i) { ev.push({ t: r, w: 'Reminder ' + (i + 1) + ' sent', k: 'miss' }); });
+    if (a.opened) ev.push({ t: a.opened, w: 'First opened', k: 'on' });
+    if (a.lastActive && !a.submitted) ev.push({ t: a.lastActive, w: 'Last activity', k: '' });
+    if (a.submitted) ev.push({ t: a.submitted, w: 'Acknowledged and submitted', k: 'on' });
+    ev.sort(function (x, y) { return x.t - y.t; });
+
+    var body = '<div class="card" style="margin-bottom:14px">' +
+        kvp('Crew', p.crew) +
+        kvp('Assignment token', a.token.slice(0, 9) + '…') +
+        kvp('Status', a.submitted ? 'Completed' : (P.isOverdue(a, NOW) ? 'Overdue' : 'Outstanding')) +
+        kvp('Sections / pages viewed', a.sectionsViewed + ' of ' + a.sectionsTotal) +
+        kvp('Active engagement time', P.mins(a.activeMs)) +
+        kvp('Elapsed since delivery', a.submitted
+          ? Math.round((a.submitted - a.delivered) / 60000) + ' min'
+          : 'still open') +
+      '</div>' +
+      '<h3>Timeline</h3><ul class="tl">' + ev.map(function (e) {
+        return '<li class="' + e.k + '"><div class="w">' + esc(e.w) + '</div>' +
+          '<div class="t">' + P.fmt(e.t) + '</div></li>'; }).join('') + '</ul>' +
+      '<div class="note" style="margin-top:14px">Active engagement time counts only while the page ' +
+      'was open and visible. Backgrounded, closed and locked-screen time is excluded. It is not ' +
+      'proof of reading and not proof of comprehension.</div>';
+    sheet(p.name, 'Toolbox Talk — week of ' + P.fmtDate(P.MONDAY), body);
+  }
+  function kvp(k, v) {
+    return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
+  }
+  function employee(empId) {
+    var p = P.employeeById(empId);
+    var recs = P.TRAINING.filter(function (t) { return t.employeeId === empId; });
+    var body = '<div class="card" style="margin-bottom:14px">' + kvp('Crew', p.crew) +
+        kvp('Role', p.role) + kvp('Documents on file', String(recs.length)) + '</div>' +
+      '<h3>Training documents</h3><div class="tw"><table><thead><tr><th>Document</th>' +
+        '<th>Issued</th><th>Expires</th><th>Status</th></tr></thead><tbody>' +
+        recs.map(function (t) {
+          return '<tr><td>' + esc(t.name) + '</td><td>' + P.fmtDate(t.issued) + '</td>' +
+            '<td>' + P.fmtDate(t.expires) + '</td><td>' + tag(P.certStatus(t, NOW)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+      '<div class="note" style="margin-top:14px">No training requirement is configured for this role, ' +
+      'so nothing here is scored as compliant or non-compliant.</div>';
+    sheet(p.name, 'Training record', body);
+  }
+  function uploadSheet() {
+    sheet('Upload a training document', 'Demo interaction',
+      '<div class="note amber" style="margin-bottom:14px">This stores nothing and sends nothing. ' +
+      'No file leaves this page and no request is made.</div>' +
+      '<div class="card">' +
+        '<label class="small muted">Employee</label>' +
+        '<select class="ctl" style="width:100%;margin:5px 0 12px">' +
+          P.FIELD.map(function (p) { return '<option>' + esc(p.name) + '</option>'; }).join('') + '</select>' +
+        '<label class="small muted">Document name</label>' +
+        '<input class="ctl" style="width:100%;margin:5px 0 12px" placeholder="e.g. OSHA 10">' +
+        '<label class="small muted">File</label>' +
+        '<input type="file" id="fakefile" style="width:100%;margin:5px 0 12px;font-size:13px">' +
+        '<button class="btn btn-primary" id="fakeup" style="width:100%">Upload</button>' +
+        '<p class="small muted" id="upmsg" style="margin:10px 0 0"></p>' +
+      '</div>');
+    $('#fakeup').onclick = function () {
+      var f = $('#fakefile').files;
+      $('#upmsg').textContent = f && f.length
+        ? 'Demo only — "' + f[0].name + '" was not uploaded, stored or transmitted.'
+        : 'Demo only — nothing is uploaded, stored or transmitted.';
+    };
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    $('#tabs').innerHTML = [['overview', 'Overview'], ['talks', 'Toolbox Talks'],
+      ['training', 'Training Documents']].map(function (t) {
+        return '<button data-tab="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
+      }).join('');
+    $('#main').innerHTML = tab === 'overview' ? overview() : tab === 'talks' ? talks() : training();
+    if (tab === 'talks') { $('#sched').innerHTML = schedHtml(); wireSched(); }
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (b) {
+      b.onclick = function () { tab = b.getAttribute('data-tab'); close(); render(); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tl]'), function (b) {
+      b.onclick = function () { timeline(b.getAttribute('data-tl')); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-emp]'), function (b) {
+      b.onclick = function () { employee(b.getAttribute('data-emp')); };
+    });
+    var tf = $('#tfilter'); if (tf) tf.onchange = function () { trainFilter = tf.value; render(); };
+    var up = $('#upload'); if (up) up.onclick = uploadSheet;
+  }
+  function wireSched() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-up]'), function (b) {
+      b.onclick = function () {
+        var i = +b.getAttribute('data-up');
+        var tmp = P.SCHEDULE[i - 1]; P.SCHEDULE[i - 1] = P.SCHEDULE[i]; P.SCHEDULE[i] = tmp;
+        reweek(); render();
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-down]'), function (b) {
+      b.onclick = function () {
+        var i = +b.getAttribute('data-down');
+        var tmp = P.SCHEDULE[i + 1]; P.SCHEDULE[i + 1] = P.SCHEDULE[i]; P.SCHEDULE[i] = tmp;
+        reweek(); render();
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-fmt]'), function (s) {
+      s.onchange = function () { P.SCHEDULE[+s.getAttribute('data-fmt')].format = s.value; render(); };
+    });
+  }
+  function reweek() { P.SCHEDULE.forEach(function (r, i) { r.week = i; }); }
+
+  render();
+})();
+</script>
+</body>
+</html>

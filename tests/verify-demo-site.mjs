@@ -76,6 +76,13 @@ for (const f of textFiles) {
   const phones = src.match(/\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g) || [];
   const real = phones.filter((n) => !/[ .(-]?555[ .)-]/.test(n) && !/^\(?555/.test(n));
   assert.deepEqual(real, [], `${rel(f)} appears to contain a real phone number: ${real[0]}`);
+  // Email addresses must be obviously unusable. Third-party library credits in
+  // the vendored bundle are not ours to rewrite.
+  if (!rel(f).includes('vendor/')) {
+    const mails = (src.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/gi) || [])
+      .filter((m) => !/@example\.(invalid|com)$/i.test(m));
+    assert.deepEqual(mails, [], `${rel(f)} contains a usable email address: ${mails[0]}`);
+  }
   // The confirmed real Choice people may appear (they are the pilot contacts the
   // demo models) but nothing else real should. Guard the obvious secrets.
   assert.ok(!/\bpin\s*[:=]\s*['"]?\d{4,}/i.test(src), `${rel(f)} appears to contain a PIN`);
