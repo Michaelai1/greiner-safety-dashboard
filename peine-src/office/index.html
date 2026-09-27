@@ -10,7 +10,8 @@
 <body>
 <div class="wrap">
   <h1>Peine Safety <span class="pill">Demo Data</span></h1>
-  <p class="lead">Phase 1 — deliberately narrow: this week's talk, who has signed it, and training documents.</p>
+  <p class="lead">Phase 1 — this week's talk and who has signed it, training records, the
+    document library, and the automation that would deliver it. Employee delivery is disabled.</p>
   <div class="tabs" id="tabs"></div>
   <div id="main"></div>
 </div>
@@ -25,7 +26,8 @@
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var tab = 'overview';
-  var trainFilter = '';
+  var trainFilter = '', trainQ = '';
+  var docQ = '', docArchived = false, docOpen = {};
   var NOW = new Date();
 
   /* ---------- shared derivations ---------- */
@@ -195,92 +197,474 @@
 
   /* ---------- 3 · Training (per-employee certification records) ---------- */
   function training() {
-    var rows = P.TRAINING.map(function (t) { return { t: t, st: P.certStatus(t, NOW) }; })
-      .filter(function (x) { return !trainFilter || x.st.key === trainFilter; })
-      .sort(function (a, b) { return a.st.days - b.st.days; });
+    var by = {};
+    P.TRAINING.forEach(function (t) { (by[t.employeeId] = by[t.employeeId] || []).push(t); });
+
+    function worst(id) {
+      var l = by[id] || [];
+      if (!l.length) return { key: 'norecords', label: 'No records', days: 99999 };
+      return l.map(function (t) { return P.certStatus(t, NOW); })
+        .sort(function (a, b) { return a.days - b.days; })[0];
+    }
+    function next(id) {
+      return (by[id] || []).filter(function (t) { return t.expires; })
+        .sort(function (a, b) { return String(a.expires).localeCompare(String(b.expires)); })[0];
+    }
+
     var counts = { current: 0, soon: 0, expired: 0 };
     P.TRAINING.forEach(function (t) { counts[P.certStatus(t, NOW).key]++; });
 
-    return '<div class="grid g4">' +
-        kpi(P.TRAINING.length, 'certification records', '') +
-        kpi(counts.current, 'current', 'ok') +
-        kpi(counts.soon, 'expiring soon', counts.soon ? 'warn' : 'ok', 'within 60 days') +
-        kpi(counts.expired, 'expired', counts.expired ? 'bad' : 'ok') +
-      '</div>' +
-      '<div class="fbar">' +
+    var q = (trainQ || '').trim().toLowerCase();
+    var people = P.FIELD.filter(function (e) {
+      if (q && e.name.toLowerCase().indexOf(q) === -1 &&
+          String(e.crew || '').toLowerCase().indexOf(q) === -1) return false;
+      if (trainFilter && worst(e.id).key !== trainFilter) return false;
+      return true;
+    });
+
+    var html = '<div class="grid g4">' +
+        kpi(P.TRAINING.length, 'records on file', '', 'across ' + P.FIELD.length + ' people') +
+        kpi(counts.current, 'current', 'ok', 'more than 60 days left') +
+        kpi(counts.soon, 'expiring in 60 days', counts.soon ? 'warn' : 'ok', 'renew now') +
+        kpi(counts.expired, 'expired', counts.expired ? 'bad' : 'ok', 'needs renewal') +
+      '</div>';
+
+    html += '<div class="fbar">' +
+        '<input class="ctl" id="tq" placeholder="Search people by name or crew\u2026" value="' +
+          esc(trainQ || '') + '" style="flex:1;min-width:190px">' +
         '<select class="ctl" id="tfilter">' +
-          '<option value="">All records</option>' +
-          '<option value="current"' + (trainFilter === 'current' ? ' selected' : '') + '>Current</option>' +
-          '<option value="soon"' + (trainFilter === 'soon' ? ' selected' : '') + '>Expiring soon</option>' +
-          '<option value="expired"' + (trainFilter === 'expired' ? ' selected' : '') + '>Expired</option>' +
+          [['', 'All statuses'], ['expired', 'Has an expired record'],
+           ['soon', 'Expiring within 60 days'], ['current', 'All current'],
+           ['norecords', 'No records yet']].map(function (o) {
+            return '<option value="' + o[0] + '"' + (trainFilter === o[0] ? ' selected' : '') +
+              '>' + o[1] + '</option>'; }).join('') +
         '</select>' +
-        '<span class="small muted">' + rows.length + ' shown</span>' +
-        '<button class="btn btn-sm" id="upload" style="margin-left:auto">+ Add a record</button>' +
-      '</div>' +
-      '<div class="tw"><table><thead><tr><th>Employee</th><th>Certification</th><th>Issued</th>' +
-        '<th>Expires</th><th>Status</th><th></th></tr></thead><tbody>' +
-        (rows.length ? rows.map(function (x) {
-          return '<tr><td><span class="t-main">' + esc(P.employeeById(x.t.employeeId).name) + '</span></td>' +
-            '<td>' + esc(x.t.name) + '</td>' +
-            '<td>' + P.fmtDate(x.t.issued) + '</td>' +
-            '<td>' + P.fmtDate(x.t.expires) + '</td>' +
-            '<td>' + tag(x.st) + '</td>' +
-            '<td><button class="btn btn-sm" data-emp="' + esc(x.t.employeeId) + '">Employee</button></td></tr>';
-        }).join('') : '<tr><td colspan="6" class="muted">Nothing matches.</td></tr>') +
-        '</tbody></table></div>' +
-      '<div class="note" style="margin-top:12px">Training <b>requirements by role are not configured</b>, ' +
-      'so no compliance percentage is calculated. These are certification records only: what is on ' +
-      'file for each employee, when it was issued, and when it expires. Company-wide manuals, ' +
-      'policies and blank forms are under <b>Documents</b>.</div>';
+        '<span class="small muted">' + people.length + ' of ' + P.FIELD.length + '</span>' +
+        '<button class="btn btn-primary" id="addtrain" style="margin-left:auto">' +
+          '+ Add training</button>' +
+      '</div>';
+
+    html += '<div class="tw"><table><thead><tr><th>Person</th><th>Crew</th>' +
+      '<th class="r">Records</th><th>Next expiry</th><th>Status</th></tr></thead><tbody>' +
+      (people.length ? people.map(function (e) {
+        var st = worst(e.id), nx = next(e.id), n = (by[e.id] || []).length;
+        var cls = st.key === 'expired' ? 't-bad' : st.key === 'soon' ? 't-warn'
+                : st.key === 'norecords' ? 't-grey' : 't-ok';
+        return '<tr class="click" data-emp="' + esc(e.id) + '">' +
+          '<td><span class="t-main">' + esc(e.name) + '</span></td>' +
+          '<td>' + esc(e.crew) + '</td>' +
+          '<td class="r">' + n + '</td>' +
+          '<td>' + (nx ? esc(nx.name) + '<div class="small muted">' + P.fmtDate(nx.expires) +
+            '</div>' : '<span class="muted">\u2014</span>') + '</td>' +
+          '<td><span class="tag ' + cls + '">' + esc(st.label) + '</span></td></tr>';
+      }).join('') : '<tr><td colspan="5" class="muted">Nobody matches that filter.</td></tr>') +
+      '</tbody></table></div>';
+
+    html += '<div class="note" style="margin-top:12px">' +
+      'Training <b>requirements by role are not configured</b>, so no compliance percentage is ' +
+      'calculated. These are certification records only. Company-wide manuals, policies and ' +
+      'blank forms are under <b>Documents</b>.</div>';
+    return html;
+  }
+
+  /* One person's whole training record, the way the production portal shows it. */
+  function trainingProfile(empId) {
+    var e = P.employeeById(empId);
+    if (!e) return;
+    var list = P.TRAINING.filter(function (t) { return t.employeeId === empId; })
+      .sort(function (a, b) {
+        return P.certStatus(a, NOW).days - P.certStatus(b, NOW).days; });
+
+    var body = '<div class="card" style="margin-bottom:14px">' +
+      kvp('Crew', e.crew) + kvp('Role', e.role) +
+      kvp('Records on file', String(list.length)) + '</div>';
+
+    body += '<h3>Training and certifications</h3>' +
+      '<div style="margin:8px 0 12px"><button class="btn btn-primary btn-sm" id="pr-add">' +
+      '+ Add training</button></div>';
+
+    body += list.length ? list.map(function (t) {
+      var st = P.certStatus(t, NOW);
+      var cls = st.key === 'expired' ? 't-bad' : st.key === 'soon' ? 't-warn' : 't-ok';
+      return '<div class="card" style="margin-bottom:9px">' +
+        '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:6px">' +
+          '<div style="flex:1;min-width:0"><span class="t-main">' + esc(t.name) + '</span>' +
+          (t.provider ? '<div class="small muted">' + esc(t.provider) + '</div>' : '') + '</div>' +
+          '<span class="tag ' + cls + '">' + esc(st.label) + '</span></div>' +
+        kvp('Issued', P.fmtDate(t.issued)) + kvp('Expires', P.fmtDate(t.expires)) +
+        (t.credential ? kvp('Credential number', t.credential) : '') +
+        (t.notes ? kvp('Notes', t.notes) : '') +
+        '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">' +
+          (t.certificate
+            ? '<button class="btn btn-sm" data-cert="' + esc(t.id || t.name) + '">' +
+              'Open certificate</button>'
+            : '<span class="small muted" style="align-self:center">No certificate on file</span>') +
+          '<button class="btn btn-sm" data-edittr="' + esc(t.id || t.name) + '">Edit</button>' +
+        '</div></div>';
+    }).join('') : '<div class="note">No training records on file yet.</div>';
+
+    var ev = [];
+    list.forEach(function (t) {
+      if (t.issued) ev.push({ t: t.issued, w: t.name + ' issued', k: 'on' });
+      if (t.expires) {
+        var past = P.certStatus(t, NOW).key === 'expired';
+        ev.push({ t: t.expires, w: t.name + (past ? ' expired' : ' expires'),
+                  k: past ? 'miss' : '' });
+      }
+    });
+    ev.sort(function (a, b) { return String(b.t).localeCompare(String(a.t)); });
+    body += '<h3>History</h3><ul class="tl">' + ev.slice(0, 12).map(function (x) {
+      return '<li class="' + x.k + '"><div class="w">' + esc(x.w) + '</div>' +
+        '<div class="t">' + P.fmtDate(x.t) + '</div></li>'; }).join('') + '</ul>';
+
+    body += '<div class="note" style="margin-top:14px">In the live build a certificate opens ' +
+      'through a signed link that expires in 60 seconds. This preview stores no file and makes ' +
+      'no request.</div>';
+
+    sheet(e.name, 'Training record', body);
+    var ab = $('#pr-add');
+    if (ab) ab.onclick = function () { addTrainingSheet(e.name); };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cert],[data-edittr]'),
+      function (b) {
+        b.onclick = function () {
+          alert('Demo only \u2014 no file is stored here and nothing is transmitted.');
+        };
+      });
+  }
+
+  /* The Add training drawer: tap what they earned, each keeps its own dates. */
+  var TRAIN_TYPES = ['OSHA 10', 'OSHA 30', 'First Aid / CPR', 'Fall Protection',
+    'Forklift Operator', 'Aerial / Scissor Lift', 'Confined Space', 'Hot Work',
+    'Excavation Competent Person', 'Rigging & Signal Person'];
+  function addTrainingSheet(preName) {
+    var picks = [];
+    function today() { return new Date().toISOString().slice(0, 10); }
+    function plus(y) {
+      var d = new Date(); d.setFullYear(d.getFullYear() + y);
+      return d.toISOString().slice(0, 10);
+    }
+    function years(t) {
+      if (/OSHA (10|30)/.test(t)) return 5;
+      if (/First Aid|Fall Protection|Rigging/.test(t)) return 2;
+      if (/Confined Space|Hot Work/.test(t)) return 1;
+      return 3;
+    }
+    function draw() {
+      var b = '<div class="note amber" style="margin-bottom:14px">Demo interaction. Nothing is ' +
+        'stored and no request is made.</div>' +
+        '<label class="small muted">Employee</label>' +
+        '<select class="ctl" id="at-emp" style="width:100%;margin:5px 0 14px">' +
+        P.FIELD.map(function (p) {
+          return '<option' + (p.name === preName ? ' selected' : '') + '>' + esc(p.name) +
+            '</option>'; }).join('') + '</select>' +
+        '<label class="small muted">Training \u2014 tap to add, each keeps its own dates</label>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px">' +
+          TRAIN_TYPES.map(function (t) {
+            return '<button class="btn btn-sm" data-addt="' + esc(t) + '">+ ' + esc(t) +
+              '</button>'; }).join('') +
+          '<button class="btn btn-sm" data-addt="__other">+ Other\u2026</button></div>';
+
+      b += picks.length ? picks.map(function (x, i) {
+        return '<div class="card" style="margin-bottom:9px">' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-bottom:9px">' +
+          (x.custom
+            ? '<input class="ctl at-name" data-i="' + i + '" value="' + esc(x.name) +
+              '" placeholder="Training name" style="flex:1">'
+            : '<div style="flex:1;font-weight:600">' + esc(x.name) + '</div>') +
+          '<button class="btn btn-sm" data-rmt="' + i + '">\u00d7</button></div>' +
+          '<div style="display:flex;gap:8px;margin-bottom:9px">' +
+            '<div style="flex:1"><label class="small muted">Issued</label>' +
+            '<input type="date" class="ctl at-iss" data-i="' + i + '" value="' + x.issued +
+            '" style="width:100%"></div>' +
+            '<div style="flex:1"><label class="small muted">Expires</label>' +
+            '<input type="date" class="ctl at-exp" data-i="' + i + '" value="' + x.expires +
+            '" style="width:100%"></div></div>' +
+          '<div style="display:flex;gap:8px;margin-bottom:9px">' +
+            '<div style="flex:1"><label class="small muted">Provider</label>' +
+            '<input class="ctl" placeholder="Who delivered it" style="width:100%"></div>' +
+            '<div style="flex:1"><label class="small muted">Credential number</label>' +
+            '<input class="ctl" placeholder="Card number" style="width:100%"></div></div>' +
+          '<label class="small muted">Notes</label>' +
+          '<input class="ctl" placeholder="Anything worth recording" style="width:100%;' +
+            'margin-bottom:9px">' +
+          '<label class="small muted">Certificate file</label>' +
+          '<input type="file" class="ctl" style="width:100%;font-size:13px"></div>';
+      }).join('') : '<div class="note">Tap a training above to add it.</div>';
+
+      b += '<button class="btn btn-primary" id="at-save" style="width:100%;margin-top:12px">' +
+        'Save ' + (picks.length || '') + ' training record' + (picks.length === 1 ? '' : 's') +
+        '</button>';
+
+      sheet('Add training', 'Log certifications for one person', b);
+      Array.prototype.forEach.call(document.querySelectorAll('[data-addt]'), function (btn) {
+        btn.onclick = function () {
+          var t = btn.getAttribute('data-addt');
+          if (t === '__other') picks.push({ name: '', custom: true, issued: today(), expires: plus(3) });
+          else picks.push({ name: t, issued: today(), expires: plus(years(t)) });
+          draw();
+        };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('[data-rmt]'), function (btn) {
+        btn.onclick = function () { picks.splice(+btn.getAttribute('data-rmt'), 1); draw(); };
+      });
+      var sv = $('#at-save');
+      if (sv) sv.onclick = function () {
+        alert('Demo only \u2014 ' + picks.length + ' record' + (picks.length === 1 ? '' : 's') +
+          ' would be saved. Nothing is stored and nothing is transmitted.');
+      };
+    }
+    draw();
   }
 
   /* ---------- 4 · Documents (company-wide library) ---------- */
   function documents() {
+    var q = (docQ || '').trim().toLowerCase();
+    var pool = P.DOCS.filter(function (d) {
+      return docArchived ? d.archived : (!d.archived && !d.superseded);
+    });
+    var searching = !!q;
+    var hits = pool.filter(function (d) {
+      return d.title.toLowerCase().indexOf(q) !== -1 ||
+             String(d.desc).toLowerCase().indexOf(q) !== -1;
+    });
     var byCat = {};
-    P.DOCS.forEach(function (d) { (byCat[d.cat] = byCat[d.cat] || []).push(d); });
-    var pages = P.DOCS.reduce(function (a, d) { return a + d.pages; }, 0);
+    pool.forEach(function (d) { (byCat[d.cat] = byCat[d.cat] || []).push(d); });
+    var versions = P.DOCS.filter(function (d) { return d.superseded; }).length;
+    var archived = P.DOCS.filter(function (d) { return d.archived; }).length;
+    var kb = pool.reduce(function (a, d) { return a + d.kb; }, 0);
 
-    var h = '<div class="grid g4">' +
-        kpi(P.DOCS.length, 'documents in the library', '') +
-        kpi(P.DOC_CATS.length, 'categories', '') +
-        kpi(pages, 'pages in total', '') +
-        kpi('Private', 'storage', 'ok', 'signed links only') +
+    var html = '<div class="grid g4">' +
+        kpi(pool.length, 'current documents', '', 'in private storage') +
+        kpi(Object.keys(byCat).length + ' / ' + P.DOC_CATS.length, 'folders in use', '',
+            'grouped by category') +
+        kpi(versions, 'superseded versions', '', versions ? 'history kept' : 'none yet') +
+        kpi((kb / 1024).toFixed(1) + ' MB', 'stored', '', 'across current files') +
       '</div>';
 
-    P.DOC_CATS.forEach(function (c) {
-      var list = byCat[c[0]] || [];
-      if (!list.length) return;
-      h += '<h3 style="margin:22px 0 8px;font-size:14px">' + esc(c[1]) + '</h3>' +
-        '<div class="tw"><table><thead><tr><th>Document</th><th>Revision</th>' +
-          '<th>Pages</th><th>Size</th><th></th></tr></thead><tbody>' +
-        list.map(function (d) {
-          return '<tr><td><span class="t-main">' + esc(d.title) + '</span></td>' +
-            '<td class="small muted">' + esc(d.rev) + '</td>' +
-            '<td>' + d.pages + '</td>' +
-            '<td class="small muted">' + d.kb + ' KB</td>' +
-            '<td><button class="btn btn-sm" data-doc="' + esc(d.id) + '">Open</button></td></tr>';
-        }).join('') + '</tbody></table></div>';
-    });
+    html += '<div class="fbar">' +
+        '<input class="ctl" id="dq" placeholder="Search all documents\u2026" value="' +
+          esc(docQ || '') + '" style="flex:1;min-width:190px">' +
+        '<select class="ctl" id="dscope">' +
+          '<option value="current"' + (docArchived ? '' : ' selected') + '>Current documents</option>' +
+          '<option value="archived"' + (docArchived ? ' selected' : '') + '>Archived \u00b7 ' +
+            archived + '</option></select>' +
+        (!searching && !docArchived
+          ? '<button class="btn btn-sm" id="dexp">Expand all</button>' +
+            '<button class="btn btn-sm" id="dcol">Collapse all</button>' : '') +
+        '<button class="btn btn-primary" id="dupload" style="margin-left:auto">' +
+          '+ Upload documents</button>' +
+      '</div>';
 
-    h += '<div class="note" style="margin-top:14px">In the live build these files sit in a ' +
+    function rows(list) {
+      return '<div class="tw"><table><thead><tr><th>Document</th><th>Version</th>' +
+        '<th>Effective</th><th>Uploaded by</th><th class="r">Size</th><th></th></tr></thead>' +
+        '<tbody>' + list.map(function (d) {
+          return '<tr class="click" data-doc="' + esc(d.id) + '">' +
+            '<td><span class="t-main">' + esc(d.title) + '</span>' +
+              '<div class="small muted">' + esc(d.desc) + '</div></td>' +
+            '<td>' + esc(d.ver || 'v' + d.vno) +
+              (d.vno > 1 ? '<div class="small muted">version ' + d.vno + '</div>' : '') + '</td>' +
+            '<td>' + P.fmtDate(d.eff) + '</td>' +
+            '<td class="small">' + esc(d.by) + '</td>' +
+            '<td class="r small muted">' + d.kb + ' KB</td>' +
+            '<td><button class="btn btn-sm" data-open="' + esc(d.id) + '">Open</button></td>' +
+            '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+
+    if (searching) {
+      html += '<p class="small muted">' + hits.length + ' of ' + pool.length + ' documents</p>' +
+        (hits.length ? rows(hits) : '<div class="note">No document matches your search.</div>');
+    } else if (!pool.length) {
+      html += '<div class="note">Nothing here yet.</div>';
+    } else if (docArchived) {
+      html += rows(pool);
+    } else {
+      P.DOC_CATS.forEach(function (c) {
+        var list = byCat[c[0]];
+        if (!list || !list.length) return;
+        var open = !!docOpen[c[0]];
+        html += '<div class="dsec">' +
+          '<button class="dsec-h' + (open ? ' open' : '') + '" data-dtog="' + esc(c[0]) + '">' +
+            '<span class="chev">\u203a</span><span class="nm">' + esc(c[1]) + '</span>' +
+            '<span class="ct">' + list.length + ' document' + (list.length === 1 ? '' : 's') +
+            '</span></button>' +
+          (open ? '<div class="dsec-b">' + rows(list) + '</div>' : '') + '</div>';
+      });
+      var empties = P.DOC_CATS.filter(function (c) { return !byCat[c[0]]; });
+      if (empties.length) {
+        html += '<p class="small muted">Empty folders: ' +
+          empties.map(function (c) { return esc(c[1]); }).join(', ') + '.</p>';
+      }
+    }
+
+    html += '<div class="note" style="margin-top:14px">In the live build these sit in a ' +
       '<b>private bucket</b>. Opening one mints a signed link that expires in a minute, so ' +
-      'nothing here is reachable by URL. This preview stores no file and makes no request.</div>';
-    return h;
+      'nothing is reachable by URL. Documents are <b>archived, not deleted</b>, and replacing ' +
+      'one adds a version instead of overwriting it. This preview stores no file and makes no ' +
+      'request.</div>';
+    return html;
   }
+
   function docSheet(id) {
     var d = P.DOCS.filter(function (x) { return x.id === id; })[0];
     if (!d) return;
     var cat = (P.DOC_CATS.filter(function (c) { return c[0] === d.cat; })[0] || ['', d.cat])[1];
-    sheet(d.title, cat,
-      '<div class="note amber" style="margin-bottom:14px">Preview only. No file is stored here ' +
-      'and no request is made.</div>' +
-      '<div class="card">' + kvp('Category', cat) + kvp('Revision', d.rev) +
-        kvp('Pages', String(d.pages)) + kvp('Size', d.kb + ' KB') +
+    var chain = P.DOCS.filter(function (x) { return x.title === d.title; })
+      .sort(function (a, b) { return b.vno - a.vno; });
+
+    var body = '<div class="note amber" style="margin-bottom:14px">Preview only. No file is ' +
+      'stored here and no request is made.</div>' +
+      '<div class="card">' + kvp('Folder', cat) +
+        kvp('Version', (d.ver || 'v' + d.vno) + ' \u00b7 version ' + d.vno) +
+        kvp('Effective date', P.fmtDate(d.eff)) +
+        kvp('Uploaded by', d.by) +
+        kvp('Size', d.kb + ' KB') + kvp('Pages', String(d.pages)) +
+        kvp('Status', d.archived ? 'Archived' : d.superseded ? 'Superseded' : 'Current') +
         kvp('Storage', 'Private bucket') +
-        kvp('Access', 'Signed link, 60 seconds') + '</div>' +
-      '<div class="note" style="margin-top:14px">Office staff open documents from here. Field ' +
-      'employees never see this list: their text link opens one Toolbox Talk and nothing else.</div>');
+        kvp('Access', 'Signed link, 60 seconds') + '</div>';
+
+    body += '<h3>Version history</h3>';
+    body += chain.length > 1
+      ? '<ul class="tl">' + chain.map(function (v, i) {
+          return '<li class="' + (i === 0 ? 'on' : '') + '"><div class="w">Version ' + v.vno +
+            (v.ver ? ' \u00b7 ' + esc(v.ver) : '') + (v.id === d.id ? ' (this one)' : '') +
+            '</div><div class="t">' + P.fmtDate(v.eff) + ' \u00b7 ' + esc(v.by) +
+            '</div></li>'; }).join('') + '</ul>'
+      : '<p class="small muted">This is the only version.</p>';
+
+    body += '<h3>Actions</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-sm" data-demoact="1">Edit details</button>' +
+      '<button class="btn btn-sm" data-demoact="1">Replace with a new version</button>' +
+      '<button class="btn btn-sm" data-demoact="1">' +
+        (d.archived ? 'Restore from archive' : 'Archive') + '</button></div>' +
+      '<div class="note" style="margin-top:12px">Archiving keeps the row, so a record of what ' +
+      'was in force is never lost. Office staff open documents from here. Field employees never ' +
+      'see this list: their text link opens one Toolbox Talk and nothing else.</div>';
+
+    sheet(d.title, cat, body);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-demoact]'), function (b) {
+      b.onclick = function () {
+        alert('Demo only \u2014 nothing is stored and nothing is transmitted.');
+      };
+    });
   }
+
+  /* ---------- 5 \u00b7 Automations ---------- */
+  function automations() {
+    var A = P.AUTOMATION, S = P.SETTINGS;
+    var stats = P.ASSIGNMENTS;
+    var done = stats.filter(function (a) { return a.submitted; }).length;
+    var q = P.QUEUE;
+    var byStatus = {};
+    q.forEach(function (x) { byStatus[x.status] = (byStatus[x.status] || 0) + 1; });
+
+    var html = '<div class="grid g4">' +
+        kpi(A.mode, 'weekly delivery', 'warn', 'tests only, to the allowlist') +
+        kpi(stats.length, 'recipient scope', '', 'field employees assigned') +
+        kpi(P.TEST_RECIPIENTS.length, 'test destinations', '', 'nothing else can receive a test') +
+        kpi(byStatus.sent || 0, 'messages sent', 'ok', 'employee delivery is disabled') +
+      '</div>';
+
+    html += '<div class="card" style="margin-bottom:14px"><h3>Weekly Toolbox Talk delivery</h3>' +
+      '<div style="margin-top:10px">' +
+      kvp('Status', A.mode) +
+      kvp('Selected talk', (P.talkById((P.SCHEDULE[0] || {}).talkId) || {}).t || '\u2014') +
+      kvp('Recipient scope', stats.length + ' field employees \u00b7 office employees never included') +
+      kvp('Original send', 'Monday at ' + S.sendTime + ' (configurable)') +
+      kvp('First reminder', S.firstReminderHours + ' hours after the original') +
+      kvp('Recurring reminder', 'every ' + S.repeatReminderHours + ' hours until acknowledged') +
+      kvp('Administrator digest', 'Monday at ' + S.digestTime) +
+      kvp('Next scheduled send', 'nothing scheduled \u2014 delivery disabled') +
+      kvp('Completion cancels reminders', 'Yes \u00b7 enforced in the database') +
+      '</div></div>';
+
+    html += '<div class="card" style="margin-bottom:14px"><h3>Controls</h3>' +
+      '<div style="margin-top:10px">' +
+      kvp('Employee delivery', A.sendingEnabled ? 'Enabled' : 'Disabled') +
+      kvp('Reminder delivery', A.remindersEnabled ? 'Enabled' : 'Disabled') +
+      kvp('Weekly automation', A.paused ? 'Paused' : 'Running') +
+      kvp('Emergency stop', A.emergencyStop ? 'Engaged' : 'Not engaged') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+        '<button class="btn btn-sm" data-demoact="1">Resume the weekly automation</button>' +
+        '<button class="btn btn-sm" data-demoact="1">Engage emergency stop</button></div>' +
+      '<div class="note amber" style="margin-top:12px"><b>Employee delivery is disabled.</b> ' +
+      'Messages are written to the queue and held. In the live build the database refuses to ' +
+      'move any row to <code>queued</code> while this is off, so no worker can send one by ' +
+      'mistake. Turning it on requires typing <code>ENABLE EMPLOYEE MESSAGING</code> exactly.' +
+      '</div></div>';
+
+    html += '<div class="card" style="margin-bottom:14px"><h3>Test destinations</h3>' +
+      '<p class="small muted" style="margin:4px 0 10px">Added through the authenticated portal, ' +
+      'never in code. A test cannot reach anything else.</p>' +
+      '<div class="tw"><table><thead><tr><th>Who</th><th>Number</th><th></th></tr></thead><tbody>' +
+      P.TEST_RECIPIENTS.map(function (r) {
+        return '<tr><td class="t-main">' + esc(r.label) + '</td>' +
+          '<td>' + esc(r.e164) + '</td>' +
+          '<td><button class="btn btn-sm" data-demoact="1">Remove</button></td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm" data-demoact="1">+ Add a destination</button>' +
+        '<button class="btn btn-primary btn-sm" id="au-test">Preview a test message</button>' +
+      '</div></div>';
+
+    html += '<div class="card" style="margin-bottom:14px"><h3>Send queue and delivery log</h3>' +
+      '<p class="small muted" style="margin:4px 0 10px">' + q.length + ' messages created \u00b7 ' +
+      (byStatus.suppressed || 0) + ' suppressed \u00b7 ' + (byStatus.cancelled || 0) +
+      ' cancelled by completion \u00b7 ' + (byStatus.queued || 0) + ' queued \u00b7 ' +
+      (byStatus.sent || 0) + ' sent</p>' +
+      '<div class="tw"><table><thead><tr><th>Kind</th><th>For</th><th>When</th>' +
+      '<th>Status</th><th>Why</th></tr></thead><tbody>' +
+      q.slice(0, 25).map(function (x) {
+        var who = x.who ? (P.employeeById(x.who) || {}).name : (x.dest || '\u2014');
+        var cls = x.status === 'queued' ? 't-warn' : x.status === 'sent' ? 't-ok' : 't-grey';
+        return '<tr><td class="t-main">' + esc(x.kind === 'initial' ? 'Original send'
+            : x.kind === 'reminder' ? 'Reminder' : 'Test') + '</td>' +
+          '<td>' + esc(who) + '</td>' +
+          '<td class="small">' + P.fmt(x.at) + '</td>' +
+          '<td><span class="tag ' + cls + '">' + esc(x.status) + '</span></td>' +
+          '<td class="small muted">' + esc(x.reason || '\u2014') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div class="note" style="margin-top:10px"><b>Nothing has been sent.</b> No row in this ' +
+      'queue has ever reached a sent state.</div></div>';
+
+    html += '<div class="card"><h3>Audit history</h3>' +
+      '<p class="small muted" style="margin:4px 0 10px">Every administrative action. No PIN, ' +
+      'token or full phone number is ever written here.</p>' +
+      '<div class="tw"><table><thead><tr><th>When</th><th>Who</th><th>Action</th>' +
+      '<th>Detail</th></tr></thead><tbody>' +
+      P.AUDIT.map(function (a) {
+        return '<tr><td class="small">' + P.fmt(a.at) + '</td>' +
+          '<td class="small">' + esc(a.who) + '</td>' +
+          '<td class="t-main">' + esc(a.action.replace(/_/g, ' ')) + '</td>' +
+          '<td class="small muted">' + esc(a.detail) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+    return html;
+  }
+
+  function testPreviewSheet() {
+    var r = P.TEST_RECIPIENTS[0];
+    var talk = (P.talkById((P.SCHEDULE[0] || {}).talkId) || {}).t || 'this week\u2019s talk';
+    var body = P.AUTOMATION.template
+      .replace('{first_name}', 'Wes')
+      .replace('{talk_title}', talk)
+      .replace('{link}', '[personalized link]');
+    sheet('Confirm this test', 'Nothing has been queued yet',
+      '<h3>Destination</h3><div class="card" style="margin-bottom:14px">' +
+      kvp('Who', r.label) + kvp('Number', r.e164) + kvp('On the allowlist', 'Yes') + '</div>' +
+      '<h3>The exact message</h3>' +
+      '<div class="card" style="white-space:pre-wrap;font-size:13px;margin-bottom:14px">' +
+      esc('[TEST - Peine pilot, not a real assignment] ' + body) + '</div>' +
+      '<div class="note amber"><b>This is a test.</b> The message says so, and it goes only to ' +
+      'the destination named above. No field employee receives anything.</div>' +
+      '<button class="btn btn-primary" id="tp-go" style="width:100%;margin-top:12px">' +
+      'Send this test to ' + esc(r.label) + '</button>');
+    var g = $('#tp-go');
+    if (g) g.onclick = function () {
+      alert('Demo only \u2014 nothing is queued and nothing is transmitted.');
+    };
+  }
+  
 
   /* ---------- side sheets ---------- */
   function sheet(title, sub, body) {
@@ -366,13 +750,15 @@
   /* ---------- render ---------- */
   function render() {
     $('#tabs').innerHTML = [['overview', 'Overview'], ['talks', 'Toolbox Talks'],
-      ['training', 'Training'], ['documents', 'Documents']].map(function (t) {
+      ['training', 'Training'], ['documents', 'Documents'],
+      ['automations', 'Automations']].map(function (t) {
         return '<button data-tab="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
       }).join('');
     $('#main').innerHTML = tab === 'overview' ? overview()
       : tab === 'talks' ? talks()
       : tab === 'training' ? training()
-      : documents();
+      : tab === 'documents' ? documents()
+      : automations();
     if (tab === 'talks') { $('#sched').innerHTML = schedHtml(); wireSched(); }
 
     Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (b) {
@@ -382,12 +768,47 @@
       b.onclick = function () { timeline(b.getAttribute('data-tl')); };
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-emp]'), function (b) {
-      b.onclick = function () { employee(b.getAttribute('data-emp')); };
+      b.onclick = function () { trainingProfile(b.getAttribute('data-emp')); };
     });
-    Array.prototype.forEach.call(document.querySelectorAll('[data-doc]'), function (b) {
-      b.onclick = function () { docSheet(b.getAttribute('data-doc')); };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-doc],[data-open]'), function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        docSheet(b.getAttribute('data-doc') || b.getAttribute('data-open'));
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-dtog]'), function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-dtog');
+        if (docOpen[k]) delete docOpen[k]; else docOpen[k] = true;
+        render();
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-demoact]'), function (b) {
+      b.onclick = function () {
+        alert('Demo only \u2014 nothing is stored and nothing is transmitted.');
+      };
     });
     var tf = $('#tfilter'); if (tf) tf.onchange = function () { trainFilter = tf.value; render(); };
+    var tq = $('#tq');
+    if (tq) tq.oninput = function () {
+      trainQ = tq.value; render();
+      var n = $('#tq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+    var dq = $('#dq');
+    if (dq) dq.oninput = function () {
+      docQ = dq.value; render();
+      var n = $('#dq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+    var ds = $('#dscope');
+    if (ds) ds.onchange = function () { docArchived = ds.value === 'archived'; render(); };
+    var de = $('#dexp');
+    if (de) de.onclick = function () {
+      P.DOC_CATS.forEach(function (c) { docOpen[c[0]] = true; }); render();
+    };
+    var dc = $('#dcol'); if (dc) dc.onclick = function () { docOpen = {}; render(); };
+    var du = $('#dupload'); if (du) du.onclick = uploadSheet;
+    var at = $('#addtrain'); if (at) at.onclick = function () { addTrainingSheet(''); };
+    var au = $('#au-test'); if (au) au.onclick = testPreviewSheet;
     var up = $('#upload'); if (up) up.onclick = uploadSheet;
   }
   function wireSched() {

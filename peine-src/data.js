@@ -242,6 +242,91 @@
     ['ref',    'Reference']
   ];
 
+  /* Training detail, so the demo shows the same fields the production portal
+     collects. Providers are invented. */
+  var PROVIDERS = ['Example Safety Council', 'Example Training Co', 'Midwest Example Institute',
+                   'Example Equipment School', null];
+  TRAINING.forEach(function (t, i) {
+    t.provider = PROVIDERS[i % PROVIDERS.length];
+    t.credential = (i % 3 === 0)
+      ? t.name.replace(/[^A-Z0-9]/g, '').slice(0, 5).toUpperCase() + '-' + (10000 + i * 7)
+      : null;
+    t.notes = (i % 7 === 0) ? 'Card on file in the office binder.' : null;
+    t.certificate = (i % 3 !== 1);           // most, but not all, have a file
+  });
+
+  /* Company document library, with one superseded version and one archived file
+     so version history and the archive view both have something real to show. */
+  var DOCS = [
+    { id: 'dc1',  title: 'Employee Safety Manual',        cat: 'manual',   ver: '3.1', vno: 2, pages: 64, kb: 1548, eff: '2026-01-05', by: 'Rhoda Quintrell' },
+    { id: 'dc1a', title: 'Employee Safety Manual',        cat: 'manual',   ver: '3.0', vno: 1, pages: 61, kb: 1490, eff: '2024-08-19', by: 'Rhoda Quintrell', superseded: true },
+    { id: 'dc2',  title: 'Fall Protection Policy',        cat: 'policy',   ver: '2.0', vno: 1, pages: 9,  kb: 210,  eff: '2025-11-03', by: 'Rhoda Quintrell' },
+    { id: 'dc3',  title: 'Hazard Communication Program',  cat: 'policy',   ver: '1.4', vno: 1, pages: 14, kb: 288,  eff: '2025-08-11', by: 'Imelda Fanshawe' },
+    { id: 'dc4',  title: 'Personal Protective Equipment', cat: 'policy',   ver: '1.2', vno: 1, pages: 6,  kb: 154,  eff: '2026-02-16', by: 'Rhoda Quintrell' },
+    { id: 'dc5',  title: 'New Hire Orientation Deck',     cat: 'training', ver: '2.2', vno: 1, pages: 28, kb: 740,  eff: '2025-09-02', by: 'Imelda Fanshawe' },
+    { id: 'dc6',  title: 'Ladder Safety Talk',            cat: 'talk',     ver: '1.0', vno: 1, pages: 2,  kb: 96,   eff: '2026-03-02', by: 'Rhoda Quintrell' },
+    { id: 'dc7',  title: 'Blank Job Hazard Analysis',     cat: 'form',     ver: '1.0', vno: 1, pages: 2,  kb: 88,   eff: '2026-03-09', by: 'Imelda Fanshawe' },
+    { id: 'dc8',  title: 'Blank Incident Report',         cat: 'form',     ver: '1.1', vno: 1, pages: 3,  kb: 102,  eff: '2025-09-15', by: 'Imelda Fanshawe' },
+    { id: 'dc9',  title: 'OSHA 1926 Subpart M Extract',   cat: 'ref',      ver: null,  vno: 1, pages: 22, kb: 520,  eff: '2024-12-01', by: 'Rhoda Quintrell' },
+    { id: 'dc10', title: 'Ladder Inspection Checklist',   cat: 'ref',      ver: '1.3', vno: 1, pages: 2,  kb: 79,   eff: '2026-02-24', by: 'Rhoda Quintrell' },
+    { id: 'dc11', title: 'Retired Respirator Policy',     cat: 'policy',   ver: '1.0', vno: 1, pages: 7,  kb: 120,  eff: '2023-06-01', by: 'Imelda Fanshawe', archived: true }
+  ];
+  var DOC_CATS = [
+    ['manual',   'Safety Manual'],
+    ['policy',   'Policies'],
+    ['training', 'Training Materials'],
+    ['talk',     'Toolbox Talks'],
+    ['form',     'Blank Forms'],
+    ['ref',      'Reference Materials'],
+    ['other',    'Other']
+  ];
+  DOCS.forEach(function (d) { d.desc = d.title + ' — kept in private storage.'; });
+
+  /* Automations: the demo PIN is fictional and stated plainly on screen. It is
+     never a real phone number and never anybody's last four digits. */
+  var DEMO_PIN = '2468';
+
+  var TEST_RECIPIENTS = [
+    { id: 'tr1', label: 'Operator handset (demo)', e164: '+15550100001' },
+    { id: 'tr2', label: 'Client handset (demo)',   e164: '+15550100002' }
+  ];
+
+  /* Queue rows derived from the assignments, so the demo logs agree with the
+     roster instead of being invented separately. */
+  var QUEUE = [];
+  ASSIGNMENTS.forEach(function (a, i) {
+    QUEUE.push({ id: 'q' + i, who: a.employeeId, kind: 'initial',
+      status: 'suppressed', reason: 'global sending disabled', at: a.delivered });
+    remindersFor(a, new Date()).forEach(function (r, k) {
+      QUEUE.push({ id: 'q' + i + 'r' + k, who: a.employeeId, kind: 'reminder',
+        status: a.submitted ? 'cancelled' : 'suppressed',
+        reason: a.submitted ? 'assignment completed' : 'reminders disabled', at: r });
+    });
+  });
+  QUEUE.push({ id: 'qt1', who: null, kind: 'test', status: 'queued', reason: null,
+    at: new Date(SEND.getTime() - 3600000), dest: 'Operator handset (demo)' });
+
+  var AUDIT = [
+    { at: new Date(SEND.getTime() - 5400000), who: 'Rhoda Quintrell',
+      action: 'test_send_queued', detail: 'label: Operator handset (demo) · last4: 0001' },
+    { at: new Date(SEND.getTime() - 7200000), who: 'Rhoda Quintrell',
+      action: 'test_recipient_added', detail: 'label: Operator handset (demo) · last4: 0001' },
+    { at: new Date(SEND.getTime() - 86400000), who: 'Rhoda Quintrell',
+      action: 'initial_pins_set', detail: 'employees: 26' },
+    { at: new Date(SEND.getTime() - 90000000), who: 'Rhoda Quintrell',
+      action: 'automation_paused', detail: 'paused: true' }
+  ];
+
+  var AUTOMATION = {
+    paused: true,
+    sendingEnabled: false,
+    remindersEnabled: false,
+    emergencyStop: false,
+    mode: 'Test mode',
+    template: 'Hi {first_name} - this week\u2019s Peine Toolbox Talk is "{talk_title}". ' +
+      'Read and acknowledge it here: {link} Your PIN is the last 4 digits of your mobile number.'
+  };
+
   var PRICING = {
     implementation: 750,
     monthly: 400,
@@ -265,7 +350,9 @@
   window.PEINE = {
     SETTINGS: SETTINGS, FIELD: FIELD, ADMINS: ADMINS, TALKS: TALKS,
     SCHEDULE: SCHEDULE, ASSIGNMENTS: ASSIGNMENTS, TRAINING: TRAINING,
-    DOCS: DOCS, DOC_CATS: DOC_CATS,
+    DOCS: DOCS, DOC_CATS: DOC_CATS, DEMO_PIN: DEMO_PIN,
+    TEST_RECIPIENTS: TEST_RECIPIENTS, QUEUE: QUEUE, AUDIT: AUDIT,
+    AUTOMATION: AUTOMATION,
     PRICING: PRICING, MONDAY: MON, SEND_AT: SEND, DIGEST_AT: DIGEST,
     iso: iso, mondayOf: mondayOf, at: at, fmt: fmt, fmtDate: fmtDate, mins: mins,
     remindersFor: remindersFor, isOverdue: isOverdue, certStatus: certStatus,

@@ -196,16 +196,118 @@ for (const a of P.ASSIGNMENTS) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 6c. Training and Documents follow the Greiner workflow
+ * ------------------------------------------------------------------ */
+{
+  const office = read(path.join(SRC, 'office/index.html'));
+
+  // Training: roster, profile, add drawer with per-item dates and detail fields.
+  assert.ok(/id="addtrain"/.test(office), 'Training needs an Add training button');
+  assert.ok(/id="tq"/.test(office) && /id="tfilter"/.test(office),
+    'Training needs a search box and a status filter');
+  assert.ok(/function trainingProfile/.test(office),
+    'Training needs a per-employee profile');
+  assert.ok(/function addTrainingSheet/.test(office),
+    'Training needs an Add training drawer');
+  assert.ok(/data-addt/.test(office) && /__other/.test(office),
+    'the Add drawer must offer common types plus a custom name');
+  assert.ok(/at-iss/.test(office) && /at-exp/.test(office),
+    'each training must carry its own issue and expiry dates');
+  for (const label of ['Provider', 'Credential number', 'Notes', 'Certificate file']) {
+    assert.ok(office.includes(label), `the Add drawer must collect ${label}`);
+  }
+  assert.ok(/Next expiry/.test(office) && /Records/.test(office),
+    'the roster must show next expiry and a record count');
+  assert.ok(/id="pr-add"/.test(office),
+    'Add training must also be reachable from the employee profile');
+  assert.ok(/requirements by role are not/i.test(office),
+    'Training must say why no compliance percentage is calculated');
+  assert.ok(!/complianceP|compliancePct|compliance_rate/.test(office),
+    'no compliance percentage may be computed');
+
+  // Documents: folders, counts, expand/collapse, versions, archive.
+  assert.ok(/id="dupload"/.test(office), 'Documents needs an Upload documents button');
+  assert.ok(/id="dq"/.test(office), 'Documents needs a search box');
+  assert.ok(/data-dtog/.test(office), 'folders must expand and collapse');
+  assert.ok(/id="dexp"/.test(office) && /id="dcol"/.test(office),
+    'Documents needs expand all and collapse all');
+  assert.ok(/document' \+ \(list\.length === 1/.test(office) || /document' \+/.test(office),
+    'every folder must show a count');
+  assert.ok(/Version history/.test(office), 'a document must show its version history');
+  assert.ok(/archived, not deleted/i.test(office),
+    'Documents must say files are archived rather than deleted');
+  assert.ok(/id="dscope"/.test(office), 'archived documents need their own view');
+  assert.ok(/private bucket/i.test(office) && /signed link/i.test(office),
+    'Documents must explain private storage and signed links');
+
+  // Automations.
+  assert.ok(/function automations/.test(office), 'there must be an Automations section');
+  for (const label of ['Weekly Toolbox Talk delivery', 'Selected talk', 'Recipient scope',
+                       'Original send', 'First reminder', 'Recurring reminder',
+                       'Administrator digest', 'Next scheduled send',
+                       'Completion cancels reminders', 'Employee delivery',
+                       'Reminder delivery', 'Emergency stop', 'Test destinations',
+                       'Send queue and delivery log', 'Audit history']) {
+    assert.ok(office.includes(label), `Automations must show "${label}"`);
+  }
+  assert.ok(/Nothing has been sent/.test(office),
+    'Automations must state plainly that nothing has been sent');
+  assert.ok(/ENABLE EMPLOYEE MESSAGING/.test(office),
+    'Automations must show the confirmation phrase that would enable delivery');
+  assert.ok(/function testPreviewSheet/.test(office),
+    'Automations needs a test preview and confirmation step');
+  assert.ok(/not a real assignment/.test(office),
+    'a test message must be labelled as a test');
+}
+
+/* ------------------------------------------------------------------ *
+ * 6d. The phone demo asks for a PIN, with a clearly fictional one
+ * ------------------------------------------------------------------ */
+{
+  const phone = read(path.join(SRC, 'phone/index.html'));
+  assert.ok(/function renderPin/.test(phone), 'the phone demo needs a PIN step');
+  assert.ok(/view === 'pin'/.test(phone), 'the PIN step must be part of the flow');
+  assert.ok(/Demo PIN: ' \+ esc\(P\.DEMO_PIN\)/.test(phone),
+    'the demo PIN must be displayed, and come from the fixture');
+  assert.equal(typeof P.DEMO_PIN, 'string');
+  assert.ok(/^[0-9]{4}$/.test(P.DEMO_PIN), 'the demo PIN must be four digits');
+
+  // It must not be anybody's real-looking last four.
+  const last4 = new Set(P.FIELD.map((p) => String(p.phone || '').replace(/\D/g, '').slice(-4)));
+  assert.ok(!last4.has(P.DEMO_PIN),
+    'the demo PIN must not match any fixture phone number last four');
+  assert.ok(/made-up number for the preview/i.test(phone),
+    'the demo must say the PIN is fictional');
+  assert.ok(/never stored in plain text|never.*plain text/i.test(phone),
+    'the demo must say the live PIN is never stored in plain text');
+
+  // Rate limiting and lockout are shown.
+  assert.ok(/attempt' \+/.test(phone), 'the demo must count down remaining attempts');
+  assert.ok(/pinLocked/.test(phone) && /Too many attempts/.test(phone),
+    'the demo must show a lockout state');
+  assert.ok(/locked for 15 minutes/.test(phone),
+    'the demo must state the lockout duration');
+
+  // The PIN gates the acknowledgement, not the reading.
+  assert.ok(/view = 'pin'; pinErr/.test(phone),
+    'submitting must route through the PIN step');
+
+  // No real phone digits anywhere in the phone demo.
+  const runs = phone.match(/\b\d{7,}\b/g) || [];
+  assert.deepEqual(runs, [], 'the phone demo must contain no long digit runs');
+}
+
+/* ------------------------------------------------------------------ *
  * 7. The office stays narrow, and the field flow needs no login
  * ------------------------------------------------------------------ */
 {
   const office = read(path.join(SRC, 'office/index.html'));
-  const tabs = [...office.matchAll(/\['(overview|talks|training|documents)', '([^']+)'\]/g)]
+  const tabs = [...office.matchAll(/\['(overview|talks|training|documents|automations)', '([^']+)'\]/g)]
     .map((m) => m[2]);
-  assert.deepEqual(tabs, ['Overview', 'Toolbox Talks', 'Training', 'Documents'],
-    'the office must have exactly four sections, with Training and Documents separate');
+  assert.deepEqual(tabs, ['Overview', 'Toolbox Talks', 'Training', 'Documents', 'Automations'],
+    'the office must have exactly five sections, with Training and Documents separate');
   // Each section needs a renderer, and the combined label must be gone.
-  for (const fn of ['overview', 'talks', 'training', 'documents']) {
+  for (const fn of ['overview', 'talks', 'training', 'documents', 'automations']) {
     assert.ok(new RegExp('function ' + fn + '\\(').test(office),
       `the office needs a ${fn}() renderer`);
   }
