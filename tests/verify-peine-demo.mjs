@@ -175,13 +175,47 @@ for (const a of P.ASSIGNMENTS) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 6b. The document library is a separate, fictional fixture
+ * ------------------------------------------------------------------ */
+{
+  assert.ok(Array.isArray(P.DOCS) && P.DOCS.length >= 8,
+    'there must be a company document library');
+  assert.ok(Array.isArray(P.DOC_CATS) && P.DOC_CATS.length >= 3,
+    'the library must be grouped into categories');
+  const cats = new Set(P.DOC_CATS.map((c) => c[0]));
+  assert.ok(P.DOCS.every((d) => cats.has(d.cat)),
+    'every document must sit in a declared category');
+  assert.equal(new Set(P.DOCS.map((d) => d.id)).size, P.DOCS.length,
+    'document ids must be unique');
+  assert.ok(P.DOCS.every((d) => d.pages > 0 && d.kb > 0),
+    'every document needs a page count and a size');
+  // The library is company-wide: it must not name a person.
+  const people = new Set(P.FIELD.map((p) => p.name).concat(P.ADMINS.map((a) => a.name)));
+  assert.ok(P.DOCS.every((d) => ![...people].some((n) => d.title.includes(n))),
+    'the document library must not name an employee');
+}
+
+/* ------------------------------------------------------------------ *
  * 7. The office stays narrow, and the field flow needs no login
  * ------------------------------------------------------------------ */
 {
   const office = read(path.join(SRC, 'office/index.html'));
-  const tabs = [...office.matchAll(/\['(overview|talks|training)', '([^']+)'\]/g)].map((m) => m[2]);
-  assert.deepEqual(tabs, ['Overview', 'Toolbox Talks', 'Training Documents'],
-    'the office must have exactly three sections');
+  const tabs = [...office.matchAll(/\['(overview|talks|training|documents)', '([^']+)'\]/g)]
+    .map((m) => m[2]);
+  assert.deepEqual(tabs, ['Overview', 'Toolbox Talks', 'Training', 'Documents'],
+    'the office must have exactly four sections, with Training and Documents separate');
+  // Each section needs a renderer, and the combined label must be gone.
+  for (const fn of ['overview', 'talks', 'training', 'documents']) {
+    assert.ok(new RegExp('function ' + fn + '\\(').test(office),
+      `the office needs a ${fn}() renderer`);
+  }
+  assert.ok(!/Training Documents/.test(office),
+    'the combined "Training Documents" label must be gone');
+  // Documents is a company library, distinct from the per-employee records.
+  assert.ok(/P\.DOCS/.test(office), 'Documents must read the document library fixture');
+  assert.ok(/P\.TRAINING/.test(office), 'Training must still read the certification records');
+  assert.ok(/private bucket/i.test(office),
+    'Documents must say the live build keeps files in a private bucket');
   const phone = read(path.join(SRC, 'phone/index.html'));
   for (const banned of ['PIN', 'password', 'Sign in', 'signin', 'login']) {
     const re = new RegExp('(placeholder|label|>)\\s*' + banned, 'i');

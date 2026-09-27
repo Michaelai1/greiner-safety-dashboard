@@ -88,7 +88,7 @@
                 '<td>' + tag(x.st) + '</td></tr>'; }).join('') +
             '</tbody></table></div>' : '<p class="small muted">Nothing expiring.</p>') +
           (soon.length > 7 ? '<p class="small muted" style="margin:8px 0 0">' +
-            (soon.length - 7) + ' more in Training Documents.</p>' : '') + '</div>' +
+            (soon.length - 7) + ' more in Training.</p>' : '') + '</div>' +
 
         '<div class="card"><h3>Latest notification activity</h3>' +
           '<div class="tw"><table><thead><tr><th>When</th><th>Type</th><th>Employee</th></tr></thead><tbody>' +
@@ -193,7 +193,7 @@
     }).join('');
   }
 
-  /* ---------- 3 · Training Documents ---------- */
+  /* ---------- 3 · Training (per-employee certification records) ---------- */
   function training() {
     var rows = P.TRAINING.map(function (t) { return { t: t, st: P.certStatus(t, NOW) }; })
       .filter(function (x) { return !trainFilter || x.st.key === trainFilter; })
@@ -202,22 +202,22 @@
     P.TRAINING.forEach(function (t) { counts[P.certStatus(t, NOW).key]++; });
 
     return '<div class="grid g4">' +
-        kpi(P.TRAINING.length, 'documents on file', '') +
+        kpi(P.TRAINING.length, 'certification records', '') +
         kpi(counts.current, 'current', 'ok') +
         kpi(counts.soon, 'expiring soon', counts.soon ? 'warn' : 'ok', 'within 60 days') +
         kpi(counts.expired, 'expired', counts.expired ? 'bad' : 'ok') +
       '</div>' +
       '<div class="fbar">' +
         '<select class="ctl" id="tfilter">' +
-          '<option value="">All documents</option>' +
+          '<option value="">All records</option>' +
           '<option value="current"' + (trainFilter === 'current' ? ' selected' : '') + '>Current</option>' +
           '<option value="soon"' + (trainFilter === 'soon' ? ' selected' : '') + '>Expiring soon</option>' +
           '<option value="expired"' + (trainFilter === 'expired' ? ' selected' : '') + '>Expired</option>' +
         '</select>' +
         '<span class="small muted">' + rows.length + ' shown</span>' +
-        '<button class="btn btn-sm" id="upload" style="margin-left:auto">+ Upload document</button>' +
+        '<button class="btn btn-sm" id="upload" style="margin-left:auto">+ Add a record</button>' +
       '</div>' +
-      '<div class="tw"><table><thead><tr><th>Employee</th><th>Document</th><th>Issued</th>' +
+      '<div class="tw"><table><thead><tr><th>Employee</th><th>Certification</th><th>Issued</th>' +
         '<th>Expires</th><th>Status</th><th></th></tr></thead><tbody>' +
         (rows.length ? rows.map(function (x) {
           return '<tr><td><span class="t-main">' + esc(P.employeeById(x.t.employeeId).name) + '</span></td>' +
@@ -229,8 +229,57 @@
         }).join('') : '<tr><td colspan="6" class="muted">Nothing matches.</td></tr>') +
         '</tbody></table></div>' +
       '<div class="note" style="margin-top:12px">Training <b>requirements by role are not configured</b>, ' +
-      'so no compliance percentage is calculated. These are document records only: what is on file, ' +
-      'when it was issued, and when it expires.</div>';
+      'so no compliance percentage is calculated. These are certification records only: what is on ' +
+      'file for each employee, when it was issued, and when it expires. Company-wide manuals, ' +
+      'policies and blank forms are under <b>Documents</b>.</div>';
+  }
+
+  /* ---------- 4 · Documents (company-wide library) ---------- */
+  function documents() {
+    var byCat = {};
+    P.DOCS.forEach(function (d) { (byCat[d.cat] = byCat[d.cat] || []).push(d); });
+    var pages = P.DOCS.reduce(function (a, d) { return a + d.pages; }, 0);
+
+    var h = '<div class="grid g4">' +
+        kpi(P.DOCS.length, 'documents in the library', '') +
+        kpi(P.DOC_CATS.length, 'categories', '') +
+        kpi(pages, 'pages in total', '') +
+        kpi('Private', 'storage', 'ok', 'signed links only') +
+      '</div>';
+
+    P.DOC_CATS.forEach(function (c) {
+      var list = byCat[c[0]] || [];
+      if (!list.length) return;
+      h += '<h3 style="margin:22px 0 8px;font-size:14px">' + esc(c[1]) + '</h3>' +
+        '<div class="tw"><table><thead><tr><th>Document</th><th>Revision</th>' +
+          '<th>Pages</th><th>Size</th><th></th></tr></thead><tbody>' +
+        list.map(function (d) {
+          return '<tr><td><span class="t-main">' + esc(d.title) + '</span></td>' +
+            '<td class="small muted">' + esc(d.rev) + '</td>' +
+            '<td>' + d.pages + '</td>' +
+            '<td class="small muted">' + d.kb + ' KB</td>' +
+            '<td><button class="btn btn-sm" data-doc="' + esc(d.id) + '">Open</button></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    });
+
+    h += '<div class="note" style="margin-top:14px">In the live build these files sit in a ' +
+      '<b>private bucket</b>. Opening one mints a signed link that expires in a minute, so ' +
+      'nothing here is reachable by URL. This preview stores no file and makes no request.</div>';
+    return h;
+  }
+  function docSheet(id) {
+    var d = P.DOCS.filter(function (x) { return x.id === id; })[0];
+    if (!d) return;
+    var cat = (P.DOC_CATS.filter(function (c) { return c[0] === d.cat; })[0] || ['', d.cat])[1];
+    sheet(d.title, cat,
+      '<div class="note amber" style="margin-bottom:14px">Preview only. No file is stored here ' +
+      'and no request is made.</div>' +
+      '<div class="card">' + kvp('Category', cat) + kvp('Revision', d.rev) +
+        kvp('Pages', String(d.pages)) + kvp('Size', d.kb + ' KB') +
+        kvp('Storage', 'Private bucket') +
+        kvp('Access', 'Signed link, 60 seconds') + '</div>' +
+      '<div class="note" style="margin-top:14px">Office staff open documents from here. Field ' +
+      'employees never see this list: their text link opens one Toolbox Talk and nothing else.</div>');
   }
 
   /* ---------- side sheets ---------- */
@@ -292,7 +341,7 @@
     sheet(p.name, 'Training record', body);
   }
   function uploadSheet() {
-    sheet('Upload a training document', 'Demo interaction',
+    sheet('Add a certification record', 'Demo interaction',
       '<div class="note amber" style="margin-bottom:14px">This stores nothing and sends nothing. ' +
       'No file leaves this page and no request is made.</div>' +
       '<div class="card">' +
@@ -317,10 +366,13 @@
   /* ---------- render ---------- */
   function render() {
     $('#tabs').innerHTML = [['overview', 'Overview'], ['talks', 'Toolbox Talks'],
-      ['training', 'Training Documents']].map(function (t) {
+      ['training', 'Training'], ['documents', 'Documents']].map(function (t) {
         return '<button data-tab="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
       }).join('');
-    $('#main').innerHTML = tab === 'overview' ? overview() : tab === 'talks' ? talks() : training();
+    $('#main').innerHTML = tab === 'overview' ? overview()
+      : tab === 'talks' ? talks()
+      : tab === 'training' ? training()
+      : documents();
     if (tab === 'talks') { $('#sched').innerHTML = schedHtml(); wireSched(); }
 
     Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (b) {
@@ -331,6 +383,9 @@
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-emp]'), function (b) {
       b.onclick = function () { employee(b.getAttribute('data-emp')); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-doc]'), function (b) {
+      b.onclick = function () { docSheet(b.getAttribute('data-doc')); };
     });
     var tf = $('#tfilter'); if (tf) tf.onchange = function () { trainFilter = tf.value; render(); };
     var up = $('#upload'); if (up) up.onclick = uploadSheet;

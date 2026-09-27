@@ -221,6 +221,27 @@
   }
 
   /* ---------- pricing ----------------------------------------------------- */
+  /* Company-wide document library. Separate from TRAINING, which is per-employee
+     certification records. Every file here is fictional. */
+  var DOCS = [
+    { id: 'dc1', title: 'Employee Safety Manual',        cat: 'manual',  rev: '2026-01', pages: 64, kb: 1548 },
+    { id: 'dc2', title: 'Fall Protection Policy',        cat: 'policy',  rev: '2025-11', pages: 9,  kb: 210 },
+    { id: 'dc3', title: 'Hazard Communication Program',  cat: 'policy',  rev: '2025-08', pages: 14, kb: 288 },
+    { id: 'dc4', title: 'Personal Protective Equipment', cat: 'policy',  rev: '2026-02', pages: 6,  kb: 154 },
+    { id: 'dc5', title: 'Emergency Action Plan',         cat: 'policy',  rev: '2025-06', pages: 11, kb: 246 },
+    { id: 'dc6', title: 'Blank Job Hazard Analysis',     cat: 'form',    rev: '2026-03', pages: 2,  kb: 88 },
+    { id: 'dc7', title: 'Blank Incident Report',         cat: 'form',    rev: '2025-09', pages: 3,  kb: 102 },
+    { id: 'dc8', title: 'Blank Toolbox Talk Sign-In',    cat: 'form',    rev: '2026-01', pages: 1,  kb: 61 },
+    { id: 'dc9', title: 'OSHA 1926 Subpart M Extract',   cat: 'ref',     rev: '2024-12', pages: 22, kb: 520 },
+    { id: 'dc10', title: 'Ladder Inspection Checklist',  cat: 'ref',     rev: '2026-02', pages: 2,  kb: 79 }
+  ];
+  var DOC_CATS = [
+    ['manual', 'Safety manual'],
+    ['policy', 'Policies'],
+    ['form',   'Blank forms'],
+    ['ref',    'Reference']
+  ];
+
   var PRICING = {
     implementation: 750,
     monthly: 400,
@@ -244,6 +265,7 @@
   window.PEINE = {
     SETTINGS: SETTINGS, FIELD: FIELD, ADMINS: ADMINS, TALKS: TALKS,
     SCHEDULE: SCHEDULE, ASSIGNMENTS: ASSIGNMENTS, TRAINING: TRAINING,
+    DOCS: DOCS, DOC_CATS: DOC_CATS,
     PRICING: PRICING, MONDAY: MON, SEND_AT: SEND, DIGEST_AT: DIGEST,
     iso: iso, mondayOf: mondayOf, at: at, fmt: fmt, fmtDate: fmtDate, mins: mins,
     remindersFor: remindersFor, isOverdue: isOverdue, certStatus: certStatus,
