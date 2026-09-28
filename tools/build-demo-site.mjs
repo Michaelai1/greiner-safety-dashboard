@@ -141,6 +141,20 @@ function noindex(html) {
   mk(path.join(OUT, 'phone/vendor'));
   fs.copyFileSync(path.join(HERE, 'vendor/jspdf.umd.min.js'),
     path.join(OUT, 'phone/vendor/jspdf.umd.min.js'));
+  // The logo the phone shell references sits next to its HTML and is untracked, so it
+  // was never copied. Pages answered the missing path with its SPA fallback (HTML, 200),
+  // which decodes to nothing, so every screen rendered a broken image.
+  {
+    const logo = html.match(/LOGO_FILENAME:\s*'([^']+)'/);
+    if (!logo) throw new Error('phone/index.html: LOGO_FILENAME not found');
+    const from = path.join(PHONE, logo[1]);
+    if (!fs.existsSync(from)) {
+      throw new Error(`phone/index.html references ${logo[1]} but ${from} does not exist`);
+    }
+    const to = path.join(OUT, 'phone', logo[1]);
+    mk(path.dirname(to));
+    fs.copyFileSync(from, to);
+  }
 
   // page images for the Guided Talk
   const assets = path.join(PHONE, 'demo-assets');
