@@ -1360,20 +1360,21 @@
       return;
     }
 
-    /* Registry: real units from cs_equipment (backend-ready). Tony has not sent
-       the lift/unit numbers yet, so this is an honest empty list until real
-       units exist — no demo equipment, no invented maintenance schedules.
-       Minimal unit model: unit number, type, assigned job, active state. */
+    /* Registry: real units from cs_equipment. Unit number, type, assigned job
+       and active state; make/model/serial/year/source shown when the rental
+       paperwork provided them. No invented maintenance schedules. */
     var units = (B.equipment || []).slice().sort(function (a, b) {
       return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
     var html = head('Equipment',
-      'Greiner equipment units. Once Tony provides the lift and unit numbers they are added ' +
-      'here and tie to field inspections by unit.', right);
+      'Greiner equipment units by job. Field inspections tie to these by unit number.', right);
     html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
       [{ t: 'Unit' }, { t: 'Type' }, { t: 'Assigned job' }, { t: 'Status', r: 1 }],
       units.map(function (e) {
+        var detail = [[e.year, e.make, e.model].filter(Boolean).join(' '),
+          e.serial ? 'SN ' + e.serial : '', e.source || ''].filter(Boolean).join(' \u00b7 ');
         return '<tr><td><span class="t-main">' + esc(e.unit_number || '\u2014') + '</span></td>' +
-          '<td>' + esc(e.equipment_type || '\u2014') + '</td>' +
+          '<td>' + esc(e.equipment_type || '\u2014') +
+            (detail ? '<div class="t-sub">' + esc(detail) + '</div>' : '') + '</td>' +
           '<td>' + esc(e.job_id ? jobName(e.job_id) : '\u2014') + '</td>' +
           '<td class="r">' + (e.active === false ? pill('p-grey', 'Inactive') : pill('p-ok', 'Active')) + '</td></tr>';
       }), 'Equipment will appear here as units are added to Greiner jobs.') + '</div></div>';
