@@ -3105,10 +3105,9 @@
       note: 'Per active aerial lift on days the unit is used.' },
     { key: 'forklift', label: 'Forklift Inspection',
       types: ['equipment', 'activity'], defaultType: 'equipment',
-      note: 'Per active forklift on days the unit is used.' },
-    { key: 'jobsiteanalysis', label: 'Job Site Analysis Checklist',
-      types: ['daily', 'once', 'activity'], defaultType: 'once',
-      note: 'Separate form from the standard JHA; has its own field workflow and permission key.' }
+      note: 'Per active forklift on days the unit is used.' }
+    // The older checkbox-style JHA (Job Site Analysis Checklist) is no longer
+    // offered now that the guided JHA is final. Its past submissions still open.
   ];
 
   /* Exists as a document or a half-formed idea, but has no approved field
@@ -3118,8 +3117,9 @@
     { label: 'Ladder Inspection',
       missing: ['Form questions need approval', 'Frequency needs confirmation',
                 'Failure workflow needs definition'],
-      why: 'The supplied PDF is a one-page Ladder Variance Form, not an inspection ' +
-           'checklist. Its four questions are already built into the JHA. There is no ' +
+      why: 'Ladder inspections are recorded inside the JHA: the crew enters the Ladder ID, ' +
+           'sees the last inspection, and can record a new one or a defect. The old Ladder ' +
+           'Variance questions were retired on Tony\u2019s instruction. There is no ' +
            'standalone ladder inspection form or permission key.' }
   ];
 
@@ -4924,6 +4924,11 @@
       '.jha-chg b{font-weight:650}' +
       '.jha-add{color:#047857}.jha-rem{color:#b91c1c}' +
       '.jha-na{color:var(--ink-5);font-style:italic}' +
+      '.jha-ans{margin-top:6px;font-size:12.5px}' +
+      '.jha-ans summary{cursor:pointer;font-weight:650;color:var(--accent)}' +
+      '.jha-ans-sec{margin-top:8px}' +
+      '.jha-ans-sec.is-legacy{background:var(--bg-2,#f6f7f9);border-radius:8px;padding:4px 8px}' +
+      '.jha-ans-title{font-weight:700;font-size:12px;margin-bottom:2px}' +
       '</style>';
 
     var html = style;
@@ -5031,6 +5036,25 @@
     return bits.join('');
   }
 
+  /* Every answer on one JHA version, rendered from the shared JHA model
+     (jha-model.js) — the same list the phone review and the PDF use. */
+  function jhaAnswersHtml(r) {
+    if (!window.JhaModel || !r.data) {
+      return '<div class="jha-chg jha-na">The full answers for this version are in its PDF.</div>';
+    }
+    var secs = window.JhaModel.jhaSections(r.data, { crew: { employees: r.employees || [], groups: [] } });
+    return secs.map(function (sec) {
+      return '<div class="jha-ans-sec' + (sec.legacy ? ' is-legacy' : '') + '">' +
+        '<div class="jha-ans-title">' + esc(sec.title) + '</div>' +
+        sec.items.map(function (it) {
+          return '<div class="kv" data-ans-key="' + esc(it.key) + '" style="align-items:flex-start">' +
+            '<span class="k" style="overflow-wrap:anywhere">' + esc(it.label) + '</span>' +
+            '<span class="v" style="overflow-wrap:anywhere' + (it.flagged ? ';color:var(--fail,#c0392b)' : '') + '">' +
+            esc(it.value) + '</span></div>';
+        }).join('') + '</div>';
+    }).join('');
+  }
+
   function jhaHistory(root) {
     var fam = jhaFamilies().filter(function (f) { return f.root === root; })[0];
     if (!fam) { toast('JHA not found.'); return; }
@@ -5051,12 +5075,15 @@
         return '<li' + (isOrig ? ' class="orig"' : '') + '>' +
           '<div class="who">' + (isOrig ? 'Original submission' : 'Revision ' + (r.revision_number - 1)) + '</div>' +
           '<div class="when">' + esc(fmtWhen(r.revised_at)) + ' · ' + esc(r.revised_by) + '</div>' +
+          (r.revision_change_type ? '<div class="jha-chg"><b>What changed:</b> ' + esc(r.revision_change_type) + '</div>' : '') +
           (isOrig
             ? '<div class="jha-chg"><b>Employees:</b> ' + esc((r.employees || []).join(', ') || '—') + '</div>' +
               '<div class="jha-chg"><b>Tasks:</b> ' + esc((r.tasks || []).join(', ') || '—') + '</div>' +
               '<div class="jha-chg"><b>Hazards:</b> ' + esc((r.hazards || []).join(', ') || '—') + '</div>' +
               '<div class="jha-chg"><b>Ladder use:</b> ' + esc(r.ladder_use || '—') + '</div>'
             : jhaChangeHtml(r)) +
+          '<details class="jha-ans"' + (r === fam.latest ? ' open' : '') + '><summary>Submitted answers</summary>' +
+            jhaAnswersHtml(r) + '</details>' +
           '</li>';
       }).join('') + '</ul>' +
       '<p class="small muted" style="margin-top:12px">The original submission is kept in full and is never ' +
@@ -5240,8 +5267,8 @@
         c[1].forEach(function (n, i) { employees.push({ n: n, g: c[0], lead: i === 0 }); });
       });
       return {
-        name: 'Greiner Brothers', defaultMode: 'group', modeConfigurable: true,
-        note: 'Completion mode is configurable for this demo.',
+        name: 'Greiner Brothers', defaultMode: 'group', modeConfigurable: false,
+        note: 'Current Greiner rollout uses foreman-led group completion.',
         groups: CREWS.map(function (c) { return c[0]; }),
         employees: employees
       };
@@ -8323,8 +8350,7 @@
     { key: 'hotwork',        label: 'Hot Work' },
     { key: 'aerial',         label: 'Lift Inspection' },
     { key: 'forklift',       label: 'Forklift' },
-    { key: 'jha',            label: 'JHA' },
-    { key: 'jobsiteanalysis',label: 'Job Site Analysis Checklist' }
+    { key: 'jha',            label: 'JHA' }
   ];
   function loadJobFieldAccess(id) {
     var box = $('#job-fieldaccess'); if (!box) return;

@@ -1490,7 +1490,6 @@
   var INSPF = { job: '', form: '', status: '' };   // All Inspections filters
   var FORM_DEFS = [
     { key: 'jha', title: 'JHA: Task / Hazard / Control' },
-    { key: 'jobsiteanalysis', title: 'JHA: Checklist — Review' },
     { key: 'hotwork', title: 'Hot Work Permit' },
     { key: 'aerial', title: 'Aerial Platform Inspection' },
     { key: 'forklift', title: 'Forklift Inspection' }
@@ -1948,14 +1947,12 @@
   }
   window.addEventListener('pageshow', refreshFeeds);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshFeeds(); });
-  // Both JHA formats are shown so Tony can open and test each during the
-  // pilot meeting. 'jha' = the current Task/Hazard/Control pilot JHA (unchanged).
-  // 'jobsiteanalysis' = the alternate GBI checklist JHA, clearly marked "Review"
-  // until Tony confirms which format Greiner adopts. Hot work stays job-scoped
+  // The guided Task/Hazard/Control JHA is the one JHA offered. The older
+  // checklist JHA ('jobsiteanalysis') is no longer offered for new work; its
+  // past submissions still list and open by form type. Hot work stays job-scoped
   // (hidden where external_hotwork, e.g. Taylorsville → Meyer QR).
   var FIELD_FORMS = [
     { key: 'jha',            label: 'JHA: Task / Hazard / Control' },
-    { key: 'jobsiteanalysis',label: 'JHA: Checklist — Review' },
     { key: 'hotwork',        label: 'Hot Work Permit' },
     { key: 'aerial',         label: 'Aerial Platform Inspection' },
     { key: 'forklift',       label: 'Forklift Inspection' }

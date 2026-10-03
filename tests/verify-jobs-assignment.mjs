@@ -57,7 +57,9 @@ includes('fromJobs: true', 'derived requirements must be marked as coming from J
 /* ------------------------------------------------------------------ *
  * 3. The write path is the guard: unsupported forms cannot be assigned
  * ------------------------------------------------------------------ */
-const SUPPORTED = ['hotwork', 'aerial', 'forklift', 'jha', 'jobsiteanalysis'];
+// The older checkbox-style JHA ('jobsiteanalysis') is no longer offered for new
+// work (Tony, Oct 1): the guided JHA is the one JHA form.
+const SUPPORTED = ['hotwork', 'aerial', 'forklift', 'jha'];
 
 // The canonical list the office already had.
 const permBlock = js.slice(js.indexOf('var FIELD_PERM_FORMS = ['), js.indexOf('function loadJobFieldAccess'));

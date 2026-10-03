@@ -798,8 +798,8 @@ for (const card of ['compliance', 'toolbox', 'jhareview', 'findings']) {
 
   const ready = M.SI_FORMS_READY.map((f) => f.key);
   assert.deepEqual(ready.sort(),
-    ['aerial', 'forklift', 'hotwork', 'jha', 'jobsiteanalysis'],
-    'only forms with a real field workflow may be selectable');
+    ['aerial', 'forklift', 'hotwork', 'jha'],
+    'only forms with a real field workflow may be selectable (the checklist JHA is retired)');
 
   // Every Ready form must be a canonical permission key in the office.
   const permBlock = js.slice(js.indexOf('var FIELD_PERM_FORMS = ['),

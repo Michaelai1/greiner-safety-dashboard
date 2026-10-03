@@ -159,8 +159,11 @@ assert.equal(M.TBT_COMPANIES.choice.modeConfigurable, false,
   "Choice's completion method is confirmed and must be locked");
 assert.equal(M.TBT_COMPANIES.peine.modeConfigurable, false,
   "Peine's completion method is confirmed and must be locked");
-assert.equal(M.TBT_COMPANIES.greiner.modeConfigurable, true,
-  'Greiner must stay configurable');
+assert.equal(M.TBT_COMPANIES.greiner.modeConfigurable, false,
+  'Greiner is locked to the current foreman-led group method');
+assert.equal(M.TBT_COMPANIES.greiner.note,
+  'Current Greiner rollout uses foreman-led group completion.',
+  'Greiner scheduling guidance must match the locked workflow');
 
 // Choice's confirmed submitters are the three with full access.
 const choiceLeads = M.TBT_COMPANIES.choice.employees.filter((e) => e.lead).map((e) => e.n);

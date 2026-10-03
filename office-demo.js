@@ -110,6 +110,44 @@
      ['Potential Release of Energy Kinetic/Gravity'], ['Lockout/tagout before break']]
   ];
 
+  /* Each version's answers in the same field shape the phone stores, so the
+     office renders them through the shared JHA model (jha-model.js) exactly
+     as the phone review and the PDF do. */
+  var CHANGE_TYPES = ['Work scope', 'Hazard or site condition', 'Crew assignment',
+    'Equipment or material', 'Control or procedure', 'Correction or other'];
+  function jhaData(job, crew, day, desc, tasks, hazards, actions, ladder, ji, legacy) {
+    var d = { jhaProjectName: job.name, jhaDescriptionOfWork: desc, jhaDate: wdISO(day),
+      jhaStartTime: '07:00', jhaCompleteTime: '15:30', jhaLocation: job.name + ' (' + job.job_number + ')',
+      jhaAnalysisBy: crew[0], jhaPmSupervisor: 'Demo Project Manager', jhaSubcontractors: 'N/A',
+      jhaJobsiteSafety: 'Hard hat, safety glasses, gloves. Housekeeping at every break.' };
+    tasks.forEach(function (t, i) {
+      d['jhaTask' + (i + 1)] = t;
+      d['jhaHazard' + (i + 1)] = hazards[i] || hazards[0];
+      d['jhaAction' + (i + 1)] = actions[i] || actions[0];
+    });
+    d.jhaLadderUse = ladder;
+    if (ladder === 'yes') {
+      d.jhaLadderId = 'LAD-101';
+      d.jhaLadderInspection = { ladder_id: 'LAD-101', last_inspected_at: wdAt(day + 1, 7, 5),
+        last_inspected_by: 'Alex Rivera (Demo)', status: 'no-open-defects',
+        status_label: 'No open defects reported', open_defect: null };
+    }
+    d.jhaAerialUse = ji % 2 === 0 ? 'yes' : 'no';
+    if (d.jhaAerialUse === 'yes') d.jhaAerialInspectors = crew.slice(0, 2);
+    if (legacy) {
+      // Stored before Tony's Oct 1 change retired these questions. The office
+      // keeps showing them for this record exactly as they were answered.
+      d.jhaNewRevised = 'new';
+      d.jhaLadderUse = 'yes';
+      d.jhaLadderSafe = 'yes';
+      d.jhaLadderWhyNotLift = 'Corridor too narrow for a scissor lift at this location.';
+      d.jhaLadderObstacle1 = 'Sprinkler main';
+      d.jhaLadderObstacle2 = 'Cable tray';
+      delete d.jhaLadderId; delete d.jhaLadderInspection;
+    }
+    return d;
+  }
+
   var JHA = [];
   (function buildJha() {
     JOBS.forEach(function (job, ji) {
@@ -123,6 +161,10 @@
         var openedAt = wdAt(day, 6, 30 + ji * 5);
         for (var r = 1; r <= revs + 1; r++) {
           var last = r === revs + 1;
+          var tasksR = w[1].slice(0, r === 1 ? 1 : w[1].length);
+          var hazR = w[2].slice(0, r === 1 ? 1 : w[2].length);
+          var actR = w[3].slice(0, r === 1 ? 1 : w[3].length);
+          var ladderR = r > 1 && r % 2 === 0 ? 'yes' : 'no';
           JHA.push({
             id: root + '-r' + r, root_jha_id: root,
             previous_revision_id: r === 1 ? null : root + '-r' + (r - 1),
@@ -137,8 +179,11 @@
             tasks: w[1].slice(0, r === 1 ? 1 : w[1].length),
             hazards: w[2].slice(0, r === 1 ? 1 : w[2].length),
             actions: w[3].slice(0, r === 1 ? 1 : w[3].length),
-            ladder_use: r > 1 && r % 2 === 0 ? 'yes' : 'no',
+            ladder_use: ladderR,
             photos: r > 1 ? ['site-' + r + '.jpg'] : [],
+            revision_change_type: r === 1 ? null : CHANGE_TYPES[(r - 2) % CHANGE_TYPES.length],
+            data: jhaData(job, crew, day, w[0] + (r > 1 ? ' Revision ' + (r - 1) + ' added scope.' : ''),
+                          tasksR, hazR, actR, ladderR, ji, job.id === 'demo-job-a' && day === 4),
             changes: r === 1 ? null : {
               tasks_added: w[1].slice(1, 2), tasks_removed: [],
               hazards_added: w[2].slice(1, 2), hazards_removed: [],
@@ -394,13 +439,58 @@
       if (!u) return { ok: false, error: 'unknown user' };
       if (u.job_id !== b.p_job_id) return { ok: false, error: 'user is not on that job' };
       // Only forms the field app actually supports may be stored.
-      var allowed = ['hotwork', 'aerial', 'forklift', 'jha', 'jobsiteanalysis'];
+      // The older checklist JHA is no longer offered for new assignments.
+      var allowed = ['hotwork', 'aerial', 'forklift', 'jha'];
       var keys = (b.p_form_keys || []).filter(function (k) { return allowed.indexOf(k) !== -1; });
       u.form_keys = keys.slice();
       return { ok: true, form_keys: u.form_keys.slice() };
     },
-    cs_portal_incidents: function () { return INCIDENTS; }
+    cs_portal_incidents: function () { return INCIDENTS; },
+    /* The office drawer's lazy "full record" fetch. Same document shape the
+       phone stores in fields.doc. */
+    cs_portal_field_doc: function (body) { return { doc: fieldDoc((body || {}).p_id) }; }
   };
+
+  function docItem(label, response, flagged) {
+    return { label: label, response: response, type: 'text', notes: '', flagged: !!flagged, photos: [] };
+  }
+  function fieldDoc(id) {
+    var jha = JHA.filter(function (j) { return j.id === id; })[0];
+    if (jha) {
+      if (!window.JhaModel) return null;
+      return { title: 'Job Hazard Analysis', subtype: 'jha',
+        sections: window.JhaModel.jhaSections(jha.data, { crew: { employees: jha.employees, groups: [] } })
+          .map(function (sec) {
+            return { title: sec.title, items: sec.items.map(function (it) { return docItem(it.label, it.value, it.flagged); }) };
+          }) };
+    }
+    var sub = OTHER_SUBS.filter(function (x) { return x.id === id; })[0];
+    if (!sub) return null;
+    if (sub.form_type === 'hotwork') {
+      return { title: 'Hot Work Permit', subtype: 'hot_work_permit', sections: [
+        { title: 'Details', items: [
+          docItem('Date', isoDay(new Date(sub.submitted_at))), docItem('Job No.', sub.job_name),
+          docItem('Building / General Location', 'Mechanical room 1'), docItem('Specific Area / Room', 'Pump bay'),
+          docItem('Type of Hot Work Being Performed', 'Welding'),
+          docItem('Description of Work Being Performed', 'Weld pipe supports for the replacement pump header.'),
+          docItem('Name of Person Doing Hot Work', sub.inspector_name)] },
+        { title: 'Fire watch / hot work area monitoring', items: [
+          docItem('Fire watch provided during and for 60 minutes after work including breaks', 'Checked'),
+          docItem('Fire watch supplied with extinguisher and/or water pump can', 'Checked')] }
+      ] };
+    }
+    if (sub.form_type === 'forklift') {
+      var bad = sub.has_defects;
+      return { title: 'Forklift Inspection', subtype: 'forklift', sections: [
+        { title: 'Inspection Checklist', items: [
+          docItem('Horn', 'safe'), docItem('Service Brakes (Report Immediately)', 'safe'),
+          docItem('Hydraulic Leaks', bad ? 'defect' : 'safe', bad),
+          docItem('Overhead Guard', 'safe'),
+          docItem("Manufacturer Operator's Manual Present and Readable", 'Yes')] }
+      ] };
+    }
+    return null;
+  }
 
   window.DEMO = {
     on: ON,
