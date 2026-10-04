@@ -16,6 +16,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const req = createRequire(path.join(process.env.PLAYWRIGHT_NODE_MODULES || ROOT, 'noop.js'));
@@ -29,6 +30,25 @@ const example = JSON.parse(fs.readFileSync(path.join(ROOT, 'provisioning/iu-c799
 const IU_NAMES = (process.env.IU_NAMES_FILE
   ? JSON.parse(fs.readFileSync(process.env.IU_NAMES_FILE, 'utf8')).people : example.people).map((p) => p.name);
 
+/* IU job documents as the server lists them. When IU_DOCS_DIR (default: the
+   source folder) exists, the test serves those exact files to the page and checks
+   that Download Original hands back identical bytes; otherwise small stand-ins. */
+const IU_DOCS_DIR = process.env.IU_DOCS_DIR || '/Users/michaelcarey/Greiner-IU-C799-Documents';
+const IU_DOCS = [
+  ['Safety and Permits', 'Wilhelm Gilbane Line Break Permit', 'F.A. Wilhelm - Gilbane Line Break Permit 2026.pdf', 'Form S-AF-476 (11/08)'],
+  ['Safety and Permits', 'Gilbane Hot Work Permit', 'hot work permit (2).pdf', null],
+  ['Safety and Permits', 'IU Daily Job Safety Analysis', 'JSA PDF.pdf', null],
+  ['Field Operations', 'Greiner Daily Report', 'field Daily Log fillable.pdf', null],
+  ['Field Operations', 'Field Timesheet', 'Fillable field timesheet.pdf', null],
+  ['Field Operations', 'Time and Material Form', 'Time and Material Form 10.1.26.pdf', '10/1/26 (from file name)'],
+].map(([section, title, filename, source_date], i) => {
+  const real = path.join(IU_DOCS_DIR, section, filename);
+  const bytes = fs.existsSync(real) ? fs.readFileSync(real) : Buffer.from(`%PDF-1.4\n% stand-in ${i}\n%%EOF\n`);
+  return { id: 'iu-doc-' + i, job_id: 'iu-c799', section, title, filename, source_date, mime: 'application/pdf',
+    size_bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes, real: fs.existsSync(real) };
+});
+const IU_DOC_META = IU_DOCS.map(({ bytes, real, ...m }) => m);
+
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png',
   '.webp': 'image/webp', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/json' };
 const server = http.createServer((rq, rs) => {
@@ -41,7 +61,7 @@ const server = http.createServer((rq, rs) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
 
-const offMachine = [];
+const offMachine = [], docCalls = [];
 let checks = 0, failures = 0;
 async function check(name, fn) {
   try { await fn(); checks++; console.log(`  ok  ${name}`); }
@@ -50,11 +70,15 @@ async function check(name, fn) {
 
 /* The IU job as it will look after provisioning: active, exact identity, six
    field logins with the comparable job's forms, and nothing else. */
-function injectIu(names) {
+function injectIu([names, docs]) {
   let d;
   Object.defineProperty(window, 'DEMO', { configurable: true, get() { return d; }, set(v) {
     d = v;
     if (!v || !Array.isArray(v.jobs) || v.jobs.some((j) => j.id === 'iu-c799')) return;
+    const real = v.call;
+    v.call = (fn, body) => fn === 'cs_portal_job_docs'
+      ? Promise.resolve((body || {}).p_job_id === 'iu-c799' ? JSON.parse(JSON.stringify(docs)) : [])
+      : real(fn, body);
     v.jobs.push({ id: 'iu-c799', job_number: 'C799-2025', name: 'IU Health Plaza G Med. Gas', status: 'active', company: 'greiner',
       address: '1330 N Senate Ave, Indianapolis, IN 46202', gc_name: 'Wilhelm Gilbane', pm_name: 'Project manager (test)',
       foreman_name: names[0] });
@@ -71,14 +95,29 @@ async function open(hash, { width = 1440, iu = false } = {}) {
   await page.route('**/*', (r) => {
     const u = r.request().url();
     if (u.startsWith(BASE) || u.startsWith('data:') || u.startsWith('blob:')) return r.continue();
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
+    if (/\/functions\/v1\/company-docs$/.test(u)) {
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+      const b = JSON.parse(r.request().postData() || '{}');
+      const doc = IU_DOCS.find((x) => x.id === b.id);
+      docCalls.push(b.action + ':' + b.id + ':' + !!b.download);
+      if (b.action !== 'job_url' || !doc) return r.fulfill({ status: 400, headers: cors, contentType: 'application/json', body: '{"error":"not found or not permitted"}' });
+      return r.fulfill({ headers: cors, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, url: 'https://signed.files.test/' + doc.id, filename: doc.filename, mime: doc.mime, sha256: doc.sha256 }) });
+    }
+    if (u.startsWith('https://signed.files.test/')) {
+      const doc = IU_DOCS.find((x) => u.endsWith('/' + x.id));
+      return r.fulfill({ headers: cors, contentType: 'application/pdf', body: doc.bytes });
+    }
     offMachine.push(u); return r.abort();
   });
-  if (iu) await page.addInitScript(injectIu, IU_NAMES);
+  if (iu) await page.addInitScript(injectIu, [IU_NAMES, IU_DOC_META]);
   await page.goto(BASE + 'office.html?demo=1' + hash);
   await page.waitForSelector('#main .pg-hd', { timeout: 8000 });
   await page.waitForTimeout(300);
   return page;
 }
+const ok_ = (c, m) => assert.ok(c, m);
 const nav = (page, id) => page.evaluate((x) => document.querySelector(`#nav a[href="#${x}"]`).click(), id);
 const rowsIds = (page) => page.$$eval('[data-eq]', (r) => r.map((x) => x.querySelector('.t-main').textContent));
 const drawer = (page) => page.locator('.drawer').last().innerText();
@@ -324,10 +363,24 @@ try {
     await shot(iu, '02-iu-six-user-assignments');
   });
 
-  await check('IU documents: six originals expected, none claimed as uploaded', async () => {
-    const p = await iu.innerText('[data-doc-onboarding="C799-2025"]');
-    assert.ok(p.includes('0 of 6 originals uploaded') && p.includes('None has been uploaded yet'));
-    assert.equal((p.match(/Waiting for the original file/g) || []).length, 6);
+  await check('IU job documents: six originals in two sections; Download Original returns identical bytes', async () => {
+    await iu.waitForSelector('#job-docs [data-jobdoc]');
+    const p = await iu.innerText('#job-docs');
+    for (const d of IU_DOCS) ok_(p.includes(d.title) && p.includes(d.filename), d.title);
+    assert.ok(p.indexOf('Safety and Permits') < p.indexOf('Field Operations'), 'Safety and Permits first');
+    assert.ok(p.includes('Form S-AF-476 (11/08)') && p.includes('10/1/26 (from file name)'), 'source dates shown only where present');
+    assert.equal((p.match(/Open Original/g) || []).length, 6);
+    assert.equal((p.match(/Download Original/g) || []).length, 6);
+    for (const d of IU_DOCS) {
+      const [dl] = await Promise.all([iu.waitForEvent('download'), iu.click(`[data-jddl="${d.id}"]`)]);
+      assert.equal(dl.suggestedFilename(), d.filename, 'original filename kept');
+      const got = crypto.createHash('sha256').update(fs.readFileSync(await dl.path())).digest('hex');
+      assert.equal(got, d.sha256, `${d.title}: downloaded bytes differ from the original`);
+    }
+    if (IU_DOCS.every((d) => d.real)) console.log('       (all six real originals round-tripped byte-for-byte)');
+    assert.ok(docCalls.every((c) => c.startsWith('job_url:iu-doc-') && c.endsWith(':true')), 'downloads ask for the download form of the link');
+    await iu.locator('#job-docs').scrollIntoViewIfNeeded();
+    await shot(iu, '10-iu-job-documents');
   });
 
   await check('IU honest empty states: equipment, JHA history, toolbox, documents', async () => {
@@ -336,8 +389,8 @@ try {
     assert.ok((await iu.innerText('#main')).includes('No equipment is assigned to IU Health Plaza G Med. Gas yet.'));
     await shot(iu, '09a-iu-empty-equipment');
     await nav(iu, 'docs'); await iu.waitForTimeout(200);
-    assert.ok((await iu.innerText('#main')).includes('0 of 6 originals uploaded'));
-    await shot(iu, '09b-iu-documents-onboarding');
+    const lib = await iu.innerText('#main');
+    assert.ok(IU_DOCS.every((d) => !lib.includes(d.title) && !lib.includes(d.filename)), 'IU originals are not in the company library');
     await nav(iu, 'obs'); await iu.waitForTimeout(250);
     await iu.locator('button, a').filter({ hasText: /^JHA Review$/ }).first().click();
     await iu.waitForSelector('#jha-job');

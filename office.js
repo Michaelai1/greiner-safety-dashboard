@@ -8781,7 +8781,7 @@
       '<div class="small muted">Field-login users on this job. Check the forms each person may open — saved per person. Job-level rules still apply.</div>' +
       '</div></div><div class="panel-bd" id="job-fieldaccess">' +
       '<p class="small muted" style="padding:6px 2px">Loading field users…</p></div></div>';
-    html += docOnboardingHtml(j);
+    html += jobDocsPanelHtml(j);
 
     // Safety reports
     html += jobSection('Safety reports', reps.length + ' filed',
@@ -8860,6 +8860,7 @@
     var je = $('#je-add'); if (je) je.onclick = function () { openAddJobEmployee(id); };
     var ic = $('#ice-add'); if (ic) ic.onclick = function () { openAddInternalEmployee(id); };
     loadJobFieldAccess(id);
+    loadJobDocs(id);
     $$('[data-ice]').forEach(function (tr) { tr.onclick = function () { openInternalEmp(id, tr.dataset.ice); }; });
     $$('[data-emp]').forEach(function (tr) {
       tr.onclick = function () { var p = tr.dataset.emp.split('|'); openEmployee(p[0], p[1]); };
@@ -9781,32 +9782,121 @@
       list.map(function (d) { return docRow(d, showWhere); }), empty) + '</div></div>';
   }
 
-  /* Original documents a job is waiting on, keyed by job number and shown only
-     when that job exists. A slot is marked received only after the original
-     file is uploaded and checked against what Greiner sent; until then the
-     panel says plainly that nothing is uploaded. */
-  var JOB_DOC_ONBOARDING = {
-    'C799-2025': { expected: 6, received: [],
-      note: 'Tony sent six original IU attachments. Each will be added here as the original file, with the same ' +
-        'appearance and meaning, once it is available and checked against the original. None has been uploaded yet.' }
-  };
-  function docOnboardingHtml(j) {
-    var cfg = j && JOB_DOC_ONBOARDING[j.job_number]; if (!cfg) return '';
-    var got = cfg.received.length, slots = [];
-    for (var i = 0; i < cfg.expected; i++) {
-      var r = cfg.received[i];
-      slots.push('<li class="' + (r ? 'got' : '') + '"><b>Original ' + (i + 1) + ' of ' + cfg.expected + '</b>' +
-        '<span>' + (r ? esc(r) : 'Waiting for the original file') + '</span></li>');
-    }
-    return '<div class="panel doc-onb" data-doc-onboarding="' + esc(j.job_number) + '"><div class="panel-hd"><div>' +
-      '<h3>' + esc(j.job_number) + ' · ' + esc(j.name) + ' — onboarding documents</h3>' +
-      '<div class="sub">' + got + ' of ' + cfg.expected + ' originals uploaded</div></div>' +
-      pill(got === cfg.expected ? 'p-ok' : 'p-warn', got === cfg.expected ? 'Complete' : 'Waiting on originals') + '</div>' +
-      '<div class="panel-bd"><p class="small muted" style="margin:0 0 10px">' + esc(cfg.note) + '</p>' +
-      '<ol class="doc-onb-list">' + slots.join('') + '</ol></div></div>';
+  /* Original files that belong to one job (cs_job_docs) — never the company
+     library above. Stored privately; opened through a short-lived signed link
+     after the server checks the session may read that job's documents. The
+     bytes reach the browser unchanged. */
+  var JOB_DOC_SECTIONS = ['Safety and Permits', 'Field Operations'];
+  var JOB_DOCS = {};
+  function jobDocsPanelHtml(j) {
+    return '<div class="panel" id="job-docs" data-job-docs="' + esc(j.id) + '"><div class="panel-hd"><div>' +
+      '<h3>Job documents</h3><div class="sub">Original files for ' + esc(j.job_number || j.name) +
+      ' only. Crew members with access to this job can open and download them.</div></div>' +
+      '<button class="btn btn-sm" id="job-doc-add" type="button">Add original</button></div>' +
+      '<div class="panel-bd" id="job-docs-bd" role="status"><p class="small muted">Loading documents…</p></div></div>';
   }
-  function docOnboardingPanels() {
-    return (B.jobs || []).map(docOnboardingHtml).join('');
+  function loadJobDocs(jobId) {
+    var box = $('#job-docs-bd'); if (!box) return;
+    var add = $('#job-doc-add'); if (add) add.onclick = function () { openJobDocUpload(jobId); };
+    post('cs_portal_job_docs', { p_job_id: jobId }).then(function (docs) {
+      if (!Array.isArray(docs)) throw new Error((docs && docs.error) || 'unexpected response');
+      var bd = $('#job-docs-bd'); if (!bd || ($('#job-docs') || {}).dataset.jobDocs !== jobId) return;
+      if (!docs.length) { bd.innerHTML = '<p class="small muted">No documents for this job yet.</p>'; return; }
+      var bySec = {};
+      docs.forEach(function (d) { JOB_DOCS[d.id] = d; (bySec[d.section] = bySec[d.section] || []).push(d); });
+      var secs = Object.keys(bySec).sort(function (a, b) {
+        var ia = JOB_DOC_SECTIONS.indexOf(a), ib = JOB_DOC_SECTIONS.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+      });
+      bd.innerHTML = secs.map(function (sec) {
+        return '<div class="sec-h">' + esc(sec) + '</div><div class="jd-list">' + bySec[sec].map(function (d) {
+          return '<div class="jd" data-jobdoc="' + esc(d.id) + '"><div class="jd-main"><b>' + esc(d.title) + '</b>' +
+            '<span>' + esc(d.section) + ' · ' + esc(d.filename) + '</span>' +
+            '<span>PDF · ' + esc(fmtBytes(d.size_bytes)) + (d.source_date ? ' · ' + esc(d.source_date) : '') + '</span></div>' +
+            '<div class="jd-act"><button class="btn btn-sm btn-gold" data-jdopen="' + esc(d.id) + '">Open Original</button>' +
+            '<button class="btn btn-sm" data-jddl="' + esc(d.id) + '">Download Original</button>' +
+            '<button class="btn btn-sm" data-jdarch="' + esc(d.id) + '">Archive</button></div></div>';
+        }).join('') + '</div>';
+      }).join('');
+      $$('[data-jdopen]').forEach(function (b2) { b2.onclick = function () { jobDocOpen(JOB_DOCS[b2.dataset.jdopen], false, b2); }; });
+      $$('[data-jddl]').forEach(function (b2) { b2.onclick = function () { jobDocOpen(JOB_DOCS[b2.dataset.jddl], true, b2); }; });
+      $$('[data-jdarch]').forEach(function (b2) {
+        b2.onclick = function () {
+          var d = JOB_DOCS[b2.dataset.jdarch];
+          if (!d || !confirm('Archive “' + d.title + '”? It leaves this job’s list; the original file is kept.')) return;
+          b2.disabled = true;
+          post('cs_portal_job_doc_archive', { p_id: d.id, p_archived: true }).then(function (r) {
+            if (!r || r.ok !== true) throw new Error((r && r.error) || 'not saved');
+            toast('Archived ' + d.title); loadJobDocs(jobId);
+          }).catch(function (e) { b2.disabled = false; toast('Not archived — ' + (e.message || 'try again')); });
+        };
+      });
+    }).catch(function (e) {
+      var bd = $('#job-docs-bd'); if (!bd) return;
+      bd.innerHTML = '<p class="small muted">Could not load documents — ' + esc(e.message || 'try again') +
+        '. <button class="btn btn-sm" id="job-docs-retry" type="button">Try again</button></p>';
+      var r = $('#job-docs-retry'); if (r) r.onclick = function () { loadJobDocs(jobId); };
+    });
+  }
+  function jobDocOpen(d, download, btn) {
+    if (!d) return;
+    var w = download ? null : window.open('', '_blank');   // inside the click, so it is not blocked
+    if (btn) btn.disabled = true;
+    docsEdge({ action: 'job_url', id: d.id, download: !!download }).then(function (res) {
+      return fetch(res.url).then(function (r) {
+        if (!r.ok) throw new Error('file unavailable');
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        var u = URL.createObjectURL(new Blob([buf], { type: d.mime || 'application/pdf' }));
+        if (download) {
+          var a = document.createElement('a');
+          a.href = u; a.download = d.filename; document.body.appendChild(a); a.click(); a.remove();
+        } else if (w && !w.closed) w.location = u;
+        else window.open(u, '_blank', 'noopener');
+        setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+      });
+    }).catch(function (e) {
+      if (w && !w.closed) w.close();
+      toast('Could not open document — ' + (e.message || 'try again'));
+    }).then(function () { if (btn) btn.disabled = false; });
+  }
+  function bytesToB64(buf) {
+    var bin = '', u8 = new Uint8Array(buf), i, step = 0x8000;
+    for (i = 0; i < u8.length; i += step) bin += String.fromCharCode.apply(null, u8.subarray(i, i + step));
+    return btoa(bin);
+  }
+  function openJobDocUpload(jobId) {
+    var h = '<div class="f"><label for="jdu-sec">Section</label><select id="jdu-sec">' +
+        JOB_DOC_SECTIONS.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="f"><label for="jdu-title">Display title</label><input type="text" id="jdu-title" autocomplete="off"></div>' +
+      '<div class="f"><label for="jdu-date">Version or date (only if printed on the original)</label><input type="text" id="jdu-date" autocomplete="off"></div>' +
+      '<div class="f"><label for="jdu-file">Original file (PDF)</label><input type="file" id="jdu-file" accept="application/pdf"></div>' +
+      '<p class="small muted">The file is stored exactly as chosen — not converted or compressed.</p>' +
+      '<p class="small eq-msg bad" id="jdu-err" role="alert"></p>' +
+      '<button class="btn btn-gold" id="jdu-save" style="width:100%;justify-content:center">Upload original</button>';
+    drawer('Add a job document', jobName(jobId), h);
+    $('#jdu-save').onclick = function () {
+      var f = $('#jdu-file').files[0], title = $('#jdu-title').value.trim(), err = $('#jdu-err'), btn = $('#jdu-save');
+      if (!title) { err.textContent = 'Enter a display title.'; return; }
+      if (!f) { err.textContent = 'Choose the original PDF.'; return; }
+      if (f.type && f.type !== 'application/pdf') { err.textContent = 'Only PDF originals are accepted here.'; return; }
+      err.textContent = ''; btn.disabled = true; btn.textContent = 'Uploading…';
+      f.arrayBuffer().then(function (buf) {
+        return crypto.subtle.digest('SHA-256', buf).then(function (h2) {
+          var hex = Array.prototype.map.call(new Uint8Array(h2), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+          return docsEdge({ action: 'job_upload', job_id: jobId, section: $('#jdu-sec').value, title: title,
+            source_date: $('#jdu-date').value.trim() || null, filename: f.name, mime: 'application/pdf',
+            sha256: hex, data_base64: bytesToB64(buf) });
+        });
+      }).then(function (res) {
+        closeDrawer();
+        toast(res.doc && res.doc.existing ? 'That file is already on this job.' : 'Uploaded ' + title);
+        loadJobDocs(jobId);
+      }).catch(function (e) {
+        btn.disabled = false; btn.textContent = 'Upload original';
+        err.textContent = 'Not uploaded — ' + (e.message || 'try again');
+      });
+    };
   }
 
   function pgDocs() {
@@ -9854,7 +9944,6 @@
       kpi(String(Object.keys(folders).length), 'folders', 'grouped by category', 'c-grey') +
       kpi(String(fresh), 'added this quarter', 'recent uploads', 'c-grey') +
       '</div>';
-    html += docOnboardingPanels();
 
     html += '<div class="fbar">' +
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +

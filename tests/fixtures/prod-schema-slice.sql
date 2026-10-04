@@ -162,3 +162,11 @@ begin
   if v_n = 0 then return json_build_object('ok', false, 'error', 'not_found'); end if;
   return json_build_object('ok', true, 'id', p_equipment_id, 'job_id', p_job_id);
 end $$;
+
+create table cs_field_submissions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references cs_companies(id), job_id uuid references cs_jobs(id), user_id uuid,
+  inspector_name text, form_type text, form_title text, asset_id text, fields jsonb, photos jsonb,
+  has_defects boolean default false, defect_count int default 0, signature text, pdf_path text,
+  submitted_at timestamptz default now()
+);

@@ -2022,6 +2022,7 @@
       h += '<p class="muted small" style="margin:.2rem 0 .5rem">Hot work on this job uses the general contractor’s permit process.</p>';
     }
     h += '</div></div>';
+    h += '<div class="sec"><div class="sec-h"><h2>Job documents</h2></div><div id="f-docs" role="status"><div class="empty">Loading documents…</div></div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
     h += '</main><div style="height:2rem"></div>';
     host.innerHTML = h;
@@ -2049,6 +2050,78 @@
     var jp = $('#f-job');
     if (jp) jp.onchange = function () { FIELD_SELECTED_JOB_ID = jp.value; renderFieldHome(FIELD_HOME); };
     renderFieldRecent(d.recent || []);
+    loadFieldDocs(job.id);
+  }
+
+  /* Original files for the selected job (cs_job_docs). The server checks that
+     this login has the job; files come through a short-lived signed link and are
+     handed to the phone unchanged. */
+  var FIELD_DOCS = {};
+  var JOB_DOC_ORDER = ['Safety and Permits', 'Field Operations'];
+  function fmtSize(n) { return !n ? '' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+  function loadFieldDocs(jobId) {
+    var box = $('#f-docs'); if (!box) return;
+    if (!jobId) { box.innerHTML = '<div class="empty">No job selected.</div>'; return; }
+    rpc('cs_portal_job_docs', { p_job_id: jobId }).then(function (docs) {
+      if (!FIELD_JOB || FIELD_JOB.id !== jobId) return;   // the user switched jobs meanwhile
+      if (!Array.isArray(docs)) throw new Error('unexpected response');
+      FIELD_DOCS = {};
+      if (!docs.length) { box.innerHTML = '<div class="empty">No documents for this job yet.</div>'; return; }
+      var bySec = {};
+      docs.forEach(function (d) { FIELD_DOCS[d.id] = d; (bySec[d.section] = bySec[d.section] || []).push(d); });
+      var secs = Object.keys(bySec).sort(function (a, b) {
+        var ia = JOB_DOC_ORDER.indexOf(a), ib = JOB_DOC_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+      });
+      var btn = 'flex:1 1 140px;min-height:44px';
+      var h = '<p class="muted small" style="margin:0 0 .7rem">Originals as Greiner received them. Fillable fields work in most PDF apps; some phone browsers show a form read-only — download it and open it in a PDF app to fill it in.</p>';
+      secs.forEach(function (sec) {
+        h += '<h3 style="font-size:.95rem;margin:.9rem 0 .5rem">' + esc(sec) + '</h3>';
+        bySec[sec].forEach(function (d) {
+          h += '<div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem" data-jobdoc="' + esc(d.id) + '">' +
+            '<div style="font-weight:700">' + esc(d.title) + '</div>' +
+            '<div class="muted small" style="overflow-wrap:anywhere">' + esc(d.section) + ' · ' + esc(d.filename) + '</div>' +
+            '<div class="muted small" style="margin-bottom:.55rem">PDF' + (d.size_bytes ? ' · ' + fmtSize(d.size_bytes) : '') +
+              (d.source_date ? ' · ' + esc(d.source_date) : '') + '</div>' +
+            '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+              '<button class="btn btn-gold btn-sm" style="' + btn + '" data-docact="open" data-id="' + esc(d.id) + '">Open Original</button>' +
+              '<button class="btn btn-out btn-sm" style="' + btn + '" data-docact="download" data-id="' + esc(d.id) + '">Download Original</button>' +
+            '</div></div>';
+        });
+      });
+      box.innerHTML = h;
+      Array.prototype.forEach.call(box.querySelectorAll('[data-docact]'), function (b) {
+        b.onclick = function () { openJobDoc(FIELD_DOCS[b.dataset.id], b.dataset.docact === 'download', b); };
+      });
+    }).catch(function (e) {
+      if (!FIELD_JOB || FIELD_JOB.id !== jobId) return;
+      box.innerHTML = '<div class="empty">Could not load documents — ' + esc(e.message || 'try again') +
+        '. <button class="btn btn-out btn-sm" id="f-docs-retry" type="button">Try again</button></div>';
+      var r = $('#f-docs-retry'); if (r) r.onclick = function () { loadFieldDocs(jobId); };
+    });
+  }
+  function openJobDoc(d, download, btn) {
+    if (!d) return;
+    // Open the tab inside the tap so the browser does not block it.
+    var w = download ? null : window.open('', '_blank');
+    if (btn) btn.disabled = true;
+    docsFn('job_url', { id: d.id, download: !!download }).then(function (res) {
+      return fetch(res.url).then(function (r) {
+        if (!r.ok) throw new Error('file unavailable');
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        var u = URL.createObjectURL(new Blob([buf], { type: d.mime || 'application/pdf' }));
+        if (download) {
+          var a = document.createElement('a');
+          a.href = u; a.download = d.filename; document.body.appendChild(a); a.click(); a.remove();
+        } else if (w && !w.closed) w.location = u;
+        else window.open(u, '_blank', 'noopener');
+        setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+      });
+    }).catch(function (e) {
+      if (w && !w.closed) w.close();
+      toast('Could not open document — ' + (e.message || 'try again'));
+    }).then(function () { if (btn) btn.disabled = false; });
   }
   function renderFieldRecent(recent) {
     var box = $('#f-recent'); if (!box) return;
