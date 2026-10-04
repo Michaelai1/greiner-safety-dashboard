@@ -46,7 +46,10 @@ Without a policy the generator prepares the job and roster and reports every per
   `office.js`).
 - **Tony's RFIs** on which fields are dropdowns, free entry, auto-filled, or editable after submission. No form was
   changed for them.
-- **Roster move.** Four of the six are on the roster of C785-2023 (IU Health Plmb Core & Shell). Without
-  `--move-roster` they keep that job, and the IU crew picker on the phone lists only the two people added to C799-2025.
+- **IU crew picker (open follow-up, not complete).** Four of the six are on the roster of C785-2023 (IU Health Plmb
+  Core & Shell), and a roster record holds one job. Decision 2026-10-04: do not move them; provision without
+  `--move-roster`. Until fixed, the IU JHA crew picker lists only the two people added to C799-2025. Fix: have
+  `cs_portal_field_home` build the crew list from field logins with C799-2025 in their job access (plus the roster),
+  so every authorized IU user appears without losing their C785 roster job.
 - **Hot work on a Wilhelm Gilbane site.** C799-2025 gets the default (Greiner's own hot work permit). If the GC
   requires its own permit, set `external_hotwork` for the job, as on the Taylorsville job (C808).
