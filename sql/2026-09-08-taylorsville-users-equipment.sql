@@ -26,28 +26,28 @@
 
 -- ── 1. Field users (Taylorsville Elementary = 8b51bcdd-…, job C808-2026) ────
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Robert Goble', '1113',
+  perform cs_portal_set_user('greiner', 'Robert Goble', '<PIN redacted>',
     'Foreman — Taylorsville', 'field',
     array['8b51bcdd-a67b-47ab-a27b-5fa7c6daad31']::uuid[]);
-  raise notice 'OK: Robert Goble created/updated (PIN 1113)';
+  raise notice 'OK: Robert Goble created/updated (PIN redacted)';
 exception when others then
   raise notice 'FAILED Robert Goble: % (if weak-PIN rejection: pick a different PIN, do not weaken the rule)', sqlerrm;
 end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Ross McNeely', '5692',
+  perform cs_portal_set_user('greiner', 'Ross McNeely', '<PIN redacted>',
     'Field — Taylorsville', 'field',
     array['8b51bcdd-a67b-47ab-a27b-5fa7c6daad31']::uuid[]);
-  raise notice 'OK: Ross McNeely created/updated (PIN 5692)';
+  raise notice 'OK: Ross McNeely created/updated (PIN redacted)';
 exception when others then
   raise notice 'FAILED Ross McNeely: %', sqlerrm;
 end $$;
 
 do $$ begin
-  perform cs_portal_set_user('greiner', 'Kyler Wheeler', '2073',
+  perform cs_portal_set_user('greiner', 'Kyler Wheeler', '<PIN redacted>',
     'Field — Taylorsville', 'field',
     array['8b51bcdd-a67b-47ab-a27b-5fa7c6daad31']::uuid[]);
-  raise notice 'OK: Kyler Wheeler created/updated (PIN 2073)';
+  raise notice 'OK: Kyler Wheeler created/updated (PIN redacted)';
 exception when others then
   raise notice 'FAILED Kyler Wheeler: %', sqlerrm;
 end $$;

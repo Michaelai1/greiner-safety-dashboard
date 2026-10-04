@@ -16,201 +16,201 @@
 -- ============================================================================
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Mike Hamm', '4125', null, 'field',
+  select (cs_portal_set_user('greiner', 'Mike Hamm', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Mike Hamm (4125) hotwork/aerial';
+  raise notice 'OK: Mike Hamm (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Mike Hamm: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Lewayne Grissom', '9629', null, 'field',
+  select (cs_portal_set_user('greiner', 'Lewayne Grissom', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial','forklift','jha']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Lewayne Grissom (9629) hotwork/aerial/forklift/jha';
+  raise notice 'OK: Lewayne Grissom (PIN redacted) hotwork/aerial/forklift/jha';
 exception when others then raise notice 'FAILED Lewayne Grissom: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Troy Ward', '2579', null, 'field',
+  select (cs_portal_set_user('greiner', 'Troy Ward', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Troy Ward (2579) hotwork/aerial';
+  raise notice 'OK: Troy Ward (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Troy Ward: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'John Silvey', '9816', null, 'field',
+  select (cs_portal_set_user('greiner', 'John Silvey', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial','forklift']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: John Silvey (9816) hotwork/aerial/forklift';
+  raise notice 'OK: John Silvey (PIN redacted) hotwork/aerial/forklift';
 exception when others then raise notice 'FAILED John Silvey: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Kamare Robinson', '9463', null, 'field',
+  select (cs_portal_set_user('greiner', 'Kamare Robinson', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial','forklift']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Kamare Robinson (9463) hotwork/aerial/forklift';
+  raise notice 'OK: Kamare Robinson (PIN redacted) hotwork/aerial/forklift';
 exception when others then raise notice 'FAILED Kamare Robinson: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Raymond Randolph', '9656', null, 'field',
+  select (cs_portal_set_user('greiner', 'Raymond Randolph', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Raymond Randolph (9656) hotwork/aerial';
+  raise notice 'OK: Raymond Randolph (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Raymond Randolph: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Wendell Westmoreland', '5377', null, 'field',
+  select (cs_portal_set_user('greiner', 'Wendell Westmoreland', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Wendell Westmoreland (5377) hotwork/aerial';
+  raise notice 'OK: Wendell Westmoreland (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Wendell Westmoreland: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Jacob Champoux', '3154', null, 'field',
+  select (cs_portal_set_user('greiner', 'Jacob Champoux', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial','forklift']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Jacob Champoux (3154) hotwork/aerial/forklift';
+  raise notice 'OK: Jacob Champoux (PIN redacted) hotwork/aerial/forklift';
 exception when others then raise notice 'FAILED Jacob Champoux: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Brayden Eicher', '6758', null, 'field',
+  select (cs_portal_set_user('greiner', 'Brayden Eicher', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Brayden Eicher (6758) hotwork/aerial';
+  raise notice 'OK: Brayden Eicher (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Brayden Eicher: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Justin Fetterhoff', '6614', null, 'field',
+  select (cs_portal_set_user('greiner', 'Justin Fetterhoff', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Justin Fetterhoff (6614) hotwork/aerial';
+  raise notice 'OK: Justin Fetterhoff (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Justin Fetterhoff: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Walker Shephard', '8910', null, 'field',
+  select (cs_portal_set_user('greiner', 'Walker Shephard', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Walker Shephard (8910) hotwork/aerial';
+  raise notice 'OK: Walker Shephard (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Walker Shephard: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Rowland Smith', '1268', null, 'field',
+  select (cs_portal_set_user('greiner', 'Rowland Smith', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial','forklift']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Rowland Smith (1268) hotwork/aerial/forklift';
+  raise notice 'OK: Rowland Smith (PIN redacted) hotwork/aerial/forklift';
 exception when others then raise notice 'FAILED Rowland Smith: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Brendan Nellans', '5541', null, 'field',
+  select (cs_portal_set_user('greiner', 'Brendan Nellans', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Brendan Nellans (5541) hotwork/aerial';
+  raise notice 'OK: Brendan Nellans (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Brendan Nellans: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Micheal Brownlee', '8426', null, 'field',
+  select (cs_portal_set_user('greiner', 'Micheal Brownlee', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Micheal Brownlee (8426) hotwork/aerial';
+  raise notice 'OK: Micheal Brownlee (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Micheal Brownlee: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Austin Beaver', '8042', null, 'field',
+  select (cs_portal_set_user('greiner', 'Austin Beaver', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Austin Beaver (8042) hotwork/aerial';
+  raise notice 'OK: Austin Beaver (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Austin Beaver: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Alan Price', '6059', null, 'field',
+  select (cs_portal_set_user('greiner', 'Alan Price', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Alan Price (6059) hotwork/aerial';
+  raise notice 'OK: Alan Price (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Alan Price: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Jammal Howard', '4056', null, 'field',
+  select (cs_portal_set_user('greiner', 'Jammal Howard', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Jammal Howard (4056) hotwork/aerial';
+  raise notice 'OK: Jammal Howard (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Jammal Howard: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Nick Nielsen', '5731', null, 'field',
+  select (cs_portal_set_user('greiner', 'Nick Nielsen', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Nick Nielsen (5731) hotwork/aerial';
+  raise notice 'OK: Nick Nielsen (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Nick Nielsen: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Thomas Heffernan', '1129', null, 'field',
+  select (cs_portal_set_user('greiner', 'Thomas Heffernan', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Thomas Heffernan (1129) hotwork/aerial';
+  raise notice 'OK: Thomas Heffernan (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Thomas Heffernan: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Cody Rose', '4189', null, 'field',
+  select (cs_portal_set_user('greiner', 'Cody Rose', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Cody Rose (4189) hotwork/aerial';
+  raise notice 'OK: Cody Rose (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Cody Rose: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Joey Jessup', '5283', null, 'field',
+  select (cs_portal_set_user('greiner', 'Joey Jessup', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Joey Jessup (5283) hotwork/aerial';
+  raise notice 'OK: Joey Jessup (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Joey Jessup: %', sqlerrm; end $$;
 
 do $$ declare uid uuid; begin
-  select (cs_portal_set_user('greiner', 'Cory Vinson', '5019', null, 'field',
+  select (cs_portal_set_user('greiner', 'Cory Vinson', '<PIN redacted>', null, 'field',
            array['87906cbc-1809-4d56-b4e1-7973562221b2']::uuid[]) ->> 'id')::uuid into uid;
   insert into cs_field_user_forms (user_id, job_id, form_keys)
     values (uid, '87906cbc-1809-4d56-b4e1-7973562221b2', array['hotwork','aerial']::text[])
     on conflict (user_id, job_id) do update set form_keys = excluded.form_keys, updated_at = now();
-  raise notice 'OK: Cory Vinson (5019) hotwork/aerial';
+  raise notice 'OK: Cory Vinson (PIN redacted) hotwork/aerial';
 exception when others then raise notice 'FAILED Cory Vinson: %', sqlerrm; end $$;
 
 -- Verify: expect 22 field users on Purdue with their allow-lists.

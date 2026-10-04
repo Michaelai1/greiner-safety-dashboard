@@ -62,8 +62,8 @@ one signs you in on the other. Same PIN, same session, one origin.
 ### Add or change a person
 
 ```sql
-select cs_portal_set_user('greiner', 'Tony Sweet', '4827', 'Safety');
-select cs_portal_set_user('greiner', 'Randy Greiner', '9153', 'Owner');
+select cs_portal_set_user('greiner', 'Tony Sweet', '<PIN redacted>', 'Safety');
+select cs_portal_set_user('greiner', 'Randy Greiner', '<PIN redacted>', 'Owner');
 ```
 
 Same call creates or updates. Minimum 4 digits. It refuses:

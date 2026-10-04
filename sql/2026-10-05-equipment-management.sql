@@ -354,6 +354,10 @@ revoke all on function public.cs_portal_field_ladder_safe(text, uuid, boolean, t
 revoke all on function public.cs_portal_field_ladder_defect(text, uuid, text, boolean, jsonb, text, int) from public;
 revoke all on function public.cs_field_ladder_guard(text, uuid) from public;
 revoke all on function public.cs_session_actor(text) from public;
+-- Supabase grants new functions to anon/authenticated directly; internal helpers must not be API-callable.
+revoke all on function public.cs_field_ladder_guard(text, uuid) from anon, authenticated;
+revoke all on function public.cs_session_actor(text) from anon, authenticated;
+revoke all on function public.cs_equipment_events_immutable() from public, anon, authenticated;
 grant execute on function public.cs_portal_equipment_add(text, text, text, text, text, text, text, text, text, uuid) to anon, authenticated;
 grant execute on function public.cs_portal_equipment_update(text, uuid, text, text, text, text, text, text, text, text) to anon, authenticated;
 grant execute on function public.cs_portal_equipment_set_job(text, uuid, uuid) to anon, authenticated;
