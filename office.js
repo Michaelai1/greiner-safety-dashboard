@@ -1257,6 +1257,11 @@
   function eqInService(e) { return !!e && !e.archived_at && e.active !== false; }
   function eqDnu(e) { return eqInService(e) && !!e.open_defect; }
   function eqById(id) { return (B.equipment || []).filter(function (e) { return e.id === id; })[0]; }
+  // Year, make, model, serial and source, when the rental paperwork gave them.
+  function eqDetail(e) {
+    return [[e.year, e.make, e.model].filter(Boolean).join(' '),
+      e.serial ? 'SN ' + e.serial : '', e.source || ''].filter(Boolean).join(' · ');
+  }
   function eqService(e) {
     if (e.archived_at) return { k: 'archived', cls: 'p-grey', label: 'Archived' };
     if (e.active === false) return { k: 'inactive', cls: 'p-grey', label: 'Inactive' };
@@ -1409,7 +1414,7 @@
       if (eqF.job === '__none' && e.job_id) return false;
       if (eqF.job && eqF.job !== '__none' && e.job_id !== eqF.job) return false;
       if (eqF.type && e.equipment_type !== eqF.type) return false;
-      if (q && [e.unit_number, e.equipment_type, e.description, e.make, e.model, e.serial]
+      if (q && [e.unit_number, e.equipment_type, e.description, e.make, e.model, e.serial, e.year, e.source]
         .join(' ').toLowerCase().indexOf(q) === -1) return false;
       return true;
     });
@@ -1461,7 +1466,8 @@
         return '<tr class="click" data-eq="' + esc(e.id) + '" tabindex="0">' +
           '<td><span class="t-main">' + esc(e.unit_number || '—') + '</span>' +
             (e.description ? '<div class="t-sub">' + esc(e.description) + '</div>' : '') + '</td>' +
-          '<td>' + esc(e.equipment_type || '—') + '</td>' +
+          '<td>' + esc(e.equipment_type || '—') +
+            (eqDetail(e) ? '<div class="t-sub">' + esc(eqDetail(e)) + '</div>' : '') + '</td>' +
           '<td>' + pill(s.cls, s.label) + '</td>' +
           '<td>' + (e.job_id ? esc(jobName(e.job_id)) : '<span class="muted">Unassigned</span>') + '</td>' +
           '<td>' + (last ? esc(fmtWhen(last.at)) + '<div class="t-sub">' + esc(last.by || '') + '</div>' : '<span class="muted">None recorded</span>') + '</td>' +

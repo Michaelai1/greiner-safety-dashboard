@@ -1,0 +1,12 @@
+-- Two new Skyworks rental scissor lifts for Eric Sichting @ Indy Blind & Deaf
+-- School (C802-2025, job 1484be94-...). Applied to production 2026-10-02.
+--
+-- Also (migration equipment_make_model_serial): cs_equipment gained
+-- make / model / serial / year / source columns now that Tony provides those
+-- details, and cs_portal_bundle exposes them on the 'equipment' key.
+--
+--   5311Q — Scissor lift — 12' electric — 2019 Genie GRC-12  — SN GRCP-5311  — Rental — Skyworks
+--   53313 — Scissor lift — 13' electric — 2025 JLG ES1330L CNT — SN M200113829 — Rental — Skyworks
+--
+-- Idempotent upsert on (company_id, unit_number); equipment_type matches the
+-- fleet's canonical strings. Exact SQL in the applied migration + session log.

@@ -113,6 +113,7 @@ try {
     assert.ok(lad.includes('Do Not Use') && lad.includes('Demo Job B'), 'a Do Not Use ladder is visibly unsafe');
     const sl = await page.innerText('[data-eq="demo-eq-1"]');
     assert.ok(sl.includes('Alex Rivera (Demo)'), 'lift last inspection comes from the field submissions naming the unit');
+    assert.ok(sl.includes('Genie GS-1930 · Demo'), 'make, model and source line from main is kept');
     assert.ok((await page.innerText('[data-eq="demo-eq-10"]')).includes('Unassigned'));
     assert.equal(await page.innerText('#nav a[href="#equipment"] .badge'), '1', 'the nav badge counts Do Not Use units');
     await shot(page, '03-equipment-inventory');
