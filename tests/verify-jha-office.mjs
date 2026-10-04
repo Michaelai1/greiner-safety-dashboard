@@ -108,10 +108,22 @@ try {
     assert.deepEqual(result.shown, result.expected);
     const all = result.shown.flat().join('\n');
     assert.ok(all.includes('Estimated Time of Completion = 15:30'));
-    assert.ok(all.includes('What competent person or persons will conduct the lift inspections? = Demo Foreman, Alex Rivera (Demo)'));
-    assert.ok(all.includes('Ladder ID = LAD-101') && all.includes('Last inspected by = Alex Rivera (Demo)'));
+    assert.ok(all.includes('Who will conduct the lift inspections? = Demo Foreman, Alex Rivera (Demo)'));
+    assert.ok(all.includes('Which ladder or ladders will be used today? = LAD-101'));
+    assert.ok(all.includes('Ladder LAD-101 \u2014 Inspected by = Alex Rivera (Demo)'));
+    assert.ok(all.includes('Ladder LAD-101 \u2014 Inspection for today\u2019s use = Confirmed safe for use by Demo Foreman'));
+    assert.ok(all.includes('Which ladder or ladders will be used today? = LAD-101, LAD-204'), 'multiple ladders');
+    assert.ok(/Ladder LAD-317 \u2014 Defect reported = Cracked right side rail below the third step \u00b7 marked Do Not Use and removed from service/.test(all),
+      'a defect reported on the JHA stays visible in office detail');
     const t = await drawerText(page);
-    assert.ok(t.includes('What changed:'), 'revisions show what changed');
+    assert.ok(!t.includes('What changed:'), 'no manual change category');
+    const diffs = await page.$$eval('[data-rev-diff]', (d) => d.map((x) => x.textContent));
+    assert.equal(diffs.length, 3, 'each revision shows its stored field-level difference');
+    assert.ok(diffs.every((x) => /Fields changed \(\d+\)/.test(x)));
+    assert.ok(t.includes('Revision note: Crew moved to the west corridor after lunch.'), 'the optional note shows');
+    const stored = await page.evaluate(() => window.DEMO.jha.filter((r) => r.root_jha_id === 'jha-a-1' && r.revision_number > 1)
+      .map((r) => r.revision_diff.length));
+    assert.ok(stored.every((n) => n > 0), 'diffs are stored on the revision records');
     assert.ok(!/one-man scissor lift|Above-ceiling/.test(all), 'current JHAs carry no retired questions');
   });
 
@@ -146,6 +158,24 @@ try {
     await p.waitForSelector('#crew-doc .kv', { timeout: 5000 });
     const doc = await p.locator('#crew-doc').innerText();
     assert.ok(doc.includes("Manufacturer Operator's Manual Present and Readable") && doc.includes('Yes'), doc);
+    await p.close();
+  });
+
+  await check('30. Toolbox rollout: lead presentation and each acknowledgment are separate', async () => {
+    const p = await open('#talks');
+    await p.click('[data-tbt-tab="completion"]');
+    await p.waitForSelector('#tbtRollout', { timeout: 5000 });
+    const t = await p.locator('#tbtRollout').innerText();
+    for (const bit of ['Fall Protection', 'Purdue Academic Building', 'Designated lead', 'Demo Lead Foreman',
+      'Lead presentation', 'Marked present by the lead', 'Individual acknowledgments', '2 of 3', 'Still outstanding', 'Jordan Blake (Demo)',
+      'Active engagement']) {
+      assert.ok(t.toLowerCase().includes(bit.toLowerCase()), `rollout panel is missing "${bit}"`);
+    }
+    const jordan = await p.locator('[data-rollout-person="Jordan Blake (Demo)"]').innerText();
+    assert.ok(/Marked present by lead/i.test(jordan) && /Outstanding/i.test(jordan),
+      'present per the lead but not yet acknowledged must read as outstanding, not complete');
+    const alex = await p.locator('[data-rollout-person="Alex Rivera (Demo)"]').innerText();
+    assert.ok(/short/.test(alex), 'very short engagement is flagged');
     await p.close();
   });
 

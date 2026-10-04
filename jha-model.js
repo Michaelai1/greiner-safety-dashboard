@@ -29,10 +29,13 @@
        { mode: 'workweek' }                       — inside the current workweek */
   var LADDER_INSPECTION_CADENCE = { mode: 'informational', maxAgeDays: null };
 
-  var REVISION_CHANGE_TYPES = [
-    'Work scope', 'Hazard or site condition', 'Crew assignment',
-    'Equipment or material', 'Control or procedure', 'Correction or other'
-  ];
+  /* Exact attestation wording, versioned so a stored record always says what
+     the person agreed to. Change the text => bump the version. */
+  var LADDER_SAFE_ATTESTATION = { version: 'ladder-safe-use-v1',
+    text: 'I inspected this ladder before use today and found it safe to use.' };
+  var LADDER_DEFECT_ACK = { version: 'ladder-do-not-use-v1',
+    text: 'I marked or tagged this ladder \u2018Do Not Use\u2019 and removed it from service.' };
+  var SIGN_IN_REQUIRED = 'Sign in with your employee access before recording an inspection.';
 
   /* ---------------- time (Indianapolis) ---------------- */
   var _fmt = null;
@@ -153,7 +156,7 @@
       company_id: req.companyId || null, job_id: req.jobId || null,
       work_date: workweekOf(at).date, original_submitted_at: at, revised_at: null,
       submitted_by: req.by || '', revised_by: req.by || '', status: 'submitted',
-      revision_change_type: null, revision_note: null,
+      revision_note: null, revision_diff: null,
       data: normalizeJhaData(req.data || {}), crew: req.crew || { employees: [], groups: [] },
       photos: req.photos || []
     });
@@ -162,8 +165,9 @@
   }
 
   /* Append the next revision. Refuses (never overwrites) when the JHA moved on
-     since the form opened (stale), when the cap is reached, when the window is
-     closed, or when no change type was chosen. */
+     since the form opened (stale), when the cap is reached, or when the window
+     is closed. What changed is computed, field by field — the foreman is never
+     asked to explain each change; an optional note can add context. */
   function submitRevision(store, req, serverNow) {
     var e = reviseEligibility(store, req.rootId, { now: serverNow, jobId: req.jobId, companyId: req.companyId });
     if (!e.ok) return { ok: false, code: e.code, message: e.message };
@@ -171,19 +175,19 @@
       return { ok: false, code: 'stale',
         message: 'This JHA was revised after you opened it. Refresh to load the latest version, then make your changes again.' };
     }
-    if (REVISION_CHANGE_TYPES.indexOf(req.changeType) === -1) {
-      return { ok: false, code: 'reason', message: 'Choose what changed.' };
-    }
     var at = new Date(serverNow).toISOString();
+    var nextData = normalizeJhaData(req.data || {});
+    var nextCrew = req.crew || { employees: [], groups: [] };
     var rec = freezeDeep({
       id: req.rootId + '-v' + (e.head.revision_number + 1), root_jha_id: req.rootId,
       previous_revision_id: e.head.id, revision_number: e.head.revision_number + 1,
       company_id: e.original.company_id || null, job_id: e.original.job_id,
       work_date: e.original.work_date, original_submitted_at: e.original.original_submitted_at,
       revised_at: at, submitted_by: e.original.submitted_by, revised_by: req.by || '',
-      status: 'submitted', revision_change_type: req.changeType,
+      status: 'submitted',
       revision_note: String(req.note || '').trim() || null,
-      data: normalizeJhaData(req.data || {}), crew: req.crew || { employees: [], groups: [] },
+      revision_diff: diffJhaData(e.head.data, nextData, e.head.crew, nextCrew),
+      data: nextData, crew: nextCrew,
       photos: req.photos || []
     });
     store.push(rec);
@@ -247,48 +251,101 @@
     return { enforced: false, due: false };
   }
 
-  /* Record an inspection. The inspection time comes from serverNow only; any
-     inspected_at in the request is ignored, so a field user cannot backdate.
-     A defect is optional; when given it needs a description and whether the
-     ladder was removed from service. */
-  function recordLadderInspection(registry, inspections, req, serverNow) {
+  /* Ladders assigned to a job, for the picker. Users select; nobody types an
+     ID. A duplicated ID is listed once, flagged, and cannot be selected. */
+  function laddersForJob(registry, inspections, jobId) {
+    var seen = {};
+    (registry || []).forEach(function (l) {
+      if (l.job_id !== jobId) return;
+      var id = normalizeLadderId(l.ladder_id);
+      if (id) seen[id] = (seen[id] || 0) + 1;
+    });
+    return Object.keys(seen).sort().map(function (id) {
+      var look = ladderLookup(registry, inspections, id);
+      return { id: id, description: look.state === 'found' ? (look.ladder.description || '') : '',
+        duplicate: look.state === 'duplicate', last_inspected_at: look.last ? look.last.inspected_at : null,
+        last_inspected_by: look.last ? look.last.inspected_by : null,
+        do_not_use: look.status === 'do-not-use', look: look };
+    });
+  }
+  function ladderGuard(registry, inspections, req) {
+    var u = req.user || {};
+    if (!u.id || !String(u.name || '').trim()) return { ok: false, code: 'auth', message: SIGN_IN_REQUIRED };
     var id = normalizeLadderId(req.ladderId);
-    if (!id) return { ok: false, code: 'id', message: 'Enter the Ladder ID.' };
     var look = ladderLookup(registry, inspections, id);
     if (look.state === 'duplicate') return { ok: false, code: 'duplicate', message: look.message };
-    var who = String(req.inspector || '').trim();
-    if (!who) return { ok: false, code: 'inspector', message: 'Enter who inspected the ladder.' };
-    if (req.acknowledged !== true) return { ok: false, code: 'ack', message: 'Confirm that you inspected this ladder before use.' };
-    var at = new Date(serverNow).toISOString(), defect = null;
-    if (req.defect) {
-      var desc = String(req.defect.description || '').trim();
-      if (!desc) return { ok: false, code: 'defect-description', message: 'Describe the defect or unsafe condition.' };
-      if (req.defect.removedFromService !== 'yes' && req.defect.removedFromService !== 'no') {
-        return { ok: false, code: 'defect-removed', message: 'Say whether the ladder was removed from service.' };
-      }
-      defect = { description: desc, removed_from_service: req.defect.removedFromService,
-                 photo: req.defect.photo || null, reported_at: at, resolved_at: null };
+    if (look.state !== 'found' || look.ladder.job_id !== req.jobId) {
+      return { ok: false, code: 'not-assigned', message: 'Ladder ' + id + ' is not assigned to this job.' };
     }
-    if (look.state === 'unknown') registry.push(freezeDeep({ ladder_id: id, category: 'Ladder', added_at: at }));
-    var rec = freezeDeep({ id: 'ladinsp-' + Date.parse(at).toString(36) + '-' + (inspections.length + 1),
-      ladder_id: id, inspected_at: at, inspected_by: who, acknowledged: true, defect: defect });
+    return { ok: true, id: id, look: look, user: { id: u.id, name: String(u.name).trim() } };
+  }
+  function ladderEvent(kind, g, req, at, extra) {
+    return freezeDeep(Object.assign({
+      id: 'lad-' + kind + '-' + Date.parse(at).toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+      kind: kind, ladder_id: g.id, job_id: req.jobId || null, company_id: req.companyId || null,
+      inspected_at: at, inspected_by: g.user.name, inspected_by_user_id: g.user.id,
+      jha_root_id: req.jhaRootId || null, jha_revision_number: req.jhaRevisionNumber || null
+    }, extra));
+  }
+  /* "Inspect for today's use". Identity is the signed-in employee — a typed
+     name is never accepted. Time is the server's; nothing in the request can
+     set it. A ladder with an open defect cannot be confirmed safe. */
+  function confirmLadderSafe(registry, inspections, req, serverNow) {
+    var g = ladderGuard(registry, inspections, req);
+    if (!g.ok) return g;
+    if (g.look.status === 'do-not-use') {
+      return { ok: false, code: 'do-not-use', message: 'Ladder ' + g.id + ' is marked Do Not Use and cannot be confirmed safe. Select a different assigned ladder.' };
+    }
+    if (req.attested !== true || req.attestationVersion !== LADDER_SAFE_ATTESTATION.version) {
+      return { ok: false, code: 'attest', message: 'Confirm the statement before recording the inspection.' };
+    }
+    var at = new Date(serverNow).toISOString();
+    var rec = ladderEvent('inspection', g, req, at, { result: 'safe',
+      attestation_text: LADDER_SAFE_ATTESTATION.text, attestation_version: LADDER_SAFE_ATTESTATION.version,
+      defect: null });
     inspections.push(rec);
-    return { ok: true, record: rec, lookup: ladderLookup(registry, inspections, id) };
+    return { ok: true, record: rec, lookup: ladderLookup(registry, inspections, g.id) };
+  }
+  /* "Report a defect or unsafe condition". Description and the Do Not Use
+     acknowledgment are required; the photo is optional. Field users can never
+     resolve or delete a defect — only a future office workflow may. */
+  function reportLadderDefect(registry, inspections, req, serverNow) {
+    var g = ladderGuard(registry, inspections, req);
+    if (!g.ok) return g;
+    var desc = String(req.description || '').trim();
+    if (!desc) return { ok: false, code: 'defect-description', message: 'Describe the defect or unsafe condition.' };
+    if (req.acknowledged !== true) {
+      return { ok: false, code: 'defect-ack', message: 'Confirm that you marked or tagged the ladder Do Not Use and removed it from service.' };
+    }
+    var at = new Date(serverNow).toISOString();
+    var rec = ladderEvent('defect', g, req, at, { result: 'defect',
+      defect: { description: desc, photo: req.photo || null, tagged_do_not_use: true,
+        acknowledgment_text: LADDER_DEFECT_ACK.text, acknowledgment_version: LADDER_DEFECT_ACK.version,
+        reported_at: at, reported_by: g.user.name, resolved_at: null } });
+    inspections.push(rec);
+    return { ok: true, record: rec, lookup: ladderLookup(registry, inspections, g.id) };
   }
 
-  /* What a JHA stores about the ladder it planned to use — the information
-     that was visible when it was submitted. */
-  function ladderSnapshot(look) {
-    if (!look || look.state !== 'found') {
-      return look && look.state === 'unknown' ? { ladder_id: look.id, status: 'no-history',
-        status_label: 'No inspection history found' } : null;
-    }
-    return { ladder_id: look.id,
+  /* What a JHA stores about each selected ladder — the information visible
+     when it was submitted, plus any inspection or defect recorded during this
+     JHA (identified by the inspection record id). */
+  function ladderSnapshot(look, todays) {
+    if (!look || look.state !== 'found') return null;
+    var safe = (todays || []).filter(function (r) { return r.result === 'safe'; }).pop() || null;
+    return { ladder_id: look.id, description: look.ladder.description || '',
       last_inspected_at: look.last ? look.last.inspected_at : null,
       last_inspected_by: look.last ? look.last.inspected_by : null,
       status: look.status, status_label: look.statusLabel,
       open_defect: look.openDefect ? { description: look.openDefect.description,
-        removed_from_service: look.openDefect.removed_from_service } : null };
+        reported_at: look.openDefect.reported_at || null, reported_by: look.openDefect.reported_by || null } : null,
+      todays_check: safe ? { record_id: safe.id, result: 'safe', at: safe.inspected_at, by: safe.inspected_by,
+        by_user_id: safe.inspected_by_user_id, attestation_version: safe.attestation_version } : null };
+  }
+  function defectSnapshot(rec) {
+    return { record_id: rec.id, ladder_id: rec.ladder_id, description: rec.defect.description,
+      reported_at: rec.defect.reported_at, reported_by: rec.defect.reported_by,
+      reported_by_user_id: rec.inspected_by_user_id, has_photo: !!rec.defect.photo,
+      acknowledgment_version: rec.defect.acknowledgment_version };
   }
 
   /* ---------------- the JHA field model ---------------- */
@@ -301,8 +358,10 @@
     ['jhaJobsiteSafety', 'Jobsite Safety Requirements — PPE, housekeeping, dust walls, spark-proof tools, etc.']
   ];
   var LADDER_USE_LABEL = 'Is any ladder use planned or expected today?';
+  var LADDER_PICK_LABEL = 'Which ladder or ladders will be used today?';
+  var NO_LADDERS_ASSIGNED = 'No ladders are assigned to this job. Contact the office before using a ladder.';
   var AERIAL_USE_LABEL = 'Will any aerial lift devices be used today?';
-  var AERIAL_WHO_LABEL = 'What competent person or persons will conduct the lift inspections?';
+  var AERIAL_WHO_LABEL = 'Who will conduct the lift inspections?';
   /* Questions retired on Tony's Oct 1 instruction. New JHAs never collect or
      store them; JHAs submitted before the change still show what was asked
      and answered at the time. */
@@ -331,11 +390,22 @@
     var d = {};
     Object.keys(raw || {}).forEach(function (k) { d[k] = raw[k]; });
     LEGACY_FIELDS.forEach(function (f) { delete d[f[0]]; });
+    // jhaLadderId / jhaLadderInspection were the single typed-ID format of the
+    // previous review build; new JHAs use the job-assigned selection instead.
+    delete d.jhaLadderId; delete d.jhaLadderInspection;
     if (d.jhaLadderUse === 'yes') {
-      d.jhaLadderId = normalizeLadderId(d.jhaLadderId);
-      d.jhaLadderInspection = parseMaybe(d.jhaLadderInspection, null);
+      var ids = parseMaybe(d.jhaLadderIds, []);
+      d.jhaLadderIds = (Array.isArray(ids) ? ids : []).map(normalizeLadderId)
+        .filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+      var checks = parseMaybe(d.jhaLadderChecks, []);
+      d.jhaLadderChecks = (Array.isArray(checks) ? checks : []).filter(function (c) {
+        return c && d.jhaLadderIds.indexOf(normalizeLadderId(c.ladder_id)) !== -1; });
+      // Defects reported during this JHA stay on it even if that ladder was
+      // then swapped for another.
+      var defects = parseMaybe(d.jhaLadderDefects, []);
+      d.jhaLadderDefects = Array.isArray(defects) ? defects : [];
     } else {
-      delete d.jhaLadderId; delete d.jhaLadderInspection;
+      delete d.jhaLadderIds; delete d.jhaLadderChecks; delete d.jhaLadderDefects;
     }
     if (d.jhaAerialUse === 'yes') {
       var who = parseMaybe(d.jhaAerialInspectors, []);
@@ -396,17 +466,31 @@
     var lad = [];
     if (filled(d.jhaLadderUse)) lad.push(item('jhaLadderUse', LADDER_USE_LABEL, yesNo(d.jhaLadderUse)));
     if (d.jhaLadderUse === 'yes') {
+      var ids = parseMaybe(d.jhaLadderIds, []);
+      if (Array.isArray(ids) && ids.length) lad.push(item('jhaLadderIds', LADDER_PICK_LABEL, ids.join(', ')));
+      (parseMaybe(d.jhaLadderChecks, []) || []).forEach(function (c) {
+        var p = 'Ladder ' + c.ladder_id + ' \u2014 ';
+        lad.push(item('ladder:' + c.ladder_id + ':last', p + 'Last inspected',
+          c.last_inspected_at ? fmtIndy(c.last_inspected_at) : 'No previous inspection is recorded for this ladder.'));
+        if (c.last_inspected_by) lad.push(item('ladder:' + c.ladder_id + ':by', p + 'Inspected by', c.last_inspected_by));
+        lad.push(item('ladder:' + c.ladder_id + ':status', p + 'Current status', c.status_label || '',
+          { flagged: c.status === 'do-not-use' }));
+        lad.push(item('ladder:' + c.ladder_id + ':today', p + 'Inspection for today\u2019s use',
+          c.todays_check ? 'Confirmed safe for use by ' + c.todays_check.by + ' \u00b7 ' + fmtIndy(c.todays_check.at)
+            : 'Not recorded on this JHA'));
+      });
+      (parseMaybe(d.jhaLadderDefects, []) || []).forEach(function (x) {
+        lad.push(item('ladder:' + x.ladder_id + ':defect:' + x.record_id, 'Ladder ' + x.ladder_id + ' \u2014 Defect reported',
+          x.description + ' \u00b7 marked Do Not Use and removed from service \u00b7 ' + x.reported_by +
+          ' \u00b7 ' + fmtIndy(x.reported_at) + (x.has_photo ? ' \u00b7 photo attached' : ''), { flagged: true }));
+      });
+      // Earlier review-build format (single typed ID) — shown as stored.
       if (filled(d.jhaLadderId)) lad.push(item('jhaLadderId', 'Ladder ID', d.jhaLadderId));
       var s = parseMaybe(d.jhaLadderInspection, null);
       if (s) {
         lad.push(item('jhaLadderLastInspected', 'Last inspection date', s.last_inspected_at ? fmtIndy(s.last_inspected_at) : 'None recorded'));
         if (s.last_inspected_by) lad.push(item('jhaLadderInspectedBy', 'Last inspected by', s.last_inspected_by));
-        lad.push(item('jhaLadderStatus', 'Inspection status', s.status_label || '',
-          { flagged: s.status === 'do-not-use' }));
-        if (s.open_defect) {
-          lad.push(item('jhaLadderDefect', 'Open defect', s.open_defect.description +
-            ' (removed from service: ' + yesNo(s.open_defect.removed_from_service) + ')', { flagged: true }));
-        }
+        lad.push(item('jhaLadderStatus', 'Inspection status', s.status_label || '', { flagged: s.status === 'do-not-use' }));
       }
     }
     if (lad.length) out.push({ title: 'Ladder Use', items: lad });
@@ -437,14 +521,23 @@
     return out;
   }
 
-  /* Submit-time checks the HTML required attributes can't express. */
-  function jhaSubmitProblems(data, ladderLook) {
-    var d = data || {}, p = [];
+  /* Submit-time checks the HTML required attributes can't express.
+     ctx.ladders: { assigned: [ids assigned to this job], states: { id: lookup } } */
+  function jhaSubmitProblems(data, ctx) {
+    var d = data || {}, p = [], lad = (ctx && ctx.ladders) || null;
     if (d.jhaLadderUse === 'yes') {
-      if (!normalizeLadderId(d.jhaLadderId)) p.push('Enter the Ladder ID.');
-      else if (ladderLook && ladderLook.state === 'duplicate') p.push(ladderLook.message);
-      else if (ladderLook && ladderLook.status === 'do-not-use') {
-        p.push('Ladder ' + ladderLook.id + ' is marked Do Not Use. Use a different ladder and enter its ID, or change the ladder answer.');
+      var ids = parseMaybe(d.jhaLadderIds, []);
+      if (lad && !(lad.assigned || []).length) p.push(NO_LADDERS_ASSIGNED);
+      else if (!Array.isArray(ids) || !ids.length) p.push('Select which ladder or ladders will be used today.');
+      else if (lad) {
+        ids.forEach(function (id) {
+          var st = (lad.states || {})[id];
+          if ((lad.assigned || []).indexOf(id) === -1) p.push('Ladder ' + id + ' is not assigned to this job.');
+          else if (st && st.state === 'duplicate') p.push(st.message);
+          else if (st && st.status === 'do-not-use') {
+            p.push('Ladder ' + id + ' is marked Do Not Use. Remove it and select a different assigned ladder.');
+          }
+        });
       }
     }
     if (d.jhaAerialUse === 'yes') {
@@ -454,10 +547,33 @@
     return p;
   }
 
+  /* Field-level difference between two versions, computed automatically. */
+  function diffJhaData(prevData, nextData, prevCrew, nextCrew) {
+    var A = flatAnswers(prevData, prevCrew), B = flatAnswers(nextData, nextCrew), out = [];
+    var keys = Object.keys(A);
+    Object.keys(B).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
+    keys.forEach(function (k) {
+      var a = A[k], b = B[k];
+      if ((a && a.value) === (b && b.value)) return;
+      out.push({ key: k, label: (b || a).label, from: a ? a.value : '', to: b ? b.value : '' });
+    });
+    return out;
+  }
+  function flatAnswers(data, crew) {
+    var m = {};
+    jhaSections(data || {}, { crew: crew || { employees: [], groups: [] } }).forEach(function (sec) {
+      sec.items.forEach(function (it) { m[it.key] = { label: it.label, value: it.value }; });
+    });
+    return m;
+  }
+
   var api = {
     TZ: TZ, JHA_REVISION_RULES: JHA_REVISION_RULES, LADDER_INSPECTION_CADENCE: LADDER_INSPECTION_CADENCE,
-    REVISION_CHANGE_TYPES: REVISION_CHANGE_TYPES, LEGACY_FIELDS: LEGACY_FIELDS, HEADER_FIELDS: HEADER_FIELDS,
-    LADDER_USE_LABEL: LADDER_USE_LABEL, AERIAL_USE_LABEL: AERIAL_USE_LABEL, AERIAL_WHO_LABEL: AERIAL_WHO_LABEL,
+    LEGACY_FIELDS: LEGACY_FIELDS, HEADER_FIELDS: HEADER_FIELDS,
+    LADDER_USE_LABEL: LADDER_USE_LABEL, LADDER_PICK_LABEL: LADDER_PICK_LABEL, NO_LADDERS_ASSIGNED: NO_LADDERS_ASSIGNED,
+    AERIAL_USE_LABEL: AERIAL_USE_LABEL, AERIAL_WHO_LABEL: AERIAL_WHO_LABEL,
+    LADDER_SAFE_ATTESTATION: LADDER_SAFE_ATTESTATION, LADDER_DEFECT_ACK: LADDER_DEFECT_ACK,
+    SIGN_IN_REQUIRED: SIGN_IN_REQUIRED,
     indyParts: indyParts, workweekOf: workweekOf, fmtIndy: fmtIndy, isoAddDays: isoAddDays,
     familyVersions: familyVersions, familyHead: familyHead, revisionsUsed: revisionsUsed,
     revisionLabel: revisionLabel, reviseEligibility: reviseEligibility,
@@ -466,9 +582,10 @@
     revisionEventCount: revisionEventCount, freezeDeep: freezeDeep,
     normalizeLadderId: normalizeLadderId, ladderLookup: ladderLookup,
     ladderStatusLabel: ladderStatusLabel, ladderCadence: ladderCadence,
-    recordLadderInspection: recordLadderInspection, ladderSnapshot: ladderSnapshot,
+    laddersForJob: laddersForJob, confirmLadderSafe: confirmLadderSafe,
+    reportLadderDefect: reportLadderDefect, ladderSnapshot: ladderSnapshot, defectSnapshot: defectSnapshot,
     normalizeJhaData: normalizeJhaData, jhaSections: jhaSections,
-    jhaSubmitProblems: jhaSubmitProblems
+    jhaSubmitProblems: jhaSubmitProblems, diffJhaData: diffJhaData
   };
   root.JhaModel = api;
   if (typeof module === 'object' && module && module.exports) module.exports = api;

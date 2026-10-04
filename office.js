@@ -4925,6 +4925,7 @@
       '.jha-add{color:#047857}.jha-rem{color:#b91c1c}' +
       '.jha-na{color:var(--ink-5);font-style:italic}' +
       '.jha-ans{margin-top:6px;font-size:12.5px}' +
+      '.jha-diff{margin:4px 0 0 16px;padding:0;font-size:12px;overflow-wrap:anywhere}' +
       '.jha-ans summary{cursor:pointer;font-weight:650;color:var(--accent)}' +
       '.jha-ans-sec{margin-top:8px}' +
       '.jha-ans-sec.is-legacy{background:var(--bg-2,#f6f7f9);border-radius:8px;padding:4px 8px}' +
@@ -5036,6 +5037,19 @@
     return bits.join('');
   }
 
+  /* The field-level difference stored with a revision (computed on submit). */
+  function jhaDiffHtml(r) {
+    if (r.revision_number === 1) return '';
+    var d = r.revision_diff || [];
+    var h = '<div class="jha-chg" data-rev-diff><b>Fields changed (' + d.length + '):</b></div>' +
+      (d.length ? '<ul class="jha-diff">' + d.slice(0, 10).map(function (c) {
+        return '<li><b>' + esc(c.label) + '</b>: <span class="jha-rem">' + esc(c.from || '\u2014') + '</span> \u2192 ' +
+          '<span class="jha-add">' + esc(c.to || '\u2014') + '</span></li>';
+      }).join('') + (d.length > 10 ? '<li>and ' + (d.length - 10) + ' more</li>' : '') + '</ul>' : '');
+    if (r.revision_note) h += '<div class="jha-chg"><b>Revision note:</b> ' + esc(r.revision_note) + '</div>';
+    return h;
+  }
+
   /* Every answer on one JHA version, rendered from the shared JHA model
      (jha-model.js) — the same list the phone review and the PDF use. */
   function jhaAnswersHtml(r) {
@@ -5075,7 +5089,7 @@
         return '<li' + (isOrig ? ' class="orig"' : '') + '>' +
           '<div class="who">' + (isOrig ? 'Original submission' : 'Revision ' + (r.revision_number - 1)) + '</div>' +
           '<div class="when">' + esc(fmtWhen(r.revised_at)) + ' · ' + esc(r.revised_by) + '</div>' +
-          (r.revision_change_type ? '<div class="jha-chg"><b>What changed:</b> ' + esc(r.revision_change_type) + '</div>' : '') +
+          jhaDiffHtml(r) +
           (isOrig
             ? '<div class="jha-chg"><b>Employees:</b> ' + esc((r.employees || []).join(', ') || '—') + '</div>' +
               '<div class="jha-chg"><b>Tasks:</b> ' + esc((r.tasks || []).join(', ') || '—') + '</div>' +
@@ -5534,6 +5548,7 @@
       '.tbt-card{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:14px}' +
       '.tbt-card h3{margin:0 0 2px;font-size:15px}' +
       '.tbt-sub{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}' +
+      '.tbt-rollout-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 18px;margin-bottom:10px}' +
       '.tbt-lib{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px}' +
       '.tbt-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid var(--line);background:var(--card)}' +
       '.tbt-row:last-child{border-bottom:0}.tbt-row[draggable=true]{cursor:grab}' +
@@ -5642,6 +5657,7 @@
           : '') +
         '<div><b>' + (co.mode === 'group' ? 'Group' : 'Individual') + '</b><span>completion method</span></div>' +
         '</div>';
+      if (TBT.company === 'greiner') html += tbtRolloutHtml();
       html += tbtCompletionHtml(co, def, week, stats);
     } else {
       html += '<div class="tbt-grid"><div>' + tbtLibraryHtml(co) + '</div><div>' +
@@ -6039,6 +6055,42 @@
             '<input type="checkbox" data-tbt-grp="' + esc(gp) + '"' + (on ? ' checked' : '') + '><span>' + esc(gp) + '</span></label>';
         }).join('') + '</div>' +
       '<div class="small muted">Roster: ' + def.employees.length + ' employees</div></div>';
+  }
+
+  /* The first Greiner rollout: one talk assigned to one job. The lead's
+     presentation and each participant's acknowledgment are separate records
+     and are never added together into one "completion". */
+  function tbtRolloutHtml() {
+    var R = window.DEMO && window.DEMO.rollout; if (!R) return '';
+    var a = R.assignment, lp = R.lead_presentation, acks = R.acknowledgments || [];
+    var fmt = function (iso) { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+    var mins = function (s) { return s >= 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : s + ' s'; };
+    var ackOf = function (n) { return acks.filter(function (x) { return x.employee === n; })[0]; };
+    var outstanding = a.participants.filter(function (n) { return !ackOf(n); });
+    var rows = a.participants.map(function (n) {
+      var k = ackOf(n), present = lp && (lp.present.indexOf(n) !== -1);
+      return '<tr data-rollout-person="' + esc(n) + '"><td><span class="t-main">' + esc(n) + '</span></td>' +
+        '<td>' + (present ? pill('p-ok', 'Marked present by lead') : '<span class="muted">Not marked</span>') + '</td>' +
+        '<td>' + (k ? pill('p-ok', 'Acknowledged') + ' <span class="small muted">' + esc(fmt(k.at)) + '</span>' : pill('p-warn', 'Outstanding')) + '</td>' +
+        '<td>' + (k ? esc(mins(k.engagement_seconds)) + (k.engagement_seconds < 120 ? ' <span class="tbt-manual">short</span>' : '') : '<span class="muted">\u2014</span>') + '</td>' +
+        '<td>' + (k ? (k.format === 'guided' ? 'Guided Talk' : 'Original document') : '<span class="muted">\u2014</span>') + '</td></tr>';
+    });
+    return '<div class="tbt-card" id="tbtRollout"><h3>Rollout assignment \u2014 ' + esc(a.talk) + '</h3>' +
+      '<div class="tbt-sub">Assigned by the office. The lead presents and records attendance; every participant ' +
+        'acknowledges on their own phone. These are separate records.</div>' +
+      '<div class="tbt-rollout-grid">' +
+        kv('Talk assigned', a.talk) + kv('Job / site', a.job) + kv('Designated lead', a.lead) +
+        kv('Observing', a.observer) +
+        kv('Lead presentation', lp ? 'Submitted ' + fmt(lp.at) + ' \u00b7 ' + mins(lp.engagement_seconds) + ' on the talk' : 'Not submitted') +
+        kv('Marked present by the lead', lp ? String(lp.present.length + lp.manual.length) + ' of ' + a.participants.length : '\u2014') +
+        kv('Individual acknowledgments', acks.length + ' of ' + a.participants.length) +
+        kv('Still outstanding', outstanding.length ? outstanding.join(', ') : 'None') +
+      '</div>' +
+      '<div class="panel"><div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Participant' }, { t: 'Lead\u2019s attendance' }, { t: 'Own acknowledgment' }, { t: 'Active engagement' }, { t: 'Followed with' }],
+        rows, 'No participants assigned.') + '</div></div>' +
+      '<div class="small muted" style="margin-top:6px">Being marked present by the lead is not the same as acknowledging the talk; ' +
+        'each person\u2019s own acknowledgment is tracked separately.</div></div>';
   }
 
   function tbtCompletionHtml(co, def, week, stats) {

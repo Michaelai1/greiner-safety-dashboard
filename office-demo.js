@@ -113,9 +113,7 @@
   /* Each version's answers in the same field shape the phone stores, so the
      office renders them through the shared JHA model (jha-model.js) exactly
      as the phone review and the PDF do. */
-  var CHANGE_TYPES = ['Work scope', 'Hazard or site condition', 'Crew assignment',
-    'Equipment or material', 'Control or procedure', 'Correction or other'];
-  function jhaData(job, crew, day, desc, tasks, hazards, actions, ladder, ji, legacy) {
+  function jhaData(job, crew, day, desc, tasks, hazards, actions, ladder, ji, legacy, r) {
     var d = { jhaProjectName: job.name, jhaDescriptionOfWork: desc, jhaDate: wdISO(day),
       jhaStartTime: '07:00', jhaCompleteTime: '15:30', jhaLocation: job.name + ' (' + job.job_number + ')',
       jhaAnalysisBy: crew[0], jhaPmSupervisor: 'Demo Project Manager', jhaSubcontractors: 'N/A',
@@ -127,10 +125,27 @@
     });
     d.jhaLadderUse = ladder;
     if (ladder === 'yes') {
-      d.jhaLadderId = 'LAD-101';
-      d.jhaLadderInspection = { ladder_id: 'LAD-101', last_inspected_at: wdAt(day + 1, 7, 5),
-        last_inspected_by: 'Alex Rivera (Demo)', status: 'no-open-defects',
-        status_label: 'No open defects reported', open_defect: null };
+      // Job-assigned ladders, each with its own check (selected, never typed).
+      var check = function (id, desc, today) {
+        return { ladder_id: id, description: desc, last_inspected_at: wdAt(day + 1, 7, 5),
+          last_inspected_by: 'Alex Rivera (Demo)', status: 'no-open-defects', status_label: 'No open defects reported',
+          open_defect: null, todays_check: today ? { record_id: 'lad-insp-' + job.id + '-' + day + '-' + r + '-' + id,
+            result: 'safe', at: wdAt(day, 7, 20), by: crew[0], by_user_id: 'demo-user-' + job.id,
+            attestation_version: 'ladder-safe-use-v1' } : null };
+      };
+      d.jhaLadderIds = ['LAD-101'];
+      d.jhaLadderChecks = [check('LAD-101', '8 ft fiberglass step ladder', true)];
+      d.jhaLadderDefects = [];
+      if (r === 4) {
+        // A ladder found damaged this morning: reported, tagged Do Not Use,
+        // and swapped for another assigned ladder.
+        d.jhaLadderIds = ['LAD-101', 'LAD-204'];
+        d.jhaLadderChecks.push(check('LAD-204', '24 ft fiberglass extension ladder', true));
+        d.jhaLadderDefects = [{ record_id: 'lad-def-' + job.id + '-' + day, ladder_id: 'LAD-317',
+          description: 'Cracked right side rail below the third step', reported_at: wdAt(day, 7, 12),
+          reported_by: crew[0], reported_by_user_id: 'demo-user-' + job.id, has_photo: true,
+          acknowledgment_version: 'ladder-do-not-use-v1' }];
+      }
     }
     d.jhaAerialUse = ji % 2 === 0 ? 'yes' : 'no';
     if (d.jhaAerialUse === 'yes') d.jhaAerialInspectors = crew.slice(0, 2);
@@ -143,7 +158,7 @@
       d.jhaLadderWhyNotLift = 'Corridor too narrow for a scissor lift at this location.';
       d.jhaLadderObstacle1 = 'Sprinkler main';
       d.jhaLadderObstacle2 = 'Cable tray';
-      delete d.jhaLadderId; delete d.jhaLadderInspection;
+      delete d.jhaLadderIds; delete d.jhaLadderChecks; delete d.jhaLadderDefects;
     }
     return d;
   }
@@ -181,9 +196,10 @@
             actions: w[3].slice(0, r === 1 ? 1 : w[3].length),
             ladder_use: ladderR,
             photos: r > 1 ? ['site-' + r + '.jpg'] : [],
-            revision_change_type: r === 1 ? null : CHANGE_TYPES[(r - 2) % CHANGE_TYPES.length],
+            revision_note: r === 3 ? 'Crew moved to the west corridor after lunch.' : null,
+            revision_diff: null,   // computed below from the shared JHA model
             data: jhaData(job, crew, day, w[0] + (r > 1 ? ' Revision ' + (r - 1) + ' added scope.' : ''),
-                          tasksR, hazR, actR, ladderR, ji, job.id === 'demo-job-a' && day === 4),
+                          tasksR, hazR, actR, ladderR, ji, job.id === 'demo-job-a' && day === 4, r),
             changes: r === 1 ? null : {
               tasks_added: w[1].slice(1, 2), tasks_removed: [],
               hazards_added: w[2].slice(1, 2), hazards_removed: [],
@@ -196,6 +212,38 @@
       }
     });
   })();
+
+  /* Each revision's field-level difference from the version before it, the
+     same calculation the phone stores on submit. */
+  (function diffRevisions() {
+    var M = (typeof window !== 'undefined' && window.JhaModel) || null;
+    JHA.forEach(function (r) {
+      if (r.revision_number === 1) return;
+      var prev = JHA.filter(function (x) { return x.id === r.previous_revision_id; })[0];
+      r.revision_diff = (M && prev) ? M.diffJhaData(prev.data, r.data,
+        { employees: prev.employees, groups: [] }, { employees: r.employees, groups: [] }) : [];
+    });
+  })();
+
+  /* ---------- Toolbox Talk rollout (Oct 2 meeting) -----------------------
+     One talk assigned to one job; the lead's presentation record and each
+     participant's own acknowledgment are separate records. Fictional names
+     stand in for the real people. Nothing is sent. */
+  var ROLLOUT = {
+    assignment: { id: 'tbt-asg-purdue-fall-protection', job: 'Purdue Academic Building', talk: 'Fall Protection',
+      lead: 'Demo Lead Foreman', observer: 'Demo Safety Manager',
+      participants: ['Second Lead Foreman (Demo)', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)'],
+      assigned_by: 'Office (rollout configuration)' },
+    lead_presentation: { kind: 'lead_presentation', at: wdAt(0, 6, 52), lead: 'Demo Lead Foreman',
+      present: ['Second Lead Foreman (Demo)', 'Alex Rivera (Demo)', 'Jordan Blake (Demo)'], manual: [],
+      presented: true, engagement_seconds: 14 * 60 + 10 },
+    acknowledgments: [
+      { kind: 'participant_ack', employee: 'Second Lead Foreman (Demo)', at: wdAt(0, 6, 55), format: 'guided',
+        engagement_seconds: 12 * 60 + 40 },
+      { kind: 'participant_ack', employee: 'Alex Rivera (Demo)', at: wdAt(0, 6, 56), format: 'doc',
+        engagement_seconds: 47 }
+    ]
+  };
 
   /* ---------- other field submissions ------------------------------------ */
   var OTHER_SUBS = [];
@@ -505,6 +553,7 @@
     nearMisses: NEAR_MISSES,
     baseline: INCIDENT_BASELINE,
     completions: COMPLETIONS,
+    rollout: ROLLOUT,
     field: FIELD,
     isoDay: isoDay,
     dayOffset: dayOffset,
