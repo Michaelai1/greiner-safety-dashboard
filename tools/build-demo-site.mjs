@@ -182,7 +182,7 @@ function noindex(html) {
 
 /* ---------- office demo ---------- */
 {
-  for (const f of ['office.css', 'office-demo.js']) {
+  for (const f of ['office.css', 'office-demo.js', 'jha-model.js']) {
     write(path.join(OUT, 'office', f), scrub(read(path.join(DASH, f)), f));
   }
   write(path.join(OUT, 'office/office.js'), scrub(read(path.join(DASH, 'office.js')), 'office.js'));

@@ -339,7 +339,7 @@
       subsBlocked: sc.filter(function (x) { return !x.cleared; }).length,
       findOpen: (B.findings || []).filter(function (f) { return f.status === 'open'; }).length,
       notAuth: workerRoster().filter(function (w) { return !w.authorized; }).length,
-      equipDue: (B.equipment || []).filter(function (e) { return equipStatus(e).k !== 'ok'; }).length
+      equipDue: (B.equipment || []).filter(eqDnu).length
     };
   }
 
@@ -1240,57 +1240,74 @@
   }
 
   /* ====================== EQUIPMENT =================================== */
-  /* Every serialized machine that needs a pre-use check. Each unit is tied to
-     the inspection template for its type, so a QR sticker on the machine opens
-     exactly that check — already attached to the unit. */
-  function equipInspName(e) {
-    var t = (B.templates || []).filter(function (x) { return x.code === e.insp; })[0];
-    return t ? t.name : 'Pre-use inspection';
-  }
-  function equipStatus(e) {
-    var next = new Date(new Date(e.last + 'T12:00:00').getTime() + e.interval * 86400000);
-    var days = Math.floor((next - new Date()) / 86400000);
-    if (days < 0)  return { k: 'overdue', label: 'Overdue',   cls: 'p-bad',  next: next };
-    if (days <= 0) return { k: 'due',     label: 'Due today', cls: 'p-warn', next: next };
-    return { k: 'ok', label: 'Current', cls: 'p-ok', next: next };
-  }
-  function equipUrl(e) { return 'https://safety.demo/inspect?equip=' + e.id + '&form=' + e.insp; }
-  function offsetIso(iso, days) {
-    return new Date(new Date(iso + 'T12:00:00').getTime() + days * 86400000).toISOString().slice(0, 10);
-  }
-  // Authentic-looking QR: real finder + timing patterns and deterministic data
-  // modules from the payload. The live build swaps this for a scannable code
-  // that opens the URL it encodes.
-  function qrSvg(text, px) {
-    var n = 25, m = [], x, y, i;
-    for (y = 0; y < n; y++) { m[y] = []; for (x = 0; x < n; x++) m[y][x] = 0; }
-    var seed = 2166136261; for (i = 0; i < text.length; i++) { seed ^= text.charCodeAt(i); seed = (seed * 16777619) >>> 0; }
-    function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
-    function finder(ox, oy) {
-      for (var yy = 0; yy < 7; yy++) for (var xx = 0; xx < 7; xx++) {
-        var on = (xx === 0 || xx === 6 || yy === 0 || yy === 6) || (xx >= 2 && xx <= 4 && yy >= 2 && yy <= 4);
-        m[oy + yy][ox + xx] = on ? 1 : 0;
-      }
-    }
-    finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
-    for (i = 8; i < n - 8; i++) { m[6][i] = (i % 2 === 0) ? 1 : 0; m[i][6] = (i % 2 === 0) ? 1 : 0; }
-    function reserved(xx, yy) { return (xx < 8 && yy < 8) || (xx >= n - 8 && yy < 8) || (xx < 8 && yy >= n - 8) || xx === 6 || yy === 6; }
-    for (y = 0; y < n; y++) for (x = 0; x < n; x++) { if (reserved(x, y)) continue; if (rnd() > 0.52) m[y][x] = 1; }
-    var cell = px / (n + 8), r = '';
-    for (y = 0; y < n; y++) for (x = 0; x < n; x++) if (m[y][x])
-      r += '<rect x="' + ((x + 4) * cell).toFixed(2) + '" y="' + ((y + 4) * cell).toFixed(2) + '" width="' + (cell + 0.4).toFixed(2) + '" height="' + (cell + 0.4).toFixed(2) + '"/>';
-    return '<svg width="' + px + '" height="' + px + '" viewBox="0 0 ' + px + ' ' + px + '" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect width="' + px + '" height="' + px + '" rx="8" fill="#fff"/><g fill="#0b1120">' + r + '</g></svg>';
-  }
-
-  var eqF = { q: '', job: '', type: '', status: '' };   // Equipment registry filters
+  /* One list of units for the whole dashboard: B.equipment. This tab loads the
+     full inventory (cs_portal_equipment_inventory: every unit, including
+     archived ones, with the latest ladder check and any open Do Not Use defect)
+     into that same array, so the Assign board, the weekly requirements and this
+     tab never disagree. Each action has one RPC and is recorded in
+     cs_equipment_events. Nothing is ever deleted. */
+  var EQ = { loaded: false, loading: false, readOnly: false, problem: '' };
+  var eqF = { q: '', job: '', type: '', status: 'service' };   // Equipment filters
   var eqLogF = { q: '', job: '', type: '', result: '', range: '' };   // Inspection Log filters
   var equipTab = 'registry';
+
+  var EQ_CATEGORY_LABEL = { ladder: 'Ladder', aerial: 'Aerial lift', forklift: 'Forklift', other: 'Other equipment' };
+  function eqCategory(type) { return window.JhaModel ? window.JhaModel.equipmentCategory(type) : 'other'; }
+  function eqNorm(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
+  function eqInService(e) { return !!e && !e.archived_at && e.active !== false; }
+  function eqDnu(e) { return eqInService(e) && !!e.open_defect; }
+  function eqById(id) { return (B.equipment || []).filter(function (e) { return e.id === id; })[0]; }
+  function eqService(e) {
+    if (e.archived_at) return { k: 'archived', cls: 'p-grey', label: 'Archived' };
+    if (e.active === false) return { k: 'inactive', cls: 'p-grey', label: 'Inactive' };
+    return { k: 'service', cls: 'p-ok', label: 'In service' };
+  }
+  /* Latest inspection of any kind: ladder checks come from the unit's own
+     history; lift and forklift checks are field submissions naming the unit. */
+  function eqLastInspection(e) {
+    var best = e.last_inspection ? { at: e.last_inspection.at, by: e.last_inspection.by,
+      what: e.last_inspection.kind === 'defect_reported' ? 'Defect reported' : 'Safe-use check' } : null;
+    var id = eqNorm(e.unit_number);
+    CREW.forEach(function (r) {
+      if (!r.asset_id || eqNorm(r.asset_id) !== id || r.archived) return;
+      var at = r.submitted_at || r.inspection_date;
+      if (!best || new Date(at) > new Date(best.at)) {
+        best = { at: at, by: r.inspector_name, what: r.has_defects ? 'Inspection with defects' : 'Inspection' };
+      }
+    });
+    return best;
+  }
+  var EQ_ERRORS = {
+    duplicate_unit: 'That unit ID is already used by another unit. IDs are unique; letter case and spaces are ignored.',
+    unit_required: 'Enter a unit ID.',
+    type_required: 'Enter the equipment type.',
+    bad_job: 'That job is not one of your company’s jobs.',
+    not_found: 'That unit is no longer in your company’s list. Refresh the page and try again.',
+    archived: 'Archived units cannot be assigned. Restore the unit first.'
+  };
+  function eqErrText(code) { return EQ_ERRORS[code] || ('Not saved — ' + (code || 'check your connection and try again') + '.'); }
+  function eqResult(r) { if (!r || r.ok !== true) throw new Error((r && r.error) || 'request failed'); return r; }
+
+  function eqLoad(force) {
+    if (EQ.loading || (EQ.loaded && !force)) return Promise.resolve();
+    EQ.loading = true;
+    return post('cs_portal_equipment_inventory', {}).then(function (rows) {
+      if (!Array.isArray(rows)) throw new Error('unexpected response');
+      B.equipment = rows;
+      EQ.loaded = true; EQ.readOnly = false; EQ.problem = '';
+    }).catch(function (e) {
+      // Without the inventory RPC only the bundle's list exists: show it, read-only.
+      EQ.loaded = true; EQ.readOnly = true;
+      EQ.problem = /could not find the function|does not exist|schema cache/i.test(e.message || '') ? 'missing' : (e.message || 'failed');
+    }).then(function () {
+      EQ.loading = false; renderNav();
+      if (page === 'equipment' && equipTab === 'registry') pgEquipment();
+    });
+  }
 
   function pgEquipment() {
     if (equipTab === 'archive') equipTab = 'registry';
     var right = subtabs(equipTab, [['registry', 'Equipment'], ['log', 'Inspection Log']], 'eqt');
-
 
     if (equipTab === 'log') {
       // Company-wide equipment inspection history. Derived from the EXISTING
@@ -1364,65 +1381,258 @@
       return;
     }
 
-    /* Registry: real units from cs_equipment (backend-ready). the safety manager has not sent
-       the lift/unit numbers yet, so this is an honest empty list until real
-       units exist — no demo equipment, no invented maintenance schedules.
-       Minimal unit model: unit number, type, assigned job, active state. */
-    var units = (B.equipment || []).slice().sort(function (a, b) {
+    if (!EQ.loaded) {
+      paint(head('Equipment', 'Every Greiner unit, the job it is on, and whether it may be used.', right) +
+        '<div class="panel"><div class="empty" id="eq-loading" role="status">Loading equipment…</div></div>');
+      wireSubtabs('eqt', function (v) { equipTab = v; pgEquipment(); });
+      eqLoad();
+      return;
+    }
+
+    var all = (B.equipment || []).slice().sort(function (a, b) {
       return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
+    var jobsById = {};
+    (B.jobs || []).forEach(function (j) { jobsById[j.id] = j; });
+    var typeSet = {};
+    all.forEach(function (e) { if (e.equipment_type) typeSet[e.equipment_type] = 1; });
+    var jobIds = {};
+    (B.jobs || []).forEach(function (j) { if (j.status === 'active') jobIds[j.id] = 1; });
+    all.forEach(function (e) { if (e.job_id) jobIds[e.job_id] = 1; });
+    var jobOpts = Object.keys(jobIds).map(function (id) { return { id: id, name: jobName(id) }; })
+      .sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+
+    var q = (eqF.q || '').trim().toLowerCase();
+    var rows = all.filter(function (e) {
+      if (eqF.status === 'service' && !eqInService(e)) return false;
+      if (eqF.status === 'dnu' && !eqDnu(e)) return false;
+      if (eqF.status === 'archived' && !e.archived_at) return false;
+      if (eqF.job === '__none' && e.job_id) return false;
+      if (eqF.job && eqF.job !== '__none' && e.job_id !== eqF.job) return false;
+      if (eqF.type && e.equipment_type !== eqF.type) return false;
+      if (q && [e.unit_number, e.equipment_type, e.description, e.make, e.model, e.serial]
+        .join(' ').toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    var inService = all.filter(eqInService);
+    var counts = { service: inService.length, dnu: all.filter(eqDnu).length,
+      unassigned: inService.filter(function (e) { return !e.job_id; }).length,
+      archived: all.filter(function (e) { return !!e.archived_at; }).length };
+
+    var addBtn = EQ.readOnly ? '' : '<button class="btn btn-gold" id="eq-add">+ Add equipment</button>';
     var html = head('Equipment',
-      'Greiner equipment units. Once the safety manager provides the lift and unit numbers they are added ' +
-      'here and tie to field inspections by unit.', right);
-    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-      [{ t: 'Unit' }, { t: 'Type' }, { t: 'Assigned job' }, { t: 'Status', r: 1 }],
-      units.map(function (e) {
-        return '<tr><td><span class="t-main">' + esc(e.unit_number || '\u2014') + '</span></td>' +
-          '<td>' + esc(e.equipment_type || '\u2014') + '</td>' +
-          '<td>' + esc(e.job_id ? jobName(e.job_id) : '\u2014') + '</td>' +
-          '<td class="r">' + (e.active === false ? pill('p-grey', 'Inactive') : pill('p-ok', 'Active')) + '</td></tr>';
-      }), 'Equipment will appear here as units are added to Greiner jobs.') + '</div></div>';
+      'Every Greiner unit, the job it is on, and whether it may be used. Ladders listed here are the ones ' +
+      'crews pick on the JHA; lifts and forklifts feed the phone’s unit pickers.',
+      '<div class="eq-hd-r">' + right + addBtn + '</div>');
+    if (EQ.readOnly) {
+      html += '<div class="alert eq-note" role="status">' + (EQ.problem === 'missing'
+        ? '<strong>Read-only.</strong> Adding, editing and archiving equipment need the equipment database update ' +
+          '(sql/2026-10-05-equipment-management.sql), which has not been applied. Job assignment still works on the Assign board.'
+        : '<strong>Could not load the full equipment inventory.</strong> ' + esc(EQ.problem) +
+          '. Showing the list loaded with the dashboard, read-only. <button class="btn btn-sm" id="eq-retry">Try again</button>') + '</div>';
+    }
+    html += '<div class="eq-sum">' +
+      '<div><b>' + counts.service + '</b><span>In service</span></div>' +
+      '<div class="' + (counts.dnu ? 'bad' : '') + '"><b>' + counts.dnu + '</b><span>Do Not Use</span></div>' +
+      '<div><b>' + counts.unassigned + '</b><span>Unassigned</span></div>' +
+      '<div><b>' + counts.archived + '</b><span>Archived</span></div></div>';
+    html += '<div class="fbar">' +
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+        '<input id="eq-q" aria-label="Search equipment" placeholder="Search ID, type, make, serial…" value="' + esc(eqF.q) + '"></div>' +
+      '<select id="eq-type" aria-label="Type"><option value="">All types</option>' + Object.keys(typeSet).sort().map(function (t) {
+        return '<option value="' + esc(t) + '"' + (eqF.type === t ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' +
+      '<select id="eq-job" aria-label="Job"><option value="">All jobs</option>' +
+        '<option value="__none"' + (eqF.job === '__none' ? ' selected' : '') + '>Unassigned</option>' +
+        jobOpts.map(function (j) { return '<option value="' + esc(j.id) + '"' + (eqF.job === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="eq-status" aria-label="Status">' + [['service', 'In service'], ['dnu', 'Do Not Use'], ['archived', 'Archived'], ['all', 'All units']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (eqF.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select></div>';
+    var emptyMsg = !all.length
+      ? 'No equipment yet. Units appear here once the office adds them' + (EQ.readOnly ? '.' : ' with “Add equipment”.')
+      : (eqF.job && eqF.job !== '__none' && !eqF.q && !eqF.type && eqF.status === 'service')
+        ? 'No equipment is assigned to ' + jobName(eqF.job) + ' yet. Open a unit and choose this job to assign it.'
+        : 'No units match these filters.';
+    html += '<div class="panel"><div class="panel-hd"><div><h3>Inventory</h3><div class="sub">' + rows.length + ' of ' + all.length +
+      ' unit' + (all.length === 1 ? '' : 's') + ' shown</div></div></div><div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Unit ID' }, { t: 'Type' }, { t: 'Status' }, { t: 'Job' }, { t: 'Last inspection' }, { t: 'Do Not Use', r: 1 }],
+      rows.map(function (e) {
+        var s = eqService(e), last = eqLastInspection(e);
+        return '<tr class="click" data-eq="' + esc(e.id) + '" tabindex="0">' +
+          '<td><span class="t-main">' + esc(e.unit_number || '—') + '</span>' +
+            (e.description ? '<div class="t-sub">' + esc(e.description) + '</div>' : '') + '</td>' +
+          '<td>' + esc(e.equipment_type || '—') + '</td>' +
+          '<td>' + pill(s.cls, s.label) + '</td>' +
+          '<td>' + (e.job_id ? esc(jobName(e.job_id)) : '<span class="muted">Unassigned</span>') + '</td>' +
+          '<td>' + (last ? esc(fmtWhen(last.at)) + '<div class="t-sub">' + esc(last.by || '') + '</div>' : '<span class="muted">None recorded</span>') + '</td>' +
+          '<td class="r">' + (eqDnu(e) ? pill('p-bad', 'Do Not Use') : '<span class="muted">No</span>') + '</td></tr>';
+      }), emptyMsg) + '</div></div>';
     paint(html);
     wireSubtabs('eqt', function (v) { equipTab = v; pgEquipment(); });
-  }
-  function openEquip(r) {
-    var e = r.e, url = equipUrl(e);
-    var h = '';
-    if (r.s.k !== 'ok') h += '<div class="alert"><strong>' +
-      (r.s.k === 'overdue' ? 'Pre-use check overdue.' : 'Pre-use check due today.') +
-      '</strong> Do not operate until the ' + esc(equipInspName(e)) + ' is completed.</div>';
-    h += '<div class="sec-h">QR sticker</div>' +
-      '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' +
-        '<div style="border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:12px;background:#fff;line-height:0">' + qrSvg(url, 158) + '</div>' +
-        '<div style="min-width:190px;flex:1">' +
-          '<div class="small muted">Scan opens</div>' +
-          '<div style="font-weight:600">' + esc(equipInspName(e)) + '</div>' +
-          '<div class="small muted" style="margin-top:2px">Tied to asset ' + esc(e.id) + '</div>' +
-          '<div class="small muted" style="margin-top:6px">Visual only — we provide the QR codes for every unit.</div>' +
-          '<button class="btn btn-gold btn-sm" id="eq-start" style="margin-top:10px">Start ' + esc(equipInspName(e)) + '</button>' +
-        '</div>' +
-      '</div>';
-    h += '<div class="sec-h">Rental</div>' +
-      '<div class="small muted" style="margin-bottom:8px">If this unit fails its check or needs service, text the rental company for a swap — tied to asset ' + esc(e.id) + '.</div>' +
-      '<button class="btn' + (r.s.k !== 'ok' ? ' btn-gold' : '') + '" id="eq-rental">Text rental company</button>';
-    h += '<div class="sec-h">Unit</div>' +
-      kv('Unit ID', e.id) + kv('Type', e.type) + kv('Make / model', e.model) +
-      kv('Serial', e.serial) + kv('Jobsite', e.job) +
-      kv('Assigned operator', e.operator === '—' ? 'Unassigned' : e.operator) +
-      kv('Check frequency', e.interval === 1 ? 'Every shift / before use' : 'Every ' + e.interval + ' days') +
-      kv('Last checked', fmtDate(e.last)) +
-      kv('Next due', r.s.next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), r.s.k !== 'ok');
-    h += '<div class="sec-h">Recent checks</div>';
-    [0, 1, 2].forEach(function (k) {
-      var when = offsetIso(e.last, -k * e.interval);
-      var by = (k === 0 && e.operator !== '—') ? e.operator : 'Crew';
-      h += '<div class="kv"><span class="k">' + fmtDate(when) + '</span><span class="v">' + esc(by) + ' · ' + pill('p-ok', 'Pass') + '</span></div>';
+    wireSearch('eq-q', function (v) { eqF.q = v; pgEquipment(); });
+    function bind(id, key) { var s2 = $('#' + id); if (s2) s2.onchange = function () { eqF[key] = s2.value; pgEquipment(); }; }
+    bind('eq-type', 'type'); bind('eq-job', 'job'); bind('eq-status', 'status');
+    var ab = $('#eq-add'); if (ab) ab.onclick = function () { openEquipForm(null); };
+    var rb = $('#eq-retry'); if (rb) rb.onclick = function () { eqLoad(true); };
+    $$('[data-eq]').forEach(function (r) {
+      r.onclick = function () { openEquipUnit(r.dataset.eq); };
+      r.onkeydown = function (ev) { if (ev.key === 'Enter') openEquipUnit(r.dataset.eq); };
     });
-    drawer(e.type + ' · ' + e.id, e.model + ' · SN ' + e.serial, h);
-    var st = $('#eq-start'); if (st) st.onclick = function () {
-      toast('Opening the ' + equipInspName(e) + ' — pre-filled for unit ' + e.id + '.');
+  }
+
+  function eqJobSelect(id, current) {
+    var opts = (B.jobs || []).filter(function (j) { return j.status === 'active' || j.id === current; })
+      .sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+    return '<select id="' + id + '"><option value="">Unassigned</option>' + opts.map(function (j) {
+      return '<option value="' + esc(j.id) + '"' + (j.id === current ? ' selected' : '') + '>' + esc(j.name) +
+        (j.job_number ? ' (' + esc(j.job_number) + ')' : '') + '</option>'; }).join('') + '</select>';
+  }
+  var EQ_EVENT_LABEL = { created: 'Added', updated: 'Details edited', assigned: 'Assigned', unassigned: 'Removed from job',
+    reassigned: 'Moved', archived: 'Archived', restored: 'Restored', inspection_safe: 'Safe-use check', defect_reported: 'Defect reported — Do Not Use' };
+  function eqHistoryHtml(list) {
+    if (!list.length) return '<div class="small muted">No history recorded yet.</div>';
+    return '<ul class="eq-hist">' + list.map(function (ev) {
+      var what = EQ_EVENT_LABEL[ev.kind] || ev.kind, d = ev.data || {}, extra = '';
+      if (ev.kind === 'assigned') extra = 'to ' + jobName(ev.to_job_id);
+      if (ev.kind === 'unassigned') extra = 'from ' + jobName(ev.from_job_id);
+      if (ev.kind === 'reassigned') extra = jobName(ev.from_job_id) + ' → ' + jobName(ev.to_job_id);
+      if (ev.kind === 'archived' && ev.from_job_id) extra = 'taken off ' + jobName(ev.from_job_id);
+      if (ev.kind === 'defect_reported') extra = d.description || '';
+      if (ev.kind === 'updated') extra = Object.keys(d).join(', ');
+      return '<li class="' + (ev.kind === 'defect_reported' ? 'bad' : '') + '"><b>' + esc(what) + '</b>' +
+        (extra ? ' <span>' + esc(extra) + '</span>' : '') +
+        '<small>' + esc(fmtWhen(ev.at)) + (ev.by ? ' · ' + esc(ev.by) : '') + '</small></li>';
+    }).join('') + '</ul>';
+  }
+
+  function openEquipUnit(id, note) {
+    var e = eqById(id); if (!e) return;
+    var s = eqService(e), last = eqLastInspection(e), cat = eqCategory(e.equipment_type);
+    var h = '';
+    if (note) h += '<div class="eq-ok" role="status">' + esc(note) + '</div>';
+    if (eqDnu(e)) {
+      h += '<div class="alert" role="alert"><strong>Do Not Use.</strong> ' + esc(e.open_defect.description || 'Defect reported') +
+        ' — reported' + (e.open_defect.by ? ' by ' + esc(e.open_defect.by) : '') + ' ' + esc(fmtWhen(e.open_defect.at)) +
+        '. Crews cannot select or confirm this unit. Field users cannot clear a defect; an office resolution step is not built yet.</div>';
+    }
+    if (e.archived_at) {
+      h += '<div class="alert eq-note">Archived ' + esc(fmtWhen(e.archived_at)) + '. Out of service and on no job. Its history is kept.</div>';
+    }
+    h += '<div class="sec-h">Unit</div>' + kv('Unit ID', e.unit_number || '—') + kv('Type', e.equipment_type || '—') +
+      kv('Category', EQ_CATEGORY_LABEL[cat]) + kv('Description', e.description || '—') +
+      kv('Make / model', [e.make, e.model].filter(Boolean).join(' ') || '—') + kv('Serial', e.serial || '—') +
+      kv('Year', e.year || '—') + kv('Source', e.source || '—') + kv('Status', s.label) +
+      kv('Job', e.job_id ? jobName(e.job_id) : 'Unassigned') +
+      kv('Last inspection', last ? fmtWhen(last.at) + (last.by ? ' · ' + last.by : '') : 'None recorded');
+    if (!EQ.readOnly && !e.archived_at) {
+      h += '<div class="sec-h">Job assignment</div>' +
+        '<div class="f"><label for="eq-asg">Job</label>' + eqJobSelect('eq-asg', e.job_id) + '</div>' +
+        '<p class="small eq-msg" id="eq-asg-msg" role="status"></p>' +
+        '<button class="btn btn-gold" id="eq-asg-save">Save assignment</button>';
+    }
+    if (!EQ.readOnly) {
+      h += '<div class="sec-h">Manage</div><div class="eq-actions" id="eq-manage">' +
+        (e.archived_at ? '<button class="btn" id="eq-restore">Restore to service</button>'
+          : '<button class="btn" id="eq-edit">Edit details</button><button class="btn" id="eq-archive">Archive unit</button>') +
+        '</div><p class="small eq-msg" id="eq-manage-msg" role="status"></p>';
+    }
+    h += '<div class="sec-h">History</div><div id="eq-hist" role="status"><div class="small muted">Loading history…</div></div>';
+    drawer(e.unit_number || 'Unit', e.equipment_type || '', h);
+
+    post('cs_portal_equipment_history', { p_equipment_id: id }).then(function (list) {
+      var box = $('#eq-hist'); if (!box) return;
+      if (!Array.isArray(list)) throw new Error('unexpected response');
+      box.innerHTML = eqHistoryHtml(list);
+    }).catch(function (err) {
+      var box = $('#eq-hist'); if (!box) return;
+      box.innerHTML = '<div class="small muted">' + (EQ.readOnly ? 'History needs the equipment database update.'
+        : 'Could not load history — ' + esc(err.message || 'try again') + '.') + '</div>';
+    });
+
+    var save = $('#eq-asg-save');
+    if (save) save.onclick = function () {
+      var to = $('#eq-asg').value || null, from = e.job_id || null, msg = $('#eq-asg-msg');
+      if (to === from) { msg.textContent = 'No change.'; return; }
+      save.disabled = true; save.textContent = 'Saving…'; msg.textContent = '';
+      post('cs_portal_equipment_set_job', { p_equipment_id: id, p_job_id: to }).then(eqResult).then(function () {
+        var done = !to ? 'Removed from ' + jobName(from) + '.' : !from ? 'Assigned to ' + jobName(to) + '.'
+          : 'Moved from ' + jobName(from) + ' to ' + jobName(to) + '.';
+        toast(e.unit_number + ': ' + done);
+        return eqLoad(true).then(function () { openEquipUnit(id, done); });
+      }).catch(function (err) {
+        save.disabled = false; save.textContent = 'Save assignment';
+        msg.textContent = eqErrText(err.message); msg.className = 'small eq-msg bad';
+      });
     };
-    var rt = $('#eq-rental'); if (rt) rt.onclick = function () {
-      toast('Texted the rental company — swap requested for ' + e.type + ' ' + e.id + '.');
+    var ed = $('#eq-edit'); if (ed) ed.onclick = function () { openEquipForm(id); };
+    var ar = $('#eq-archive');
+    if (ar) ar.onclick = function () {
+      $('#eq-manage').innerHTML = '<p class="small">Archive ' + esc(e.unit_number) + '? It is taken off ' +
+        (e.job_id ? esc(jobName(e.job_id)) : 'service') + ' and out of service. Nothing is deleted; it can be restored.</p>' +
+        '<button class="btn btn-gold" id="eq-archive-yes">Archive unit</button><button class="btn" id="eq-archive-no">Cancel</button>';
+      $('#eq-archive-no').onclick = function () { openEquipUnit(id); };
+      $('#eq-archive-yes').onclick = function () { eqArchive(id, true); };
+    };
+    var rs = $('#eq-restore'); if (rs) rs.onclick = function () { eqArchive(id, false); };
+  }
+  function eqArchive(id, archived) {
+    var e = eqById(id), btn = $(archived ? '#eq-archive-yes' : '#eq-restore'), msg = $('#eq-manage-msg');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    post('cs_portal_equipment_archive', { p_equipment_id: id, p_archived: archived }).then(eqResult).then(function () {
+      var done = archived ? 'Archived. It is off every job and out of service.' : 'Restored to service, unassigned.';
+      toast((e ? e.unit_number + ': ' : '') + done);
+      return eqLoad(true).then(function () { openEquipUnit(id, done); });
+    }).catch(function (err) {
+      if (btn) { btn.disabled = false; btn.textContent = archived ? 'Archive unit' : 'Restore to service'; }
+      if (msg) { msg.textContent = eqErrText(err.message); msg.className = 'small eq-msg bad'; }
+    });
+  }
+
+  /* Add (id null) or edit safe details. Assignment and archive have their own
+     actions so every move is recorded. */
+  function openEquipForm(id) {
+    var e = id ? eqById(id) : {};
+    if (id && !e) return;
+    var types = {};
+    (B.equipment || []).forEach(function (x) { if (x.equipment_type) types[x.equipment_type] = 1; });
+    ['Ladder', 'Scissor lift', 'Boom lift', 'Forklift'].forEach(function (t) { types[t] = 1; });
+    function fld(lbl, key, ph, req) {
+      return '<div class="f"><label for="eqf-' + key + '">' + esc(lbl) + (req ? ' *' : '') + '</label>' +
+        '<input id="eqf-' + key + '" type="text" autocomplete="off" value="' + esc(e[key] || '') + '"' +
+        (ph ? ' placeholder="' + esc(ph) + '"' : '') + (key === 'equipment_type' ? ' list="eqf-types"' : '') + '></div>';
+    }
+    var h = fld('Unit ID', 'unit_number', 'e.g. LAD-101', true) + fld('Type', 'equipment_type', 'e.g. Ladder, Scissor lift, Forklift', true) +
+      '<datalist id="eqf-types">' + Object.keys(types).sort().map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist>' +
+      '<p class="small muted" style="margin:-6px 0 12px">A type containing “ladder” makes the unit selectable on the JHA ladder question.</p>' +
+      fld('Description', 'description', 'e.g. 8 ft fiberglass step ladder') +
+      fld('Make', 'make') + fld('Model', 'model') + fld('Serial', 'serial') + fld('Year', 'year') + fld('Source', 'source', 'Owned, or the rental company') +
+      (id ? '' : '<div class="f"><label for="eqf-job">Job (optional)</label>' + eqJobSelect('eqf-job', null) + '</div>') +
+      '<p class="small eq-msg bad" id="eqf-err" role="alert"></p>' +
+      '<button class="btn btn-gold" id="eqf-save" style="width:100%;justify-content:center">' + (id ? 'Save details' : 'Add equipment') + '</button>';
+    drawer(id ? 'Edit ' + e.unit_number : 'Add equipment', id ? 'Details only — assignment and archive are separate' : 'New unit', h);
+    $('#eqf-save').onclick = function () {
+      var v = {};
+      ['unit_number', 'equipment_type', 'description', 'make', 'model', 'serial', 'year', 'source'].forEach(function (k) { v[k] = $('#eqf-' + k).value.trim(); });
+      var err = $('#eqf-err'), btn = $('#eqf-save');
+      if (!v.unit_number) { err.textContent = eqErrText('unit_required'); return; }
+      if (!v.equipment_type) { err.textContent = eqErrText('type_required'); return; }
+      var dup = (B.equipment || []).some(function (x) { return x.id !== id && eqNorm(x.unit_number) === eqNorm(v.unit_number); });
+      if (dup) { err.textContent = eqErrText('duplicate_unit'); return; }
+      err.textContent = ''; btn.disabled = true; btn.textContent = 'Saving…';
+      var call = id
+        ? post('cs_portal_equipment_update', { p_equipment_id: id, p_unit_number: v.unit_number, p_equipment_type: v.equipment_type,
+            p_description: v.description, p_make: v.make, p_model: v.model, p_serial: v.serial, p_year: v.year, p_source: v.source })
+        : post('cs_portal_equipment_add', { p_unit_number: v.unit_number, p_equipment_type: v.equipment_type,
+            p_description: v.description || null, p_make: v.make || null, p_model: v.model || null, p_serial: v.serial || null,
+            p_year: v.year || null, p_source: v.source || null, p_job_id: ($('#eqf-job') || {}).value || null });
+      call.then(eqResult).then(function (r) {
+        var done = id ? 'Details saved.' : 'Added ' + r.unit_number + '.';
+        toast(done);
+        return eqLoad(true).then(function () { openEquipUnit(r.id || id, done); });
+      }).catch(function (x) {
+        btn.disabled = false; btn.textContent = id ? 'Save details' : 'Add equipment';
+        err.textContent = eqErrText(x.message);
+      });
     };
   }
 
@@ -2487,6 +2697,7 @@
       post('cs_portal_incidents', { p_token: tok }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      EQ.loaded = false;                       // equipment tab reloads its inventory into B.equipment
       B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       hydrateWorkers();
@@ -3249,9 +3460,9 @@
           type: def.defaultType,
           weekdays: def.defaultType === 'activity' ? [] : [1, 2, 3, 4, 5],
           units: (((TBT_DEMO && window.DEMO) ? window.DEMO.equipment : (B && B.equipment)) || []).filter(function (e) {
-            return e.job_id === j.id &&
-              (key === 'aerial' ? e.kind === 'aerial' : key === 'forklift' ? e.kind === 'forklift' : false);
-          }).map(function (e) { return e.unit; }),
+            return e.job_id === j.id && eqInService(e) &&
+              (key === 'aerial' || key === 'forklift') && eqCategory(e.equipment_type) === key;
+          }).map(function (e) { return e.unit_number; }),
           start: null, end: null, due_time: null, notes: def.note,
           week: null, status: 'active', fromJobs: true
         });
@@ -4902,6 +5113,9 @@
     var people = {};
     all.forEach(function (f) { people[f.original_submitter] = 1; people[f.latest_editor] = 1; });
     var jobs = {};
+    // Every active job is selectable, so a new job shows its honest empty history.
+    (((TBT_DEMO && window.DEMO) ? window.DEMO.jobs : (B && B.jobs)) || []).forEach(function (j) {
+      if (j.status === 'active') jobs[j.id] = j.name; });
     all.forEach(function (f) { jobs[f.job_id] = f.job_name; });
 
     var revised = fams.filter(function (f) { return f.revisionCount > 0; });
@@ -6360,6 +6574,7 @@
         kpi(all.filter(function (t) { return t.note; }).length, 'finding / incident follow-ups', 'documented follow-up talks', 'c-grey') +
         '</div>';
       var tJobSet = {}; all.forEach(function (t) { if (t.job_id) tJobSet[t.job_id] = 1; });
+      (B.jobs || []).forEach(function (j) { if (j.status === 'active') tJobSet[j.id] = 1; });
       var tJobOpts = Object.keys(tJobSet).map(function (id) {
         return '<option value="' + esc(id) + '"' + (talkF.job === id ? ' selected' : '') + '>' + esc(jobName(id)) + '</option>'; }).join('');
       html += '<div class="fbar">' +
@@ -7293,6 +7508,8 @@
 
       var sites = {}, ipeople = {};
       CREW.forEach(function (r) { if (r.jobsite) sites[r.jobsite] = 1; if (r.inspector_name) ipeople[r.inspector_name] = 1; });
+      // Active jobs with no submissions yet are still selectable (empty result, not hidden).
+      (B.jobs || []).forEach(function (j) { if (j.status === 'active' && j.name) sites[j.name] = 1; });
       var siteOpts = Object.keys(sites).sort().map(function (s) {
         return '<option value="' + esc(s) + '"' + (inspF.job === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('');
       var iPersonOpts = Object.keys(ipeople).sort().map(function (p) {
@@ -8021,7 +8238,7 @@
       var old = e.job_id; e.job_id = jid; pgAssign(); asgFlash('Saving…');
       post('cs_portal_equipment_set_job', { p_equipment_id: id, p_job_id: jid }).then(function (r) {
         if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Saved');
-      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash(eqErrText(err.message), true); });
     } else {
       var w = asgPersonById(id); if (!w || w.job_id === jid) return;
       var oldp = w.job_id; w.job_id = jid; hydrateWorkers(); pgAssign(); asgFlash('Saving…');
@@ -8036,7 +8253,7 @@
       var old = e.job_id; e.job_id = null; pgAssign(); asgFlash('Saving…');
       post('cs_portal_equipment_set_job', { p_equipment_id: id, p_job_id: null }).then(function (r) {
         if (!r || r.ok === false) throw new Error((r && r.error) || 'save failed'); asgFlash('Removed');
-      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash('Not saved — ' + (err.message || 'try again'), true); });
+      }).catch(function (err) { e.job_id = old; pgAssign(); asgFlash(eqErrText(err.message), true); });
     } else {
       var w = asgPersonById(id); if (!w) return;
       var oldp = w.job_id; w.job_id = null; hydrateWorkers(); pgAssign(); asgFlash('Saving…');
@@ -8062,7 +8279,7 @@
       return String(a.name || '').toLowerCase() < String(b.name || '').toLowerCase() ? -1 : 1; });
   }
   function asgPoolEquip() {
-    return (B.equipment || []).slice().sort(function (a, b) {
+    return (B.equipment || []).filter(eqInService).sort(function (a, b) {
       return String(a.unit_number || '').localeCompare(String(b.unit_number || '')); });
   }
   function asgPersonChip(w, drag) {
@@ -8088,7 +8305,7 @@
       '<button type="button" class="asg-x" data-rm="' + kind + '" data-id="' + esc(id) + '" data-job="' + esc(jid) + '" aria-label="Remove">×</button></div>';
   }
   function asgAssignedFor(kind, jid) {
-    var src = kind === 'e' ? (B.equipment || []) : (B.workers || []);
+    var src = kind === 'e' ? (B.equipment || []).filter(eqInService) : (B.workers || []);
     return src.filter(function (x) { return x.job_id === jid; }).map(function (x) { return x.id; });
   }
 
@@ -8558,6 +8775,7 @@
       '<div class="small muted">Field-login users on this job. Check the forms each person may open — saved per person. Job-level rules still apply.</div>' +
       '</div></div><div class="panel-bd" id="job-fieldaccess">' +
       '<p class="small muted" style="padding:6px 2px">Loading field users…</p></div></div>';
+    html += docOnboardingHtml(j);
 
     // Safety reports
     html += jobSection('Safety reports', reps.length + ' filed',
@@ -9557,6 +9775,34 @@
       list.map(function (d) { return docRow(d, showWhere); }), empty) + '</div></div>';
   }
 
+  /* Original documents a job is waiting on, keyed by job number and shown only
+     when that job exists. A slot is marked received only after the original
+     file is uploaded and checked against what Greiner sent; until then the
+     panel says plainly that nothing is uploaded. */
+  var JOB_DOC_ONBOARDING = {
+    'C799-2025': { expected: 6, received: [],
+      note: 'Tony sent six original IU attachments. Each will be added here as the original file, with the same ' +
+        'appearance and meaning, once it is available and checked against the original. None has been uploaded yet.' }
+  };
+  function docOnboardingHtml(j) {
+    var cfg = j && JOB_DOC_ONBOARDING[j.job_number]; if (!cfg) return '';
+    var got = cfg.received.length, slots = [];
+    for (var i = 0; i < cfg.expected; i++) {
+      var r = cfg.received[i];
+      slots.push('<li class="' + (r ? 'got' : '') + '"><b>Original ' + (i + 1) + ' of ' + cfg.expected + '</b>' +
+        '<span>' + (r ? esc(r) : 'Waiting for the original file') + '</span></li>');
+    }
+    return '<div class="panel doc-onb" data-doc-onboarding="' + esc(j.job_number) + '"><div class="panel-hd"><div>' +
+      '<h3>' + esc(j.job_number) + ' · ' + esc(j.name) + ' — onboarding documents</h3>' +
+      '<div class="sub">' + got + ' of ' + cfg.expected + ' originals uploaded</div></div>' +
+      pill(got === cfg.expected ? 'p-ok' : 'p-warn', got === cfg.expected ? 'Complete' : 'Waiting on originals') + '</div>' +
+      '<div class="panel-bd"><p class="small muted" style="margin:0 0 10px">' + esc(cfg.note) + '</p>' +
+      '<ol class="doc-onb-list">' + slots.join('') + '</ol></div></div>';
+  }
+  function docOnboardingPanels() {
+    return (B.jobs || []).map(docOnboardingHtml).join('');
+  }
+
   function pgDocs() {
     var all = B.docs || [];
     var q = docF.q.trim().toLowerCase();
@@ -9602,6 +9848,7 @@
       kpi(String(Object.keys(folders).length), 'folders', 'grouped by category', 'c-grey') +
       kpi(String(fresh), 'added this quarter', 'recent uploads', 'c-grey') +
       '</div>';
+    html += docOnboardingPanels();
 
     html += '<div class="fbar">' +
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
@@ -11062,6 +11309,7 @@
       post('cs_portal_incidents', { p_token: sess.session }).catch(function () { return []; })
     ]).then(function (res) {
       B = normalizeBundle(res[0], res[2], res[3]);
+      EQ.loaded = false;                       // equipment tab reloads its inventory into B.equipment
       B.workers = (res[0] && res[0].workers) || [];
       B.finding_actions = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
       hydrateWorkers();

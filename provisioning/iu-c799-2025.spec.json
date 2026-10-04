@@ -1,0 +1,15 @@
+{
+  "purpose": "Make IU Health Plaza G Med. Gas (C799-2025) ready for its field crew. This repository is public, so people's names, phone numbers and PINs are not here; they live in the git-ignored iu-c799-2025.local.json.",
+  "company_id": "8ca1fccf-ffc2-49c9-b4ca-a7ba35e124b2",
+  "portal_slug": "greiner",
+  "job": {
+    "job_number": "C799-2025",
+    "name": "IU Health Plaza G Med. Gas",
+    "address": "1330 N Senate Ave, Indianapolis, IN 46202",
+    "gc_name": "Wilhelm Gilbane"
+  },
+  "comparable_job": "C800-2025",
+  "form_keys": ["jha", "hotwork", "aerial", "forklift"],
+  "expected_people": 6,
+  "titles": { "lead": "Lead Foreman — IU Health Plaza G", "crew": "Field — IU Health Plaza G" }
+}

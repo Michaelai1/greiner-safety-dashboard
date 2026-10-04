@@ -320,15 +320,46 @@
       source: 'Safety Inspection', photos_list: [], closed: isoDay(dayOffset(-3)) }
   ];
 
-  /* ---------- equipment on the demo jobs --------------------------------- */
+  /* ---------- equipment on the demo jobs ---------------------------------
+     Same shape as cs_portal_equipment_inventory returns. Ladders are ordinary
+     units whose type is a ladder; one unit is archived. History lives in
+     EQUIPMENT_EVENTS, append-only, exactly as cs_equipment_events. */
+  function unit(id, num, type, job, extra) {
+    return Object.assign({ id: id, unit_number: num, equipment_type: type, description: null, make: null,
+      model: null, serial: null, year: null, source: 'Demo', job_id: job, active: true, archived_at: null,
+      qr_slug: null }, extra || {});
+  }
   var EQUIPMENT = [
-    { unit: 'DEMO-SL-1930-01', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
-    { unit: 'DEMO-SL-1930-02', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-a' },
-    { unit: 'DEMO-BL-45-01', kind: 'aerial', label: 'Boom lift 45ft', job_id: 'demo-job-d' },
-    { unit: 'DEMO-SL-1930-03', kind: 'aerial', label: 'Scissor lift 19ft', job_id: 'demo-job-e' },
-    { unit: 'DEMO-FL-05', kind: 'forklift', label: 'Warehouse forklift', job_id: 'demo-job-b' },
-    { unit: 'DEMO-FL-11', kind: 'forklift', label: 'Rough terrain forklift', job_id: 'demo-job-f' }
+    unit('demo-eq-1', 'DEMO-SL-1930-01', 'Scissor lift', 'demo-job-a', { description: '19 ft electric scissor lift', make: 'Genie', model: 'GS-1930' }),
+    unit('demo-eq-2', 'DEMO-SL-1930-02', 'Scissor lift', 'demo-job-a', { description: '19 ft electric scissor lift', make: 'Genie', model: 'GS-1930' }),
+    unit('demo-eq-3', 'DEMO-BL-45-01', 'Boom lift', 'demo-job-d', { description: '45 ft articulating boom' }),
+    unit('demo-eq-4', 'DEMO-SL-1930-03', 'Scissor lift', 'demo-job-e', { description: '19 ft electric scissor lift' }),
+    unit('demo-eq-5', 'DEMO-FL-05', 'Forklift', 'demo-job-b', { description: 'Warehouse forklift' }),
+    unit('demo-eq-6', 'DEMO-FL-11', 'Forklift', 'demo-job-f', { description: 'Rough terrain forklift' }),
+    unit('demo-eq-7', 'DEMO-LAD-101', 'Ladder', 'demo-job-a', { description: '8 ft fiberglass step ladder' }),
+    unit('demo-eq-8', 'DEMO-LAD-204', 'Ladder', 'demo-job-a', { description: '24 ft fiberglass extension ladder' }),
+    unit('demo-eq-9', 'DEMO-LAD-317', 'Ladder', 'demo-job-b', { description: '10 ft fiberglass step ladder' }),
+    unit('demo-eq-10', 'DEMO-LAD-120', 'Ladder', null, { description: '6 ft platform ladder' }),
+    unit('demo-eq-11', 'DEMO-SL-1930-04', 'Scissor lift', null, { description: 'Returned rental', source: 'Demo rental',
+      active: false, archived_at: wdAt(1, 15, 0) })
   ];
+  var EQUIPMENT_EVENTS = [];
+  function eqEvent(id, kind, extra) {
+    var ev = Object.assign({ id: 'demo-ev-' + (EQUIPMENT_EVENTS.length + 1), equipment_id: id, kind: kind,
+      from_job_id: null, to_job_id: null, by: 'Demo Office', data: {}, at: new Date().toISOString() }, extra || {});
+    EQUIPMENT_EVENTS.push(ev);
+    return ev;
+  }
+  EQUIPMENT.forEach(function (e) {
+    eqEvent(e.id, 'created', { at: wdAt(5, 7, 0), data: { unit_number: e.unit_number, equipment_type: e.equipment_type } });
+    if (e.job_id) eqEvent(e.id, 'assigned', { at: wdAt(5, 7, 1), to_job_id: e.job_id });
+  });
+  eqEvent('demo-eq-11', 'archived', { at: wdAt(1, 15, 0), from_job_id: 'demo-job-c' });
+  eqEvent('demo-eq-7', 'inspection_safe', { at: wdAt(0, 7, 5), by: 'Alex Rivera (Demo)', to_job_id: 'demo-job-a',
+    data: { attestation_version: 'ladder-safe-use-v1' } });
+  eqEvent('demo-eq-9', 'defect_reported', { at: wdAt(0, 6, 50), by: 'Taylor Reed (Demo)', to_job_id: 'demo-job-b',
+    data: { description: 'Cracked right side rail below the third step', tagged_do_not_use: true,
+      acknowledgment_version: 'ladder-do-not-use-v1', resolved_at: null } });
 
   /* ---------- field users and their per-job form access --------------------
      This is the assignment system the Jobs tab already owns: which field-login
@@ -494,6 +525,81 @@
       return { ok: true, form_keys: u.form_keys.slice() };
     },
     cs_portal_incidents: function () { return INCIDENTS; },
+    /* Equipment: the same rules as sql/2026-10-05-equipment-management.sql.
+       Errors come back as { ok: false, error } exactly like the server. */
+    cs_portal_equipment_inventory: function () {
+      return EQUIPMENT.slice().sort(function (a, b) { return a.unit_number < b.unit_number ? -1 : 1; }).map(function (e) {
+        var mine = EQUIPMENT_EVENTS.filter(function (v) { return v.equipment_id === e.id; }).reverse();
+        var insp = mine.filter(function (v) { return v.kind === 'inspection_safe' || v.kind === 'defect_reported'; })[0];
+        var open = mine.filter(function (v) { return v.kind === 'defect_reported' && !v.data.resolved_at; })[0];
+        return Object.assign({}, e, { is_ladder: /\bladder/i.test(e.equipment_type || ''),
+          last_inspection: insp ? { at: insp.at, by: insp.by, kind: insp.kind } : null,
+          open_defect: open ? { at: open.at, by: open.by, description: open.data.description } : null });
+      });
+    },
+    cs_portal_equipment_history: function (b) {
+      return EQUIPMENT_EVENTS.filter(function (v) { return v.equipment_id === (b || {}).p_equipment_id; }).slice().reverse();
+    },
+    cs_portal_equipment_add: function (b) {
+      b = b || {};
+      var num = String(b.p_unit_number || '').trim().toUpperCase(), type = String(b.p_equipment_type || '').trim();
+      if (!num) return { ok: false, error: 'unit_required' };
+      if (!type) return { ok: false, error: 'type_required' };
+      if (EQUIPMENT.some(function (e) { return e.unit_number.trim().toUpperCase() === num; })) return { ok: false, error: 'duplicate_unit' };
+      if (b.p_job_id && !JOBS.some(function (j) { return j.id === b.p_job_id; })) return { ok: false, error: 'bad_job' };
+      var e = unit('demo-eq-new-' + (EQUIPMENT.length + 1), num, type, b.p_job_id || null,
+        { description: b.p_description || null, make: b.p_make || null, model: b.p_model || null,
+          serial: b.p_serial || null, year: b.p_year || null, source: b.p_source || null });
+      EQUIPMENT.push(e);
+      eqEvent(e.id, 'created', { data: { unit_number: num, equipment_type: type } });
+      if (e.job_id) eqEvent(e.id, 'assigned', { to_job_id: e.job_id });
+      return { ok: true, id: e.id, unit_number: num };
+    },
+    cs_portal_equipment_update: function (b) {
+      b = b || {};
+      var e = EQUIPMENT.filter(function (x) { return x.id === b.p_equipment_id; })[0];
+      if (!e) return { ok: false, error: 'not_found' };
+      var num = b.p_unit_number == null ? e.unit_number : String(b.p_unit_number).trim().toUpperCase();
+      if (!num) return { ok: false, error: 'unit_required' };
+      if (EQUIPMENT.some(function (x) { return x.id !== e.id && x.unit_number.trim().toUpperCase() === num; })) return { ok: false, error: 'duplicate_unit' };
+      if (b.p_equipment_type != null && !String(b.p_equipment_type).trim()) return { ok: false, error: 'type_required' };
+      var changed = {};
+      e.unit_number = num;
+      ['equipment_type', 'description', 'make', 'model', 'serial', 'year', 'source'].forEach(function (k) {
+        var v = b['p_' + k]; if (v == null) return;
+        v = String(v).trim(); changed[k] = v;
+        e[k] = v || (k === 'equipment_type' ? e[k] : null);
+      });
+      eqEvent(e.id, 'updated', { data: changed });
+      return { ok: true, id: e.id, unit_number: num };
+    },
+    cs_portal_equipment_set_job: function (b) {
+      b = b || {};
+      var to = b.p_job_id || null;
+      if (to && !JOBS.some(function (j) { return j.id === to; })) return { ok: false, error: 'bad_job' };
+      var e = EQUIPMENT.filter(function (x) { return x.id === b.p_equipment_id; })[0];
+      if (!e) return { ok: false, error: 'not_found' };
+      if (e.archived_at) return { ok: false, error: 'archived' };
+      if ((e.job_id || null) === to) return { ok: true, id: e.id, job_id: to, unchanged: true };
+      var from = e.job_id || null; e.job_id = to;
+      eqEvent(e.id, !to ? 'unassigned' : !from ? 'assigned' : 'reassigned', { from_job_id: from, to_job_id: to });
+      return { ok: true, id: e.id, job_id: to };
+    },
+    cs_portal_equipment_archive: function (b) {
+      b = b || {};
+      var e = EQUIPMENT.filter(function (x) { return x.id === b.p_equipment_id; })[0];
+      if (!e) return { ok: false, error: 'not_found' };
+      var archive = b.p_archived !== false;
+      if (archive === !!e.archived_at) return { ok: true, unchanged: true };
+      if (archive) {
+        eqEvent(e.id, 'archived', { from_job_id: e.job_id || null });
+        e.archived_at = new Date().toISOString(); e.active = false; e.job_id = null;
+      } else {
+        e.archived_at = null; e.active = true;
+        eqEvent(e.id, 'restored');
+      }
+      return { ok: true, id: e.id, archived: archive };
+    },
     /* The office drawer's lazy "full record" fetch. Same document shape the
        phone stores in fields.doc. */
     cs_portal_field_doc: function (body) { return { doc: fieldDoc((body || {}).p_id) }; }
@@ -548,6 +654,7 @@
     other: OTHER_SUBS,
     findings: FINDINGS,
     equipment: EQUIPMENT,
+    equipmentEvents: EQUIPMENT_EVENTS,
     fieldUsers: FIELD_USERS,
     incidents: INCIDENTS,
     nearMisses: NEAR_MISSES,

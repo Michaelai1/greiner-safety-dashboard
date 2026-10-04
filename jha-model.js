@@ -251,6 +251,51 @@
     return { enforced: false, due: false };
   }
 
+  /* ---------------- equipment (one source: cs_equipment) ---------------- */
+  // Category from the unit's type text. Order matters: "Forklift" contains
+  // "lift", so forklifts are recognized before aerial lifts.
+  function equipmentCategory(type) {
+    var t = String(type == null ? '' : type).toLowerCase();
+    if (/\bladder/.test(t)) return 'ladder';
+    if (/fork ?lift|telehandler|reach truck/.test(t)) return 'forklift';
+    if (/scissor|mast|boom|aerial|man ?lift|\blift\b/.test(t)) return 'aerial';
+    return 'other';
+  }
+  function ladderRegistryFromEquipment(units) {
+    return (units || []).filter(function (e) {
+      return e && equipmentCategory(e.equipment_type) === 'ladder' && e.active !== false && !e.archived_at;
+    }).map(function (e) {
+      return { ladder_id: normalizeLadderId(e.unit_number), equipment_id: e.id || null, job_id: e.job_id || null,
+               category: 'Ladder', description: e.description || '' };
+    });
+  }
+  // One server event (cs_equipment_events, as the phone receives it) in the
+  // inspection-record shape the ladder functions above read.
+  function ladderInspectionFromEvent(unit, ev) {
+    var d = ev.data || {}, base = { id: ev.id, ladder_id: normalizeLadderId(unit.unit_number), job_id: unit.job_id || null,
+      inspected_at: ev.at, inspected_by: ev.by, inspected_by_user_id: ev.by_user_id || null,
+      jha_root_id: d.jha_root_id || null, jha_revision_number: d.jha_revision_number == null ? null : d.jha_revision_number };
+    if (ev.kind === 'inspection_safe') {
+      return Object.assign(base, { kind: 'inspection', result: 'safe', attestation_text: d.attestation_text || '',
+        attestation_version: d.attestation_version || null, defect: null });
+    }
+    if (ev.kind === 'defect_reported') {
+      return Object.assign(base, { kind: 'defect', result: 'defect', defect: { description: d.description || '',
+        photo: d.has_photo ? { stored: true } : null, tagged_do_not_use: d.tagged_do_not_use !== false,
+        acknowledgment_text: d.acknowledgment_text || '', acknowledgment_version: d.acknowledgment_version || null,
+        reported_at: d.reported_at || ev.at, reported_by: ev.by, resolved_at: d.resolved_at || null } });
+    }
+    return null;
+  }
+  function ladderInspectionsFromEquipment(units) {
+    var out = [];
+    (units || []).forEach(function (e) {
+      if (!e || equipmentCategory(e.equipment_type) !== 'ladder') return;
+      (e.events || []).forEach(function (ev) { var r = ladderInspectionFromEvent(e, ev); if (r) out.push(r); });
+    });
+    return out;
+  }
+
   /* Ladders assigned to a job, for the picker. Users select; nobody types an
      ID. A duplicated ID is listed once, flagged, and cannot be selected. */
   function laddersForJob(registry, inspections, jobId) {
@@ -583,6 +628,8 @@
     normalizeLadderId: normalizeLadderId, ladderLookup: ladderLookup,
     ladderStatusLabel: ladderStatusLabel, ladderCadence: ladderCadence,
     laddersForJob: laddersForJob, confirmLadderSafe: confirmLadderSafe,
+    equipmentCategory: equipmentCategory, ladderRegistryFromEquipment: ladderRegistryFromEquipment,
+    ladderInspectionFromEvent: ladderInspectionFromEvent, ladderInspectionsFromEquipment: ladderInspectionsFromEquipment,
     reportLadderDefect: reportLadderDefect, ladderSnapshot: ladderSnapshot, defectSnapshot: defectSnapshot,
     normalizeJhaData: normalizeJhaData, jhaSections: jhaSections,
     jhaSubmitProblems: jhaSubmitProblems, diffJhaData: diffJhaData

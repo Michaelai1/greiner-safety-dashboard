@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to iu-c799-2025.local.json (git-ignored) and replace with the real names and mobiles Greiner provided. Everything below is fake.",
+  "pm_name": "Pat Example (Test)",
+  "people": [
+    { "name": "Lead Example (Test)", "mobile": "317-555-0141", "lead": true },
+    { "name": "Crew Two (Test)", "mobile": "317-555-0142" },
+    { "name": "Crew Three (Test)", "mobile": "317-555-0193" },
+    { "name": "Crew Four (Test)", "mobile": "812-555-0174" },
+    { "name": "Crew Five (Test)", "mobile": "317-555-0185" },
+    { "name": "Crew Six (Test)", "mobile": "765-555-0196" }
+  ]
+}

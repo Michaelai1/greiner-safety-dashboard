@@ -21,6 +21,8 @@ const includes = (hay, text, msg) => assert.ok(hay.includes(text), msg);
 const win = { location: { search: '?demo=1' }, URLSearchParams };
 new Function('window', 'location', 'URLSearchParams', demoSrc)(win, win.location, URLSearchParams);
 const DEMO = win.DEMO;
+// The shared model classifies equipment (ladder / aerial / forklift) for the office too.
+new Function('window', fs.readFileSync(new URL('jha-model.js', root), 'utf8'))(win);
 assert.ok(DEMO, 'office-demo.js must define window.DEMO');
 assert.equal(DEMO.on, true, 'the fixtures must detect ?demo=1');
 
@@ -61,6 +63,7 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
   ${js.slice(tbStart, tbLogicEnd)}
   ${slice('jhaFamilies', 'jhaBadge')}
   ${slice('jhaFilteredFamilies', 'pgJhaDemo')}
+  ${slice('eqCategory', 'eqLastInspection')}
   ${js.slice(js.indexOf('  var SI_FORMS_READY = ['), js.indexOf('  function siStyle()'))}
   ${slice('anlRangeBounds', 'anlRangeDays')}
   ${slice('anlRangeDays', 'anlJobs')}

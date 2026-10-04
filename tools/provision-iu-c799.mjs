@@ -1,0 +1,204 @@
+#!/usr/bin/env node
+/* Prints the SQL that makes IU Health Plaza G Med. Gas (C799-2025) ready for its
+ * field crew. Names, mobiles and the PM live in the git-ignored local file because
+ * this repository is public. It never connects to a database; a person reviews the output
+ * and runs it in the Supabase SQL editor.
+ *
+ *   node tools/provision-iu-c799.mjs [--local provisioning/iu-c799-2025.local.json]
+ *                                    [--pin-policy=last4-of-mobile] [--move-roster]
+ *
+ * Without --pin-policy no login is created: the job, roster and phone numbers are
+ * prepared and every person is reported as waiting on the PIN decision.
+ * With --pin-policy=last4-of-mobile a new login's PIN is the last four digits of
+ * that person's mobile, computed inside the SQL so no PIN is ever printed.
+ * With --pin-policy=local-file each person's "pin" comes from the local file
+ * (for codes Michael chose); those PINs appear in the printed SQL, so the output
+ * must never be saved in the repository or shared.
+ * --move-roster moves an existing roster record (cs_workers) onto C799 so the
+ * person appears in the IU crew list; without it, existing records keep their job.
+ *
+ * Safe to run twice: every step matches existing rows first (by normalized phone,
+ * then by name) and stops with an error on an ambiguous or conflicting match.
+ * Existing PINs and existing per-job form permissions are never overwritten.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const args = process.argv.slice(2);
+const flag = (name) => args.find(a => a === name || a.startsWith(name + '='));
+const value = (name, dflt) => {
+  const i = args.indexOf(name);
+  if (i >= 0) return args[i + 1];
+  const f = args.find(a => a.startsWith(name + '='));
+  return f ? f.slice(name.length + 1) : dflt;
+};
+
+const PIN_POLICIES = ['last4-of-mobile', 'local-file'];
+const pinPolicy = value('--pin-policy', null);
+if (pinPolicy && !PIN_POLICIES.includes(pinPolicy)) {
+  console.error(`Unknown --pin-policy "${pinPolicy}". Supported: ${PIN_POLICIES.join(', ')}.`);
+  process.exit(2);
+}
+const moveRoster = !!flag('--move-roster');
+const spec = JSON.parse(fs.readFileSync(value('--spec', path.join(ROOT, 'provisioning/iu-c799-2025.spec.json')), 'utf8'));
+const localPath = value('--local', path.join(ROOT, 'provisioning/iu-c799-2025.local.json'));
+if (!fs.existsSync(localPath)) {
+  console.error(`Missing ${localPath}. Copy provisioning/iu-c799-2025.local.example.json and fill in the real mobiles.`);
+  process.exit(2);
+}
+const local = JSON.parse(fs.readFileSync(localPath, 'utf8'));
+
+const digits = (s) => String(s || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+const pretty = (d) => `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+const lit = (s) => s == null ? 'null' : `'${String(s).replace(/'/g, "''")}'`;
+
+const listed = Array.isArray(local.people) ? local.people : [];
+if (listed.length !== spec.expected_people) {
+  console.error(`Expected ${spec.expected_people} people in ${localPath}, found ${listed.length}.`); process.exit(2);
+}
+if (listed.filter(p => p.lead).length !== 1) { console.error('Mark exactly one person as "lead": true.'); process.exit(2); }
+if (!String(local.pm_name || '').trim()) { console.error('pm_name is required.'); process.exit(2); }
+const people = listed.map(p => {
+  const name = String(p.name || '').trim().replace(/\s+/g, ' ');
+  if (!name) { console.error('Every person needs a name.'); process.exit(2); }
+  const d = digits(p.mobile);
+  if (d.length !== 10) { console.error(`${name}: mobile must have 10 digits.`); process.exit(2); }
+  const pin = pinPolicy === 'local-file' ? String(p.pin || '') : null;
+  if (pinPolicy === 'local-file' && !/^[0-9]{4,}$/.test(pin)) { console.error(`${name}: "pin" must be at least 4 digits.`); process.exit(2); }
+  return { name, lead: !!p.lead, title: p.lead ? spec.titles.lead : spec.titles.crew, digits: d, mobile: pretty(d), pin };
+});
+if (pinPolicy === 'local-file' && new Set(people.map(p => p.pin)).size !== people.length) {
+  console.error('Two people share a PIN; login matches by PIN alone.'); process.exit(2);
+}
+const names = new Set(people.map(p => p.name.toLowerCase()));
+if (names.size !== people.length) { console.error('Two people share a name.'); process.exit(2); }
+const seen = new Set();
+for (const p of people) {
+  if (seen.has(p.digits)) { console.error(`Two people share the mobile ${p.mobile}.`); process.exit(2); }
+  seen.add(p.digits);
+}
+const lead = people.find(p => p.lead);
+const J = spec.job;
+
+const rows = people.map(p =>
+  `    (${lit(p.name)}, ${lit(p.digits)}, ${lit(p.mobile)}, ${lit(p.title)}, ${lit(p.pin)})`).join(',\n');
+
+process.stdout.write(`-- ============================================================================
+-- IU Health Plaza G Med. Gas (${J.job_number}) — field users, roster, job details.
+-- Generated by tools/provision-iu-c799.mjs. Review before running in the Supabase
+-- SQL editor. Contains phone numbers${pinPolicy === 'local-file' ? ' AND PINs' : ''}: do not commit or share this output.
+-- PIN policy: ${pinPolicy ? pinPolicy + ' (approved by the person running this)' : 'NONE — no login is created; people are reported as pending.'}
+-- Roster move to ${J.job_number}: ${moveRoster ? 'yes' : 'no (existing roster records keep their job)'}
+-- One transaction: any error rolls everything back.
+-- ============================================================================
+begin;
+
+create temporary table _iu_people (name text, digits text, mobile text, title text, pin text) on commit drop;
+insert into _iu_people values
+${rows};
+
+do $iu$
+declare
+  v_cid  uuid := ${lit(spec.company_id)};
+  v_slug text := ${lit(spec.portal_slug)};
+  v_job  uuid;
+  v_forms text[] := array[${spec.form_keys.map(lit).join(', ')}]::text[];
+  v_pin_policy text := ${lit(pinPolicy)};
+  v_move boolean := ${moveRoster ? 'true' : 'false'};
+  p record; u record; w record; n int; v_uid uuid;
+begin
+  -- 1. The job: reopen it and fill in the details Greiner gave.
+  select id into v_job from cs_jobs where company_id = v_cid and job_number = ${lit(J.job_number)};
+  if v_job is null then raise exception 'job ${J.job_number} not found for this company'; end if;
+  update cs_jobs set
+    name = ${lit(J.name)},
+    address = ${lit(J.address)},
+    status = 'active', closed_at = null,
+    gc_name = ${lit(J.gc_name)},
+    pm_name = ${lit(String(local.pm_name).trim())},
+    foreman_name = ${lit(lead.name)},
+    foreman_phone = ${lit(lead.mobile)}
+  where id = v_job;
+  raise notice 'job ${J.job_number}: active, details set';
+
+  for p in select * from _iu_people order by name loop
+    -- 2. Login (cs_portal_users). Match by normalized mobile, then by name.
+    select count(*) into n from cs_portal_users x
+     where x.slug = v_slug
+       and (right(regexp_replace(coalesce(x.mobile, ''), '\\D', '', 'g'), 10) = p.digits or lower(x.name) = lower(p.name));
+    if n > 1 then raise exception '%: matches % logins (by phone or name) — resolve by hand', p.name, n; end if;
+    select * into u from cs_portal_users x
+     where x.slug = v_slug
+       and (right(regexp_replace(coalesce(x.mobile, ''), '\\D', '', 'g'), 10) = p.digits or lower(x.name) = lower(p.name));
+    if found then
+      if lower(u.name) <> lower(p.name) then
+        raise exception '%: this mobile already belongs to login "%"', p.name, u.name;
+      end if;
+      if u.mobile is not null and right(regexp_replace(u.mobile, '\\D', '', 'g'), 10) <> p.digits then
+        raise exception '%: existing login has a different mobile on file', p.name;
+      end if;
+      if coalesce(u.role, 'full') <> 'field' then
+        raise exception '%: existing login has office access — not changing it', p.name;
+      end if;
+      update cs_portal_users set
+        job_ids = case when v_job = any(coalesce(job_ids, '{}'::uuid[])) then job_ids
+                       else coalesce(job_ids, '{}'::uuid[]) || v_job end,
+        mobile = coalesce(mobile, p.mobile),
+        title = coalesce(title, p.title),
+        active = true
+      where id = u.id;
+      v_uid := u.id;
+      raise notice '%: existing login kept (PIN unchanged), ${J.job_number} added', p.name;
+    elsif v_pin_policy in ('last4-of-mobile', 'local-file') then
+      v_uid := (cs_portal_set_user(v_slug, p.name,
+                 case when v_pin_policy = 'local-file' then p.pin else right(p.digits, 4) end,
+                 p.title, 'field', array[v_job]) ->> 'id')::uuid;
+      update cs_portal_users set mobile = p.mobile where id = v_uid;
+      raise notice '%: field login created for ${J.job_number}', p.name;
+    else
+      v_uid := null;
+      raise notice '%: PENDING — no login created until the PIN decision is made', p.name;
+    end if;
+
+    -- 3. Forms on this job: same set as the comparable job's fullest field user.
+    --    An existing row (for example one the office edited) is left alone.
+    if v_uid is not null then
+      insert into cs_field_user_forms (user_id, job_id, form_keys)
+      values (v_uid, v_job, v_forms)
+      on conflict (user_id, job_id) do nothing;
+    end if;
+
+    -- 4. Roster (cs_workers), which feeds crew pickers. Same matching rules.
+    select count(*) into n from cs_workers x
+     where x.company_id = v_cid
+       and (right(regexp_replace(coalesce(x.phone, ''), '\\D', '', 'g'), 10) = p.digits or lower(x.name) = lower(p.name));
+    if n > 1 then raise exception '%: matches % roster records — resolve by hand', p.name, n; end if;
+    select * into w from cs_workers x
+     where x.company_id = v_cid
+       and (right(regexp_replace(coalesce(x.phone, ''), '\\D', '', 'g'), 10) = p.digits or lower(x.name) = lower(p.name));
+    if found then
+      if lower(w.name) <> lower(p.name) then
+        raise exception '%: this mobile already belongs to roster record "%"', p.name, w.name;
+      end if;
+      if w.phone is not null and right(regexp_replace(w.phone, '\\D', '', 'g'), 10) <> p.digits then
+        raise exception '%: roster record has a different phone on file', p.name;
+      end if;
+      update cs_workers set
+        phone = coalesce(phone, p.mobile),
+        active = true,
+        job_id = case when v_move then v_job else job_id end
+      where id = w.id;
+      raise notice '%: roster record kept%', p.name,
+        case when v_move then ', moved to ${J.job_number}' when w.job_id is distinct from v_job then ' on its current job' else '' end;
+    else
+      insert into cs_workers (company_id, name, job_id, phone, active, source)
+      values (v_cid, p.name, v_job, p.mobile, true, 'iu-c799-provisioning');
+      raise notice '%: roster record added on ${J.job_number}', p.name;
+    end if;
+  end loop;
+end $iu$;
+
+commit;
+`);

@@ -359,3 +359,29 @@ td.r,th.r{text-align:right}
 .role-demo{margin-left:auto;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-4)}
 .role-lbl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-4);font-weight:600;margin:.5rem 0 .25rem}
 .side-ft #role-sel{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font-size:12.5px;margin-bottom:.5rem}
+
+/* ---------- equipment inventory ---------- */
+.eq-hd-r{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+.eq-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 .9rem}
+.eq-sum div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow)}
+.eq-sum b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
+.eq-sum span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-4)}
+.eq-sum .bad b{color:var(--fail)}
+.eq-note{background:var(--warn-tt);border-color:var(--warn-br);color:var(--ink-2);margin-bottom:.9rem}
+.eq-ok{background:var(--ok-tt);border:1px solid var(--ok-br);color:var(--ok);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-weight:600;font-size:13px}
+.eq-msg{min-height:1em;margin:.2rem 0 .6rem;color:var(--ink-3)}
+.eq-msg.bad{color:var(--fail)}
+.eq-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.eq-actions p{flex-basis:100%;margin:0 0 .3rem}
+.eq-hist{list-style:none;margin:0;padding:0}
+.eq-hist li{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.eq-hist li span{color:var(--ink-3)}
+.eq-hist li small{display:block;color:var(--ink-4);margin-top:2px}
+.eq-hist li.bad b{color:var(--fail)}
+@media (max-width:640px){ .eq-sum{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.doc-onb-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.doc-onb-list li{border:1px dashed var(--line-2);border-radius:8px;padding:9px 11px;font-size:12.5px;color:var(--ink-4)}
+.doc-onb-list li b{display:block;color:var(--ink-2);font-size:13px}
+.doc-onb-list li.got{border-style:solid;border-color:var(--ok-br);background:var(--ok-tt)}
+/* Page headers with several action buttons wrap on phones instead of pushing the page sideways. */
+@media (max-width:640px){ .pg-hd{flex-wrap:wrap} .pg-hd > div{min-width:0} .pg-hd > div[style*="flex-shrink:0"]{flex-shrink:1 !important} }
