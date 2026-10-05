@@ -6537,6 +6537,37 @@
     var today = new Date().toISOString().slice(0, 10);
     var html;
 
+    /* A Toolbox Talk texted to a foreman and submitted by him IS a held talk, so
+       it belongs in the Log and in the counts. Before this it only ever appeared
+       in the "Sent by text" panel, which left the Log reading "No toolbox talks
+       logged" and every card at 0 on a day a talk had actually happened.
+       Mapped into the logged-talk shape so one list drives the table, the KPIs,
+       the jobsite filter and the search. Test sends are left out: a test is not
+       a talk anybody attended. */
+    function tbtxAsLoggedTalks() {
+      return (TBTX.rows || []).filter(function (x) {
+        return x.submitted_at && !x.is_test;
+      }).map(function (x) {
+        return {
+          id: 'tbt:' + x.id,
+          tbtx_id: x.id,
+          from_text: true,
+          topic: x.talk_title || 'Toolbox Talk',
+          // Same basis as `today` above so the comparison is apples to apples.
+          date: String(x.submitted_at).slice(0, 10),
+          job_id: x.crew_job_id || null,
+          presented_by: x.presenter || x.recipient_name || '—',
+          subs: [],
+          minutes: x.active_ms ? Math.max(1, Math.round(x.active_ms / 60000)) : 0,
+          // An individual talk is the one person who acknowledged it; a
+          // foreman-led talk is whoever he marked present.
+          attendees: x.role === 'leader' ? tbtxCount(x) : 1,
+          note: '',
+          archived: false
+        };
+      });
+    }
+
     if (talkTab === 'awaiting') {
       // Digitally sent toolbox talks not yet submitted (submitted ones live in
       // the Log). Reads the demo delivery dataset; excludes anything submitted.
@@ -6565,7 +6596,9 @@
             '<td class="r"><button class="btn btn-sm" data-talkrestore="' + esc(t.id) + '">Restore</button></td></tr>';
         }), 'Nothing archived.') + '</div></div>';
     } else {
-      var all = allTalks.filter(function (t) { return !t.archived; });
+      var all = allTalks.filter(function (t) { return !t.archived; })
+        .concat(tbtxAsLoggedTalks())
+        .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
       var t0 = all.filter(function (t) { return t.date === today; });
       var att = all.reduce(function (a, t) { return a + t.attendees; }, 0);
       // Unique sites among the talks actually held today (not the total job count).
@@ -6596,16 +6629,21 @@
         return true;
       });
       var rows = shown.map(function (t) {
-        return '<tr class="click" data-talk="' + esc(t.id) + '">' +
+        /* A texted talk opens the text record, which is where the delivery,
+           progress and crew list live. Archive is withheld because it works by
+           flipping a flag on B.talks, and this row is not in B.talks. */
+        return '<tr class="click" data-' + (t.from_text ? 'tbtx="' + esc(t.tbtx_id) : 'talk="' + esc(t.id)) + '">' +
           '<td><span class="t-main">' + esc(t.topic) + '</span>' +
+            (t.from_text ? ' ' + pill('p-grey', 'Texted') : '') +
             (t.note ? '<div class="t-sub" style="color:var(--warn)">' + esc(t.note) + '</div>' : '') + '</td>' +
           '<td>' + esc(fmtDate(t.date)) + '</td>' +
           '<td>' + esc(jobName(t.job_id)) + '<div class="t-sub">' + esc(jobNum(t.job_id)) + '</div></td>' +
           '<td>' + esc(t.presented_by) + '</td>' +
           '<td>' + esc((t.subs || []).map(subName).join(', ')) + '</td>' +
-          '<td class="r num">' + t.minutes + ' min</td>' +
+          '<td class="r num">' + (t.minutes ? t.minutes + ' min' : '—') + '</td>' +
           '<td class="r num">' + t.attendees + '</td>' +
-          '<td class="r"><button class="btn btn-sm" data-talkarch="' + esc(t.id) + '">Archive</button></td></tr>';
+          '<td class="r">' + (t.from_text ? ''
+            : '<button class="btn btn-sm" data-talkarch="' + esc(t.id) + '">Archive</button>') + '</td></tr>';
       });
       html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
         [{ t: 'Topic' }, { t: 'Date' }, { t: 'Site' }, { t: 'Presented by' },
@@ -6701,7 +6739,24 @@
   function openTbtx(id) {
     var x = TBTX.rows.filter(function (r) { return r.id === id; })[0];
     if (!x) return;
-    var h = '<div class="sec-h">Text</div>' +
+    /* What the talk actually was. Without this the record showed delivery and
+       attendance but never said what was covered, which is the part a safety
+       file has to answer. The document itself still cannot be opened from here:
+       the library's Preview is a local file:// path that only resolves on the
+       machine holding the PDFs. */
+    var lib = (typeof tbtById === 'function' && x.talk_key) ? tbtById(x.talk_key) : null;
+    var gi = (typeof tbtGuidedOf === 'function' && x.talk_key) ? tbtGuidedOf(x.talk_key) : null;
+    var topic = (typeof TBT_TOPIC !== 'undefined' && x.talk_key) ? TBT_TOPIC[x.talk_key] : null;
+    var h = '<div class="sec-h">Talk</div>' +
+      kv('Topic', x.talk_title || '—') +
+      (topic && topic !== x.talk_title ? kv('Topic in the document', topic) : '') +
+      (lib && lib.f ? kv('Source document', lib.f) : '') +
+      (lib && lib.p ? kv('Length', lib.p + (lib.p === 1 ? ' page' : ' pages')) : '') +
+      kv('Presented as', x.format_used === 'guided'
+        ? 'Guided Talk' + (gi ? ' (' + gi.sections + ' sections on screen)' : '')
+        : x.format_used === 'doc' ? 'Original document'
+        : x.submitted_at ? 'Not recorded' : 'Not opened yet') +
+      '<div class="sec-h">Text</div>' +
       kv('Sent to', (x.recipient_name || '—') + (x.phone_last4 ? ' (ends ' + x.phone_last4 + ')' : '')) +
       kv('Type', x.role === 'leader' ? 'Foreman-led group talk' : 'Individual') +
       (x.role === 'leader' ? kv('Crew', jobName(x.crew_job_id) + (jobNum(x.crew_job_id) ? ' (' + jobNum(x.crew_job_id) + ')' : '')) : '') +
