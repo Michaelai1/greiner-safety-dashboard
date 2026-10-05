@@ -6573,6 +6573,7 @@
       html = head('Toolbox Talks',
         'Topic, crew and attendance. Talks triggered by findings or incidents remain tied to ' +
         'the original safety issue for a complete follow-up record.', right);
+      if (!C.demo) { tbtxLoad(false); html += tbtxPanelHtml(); }
       html += '<div class="cards">' +
         kpi(t0.length, 'held today', 'across ' + t0Sites + ' site' + (t0Sites === 1 ? '' : 's'), t0.length ? 'c-ok' : 'c-warn') +
         kpi(all.length, 'in the last 30 days', 'all sites', 'c-grey') +
@@ -6614,6 +6615,9 @@
 
     paint(html);
     wireSubtabs('tt', function (v) { talkTab = v; pgTalks(); });
+    $$('[data-tbtx]').forEach(function (r) { r.onclick = function () { openTbtx(r.dataset.tbtx); }; });
+    var _tr = $('#tbtx-refresh') || $('#tbtx-retry');
+    if (_tr) _tr.onclick = function () { tbtxLoad(true); pgTalks(); };
     $$('[data-talkarch]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation();
       var t = (B.talks || []).filter(function (x) { return x.id === b.dataset.talkarch; })[0];
       if (t) t.archived = true; toast('Toolbox talk archived.'); pgTalks(); }; });
@@ -6628,6 +6632,98 @@
       $$('[data-talksend]').forEach(function (r) { r.onclick = function () { openTalkSend(r.dataset.talksend); }; });
     }
     var _tkq = $('#tk-q'); if (_tkq && talkF.q) { _tkq.focus(); try { _tkq.setSelectionRange(_tkq.value.length, _tkq.value.length); } catch (e) {} }
+  }
+
+  /* ---- Toolbox Talks sent by personal text (cs_portal_tbt_texts) ---------
+     Read-only. One row per texted talk: did the text go out, was the link
+     opened, was it submitted, and for a foreman, who was there. The server
+     never returns the link or the full phone number. */
+  var TBTX = { state: 'idle', rows: [] };
+  function tbtxLoad(force) {
+    if (TBTX.state === 'loading' || (TBTX.state === 'ok' && !force)) return;
+    TBTX.state = 'loading';
+    Promise.resolve().then(function () { return post('cs_portal_tbt_texts', {}); }).then(function (r) {
+      TBTX.rows = Array.isArray(r) ? r : []; TBTX.state = 'ok';
+    }).catch(function () { TBTX.rows = []; TBTX.state = 'err'; }).then(function () {
+      if (page === 'talks' && talkTab === 'log') pgTalks();
+    });
+  }
+  function tbtxWhen(t) { return t ? fmtWhen(t) : '—'; }
+  function tbtxDelivery(x) {
+    if (x.send_status === 'sent') return pill('p-ok', 'Texted ' + tbtxWhen(x.sent_at));
+    if (x.send_status === 'scheduled' || x.send_status === 'sending') return pill('p-grey', 'Scheduled ' + tbtxWhen(x.send_at));
+    if (x.send_status === 'held') return pill('p-grey', 'On hold (not sent)');
+    if (x.send_status === 'cancelled') return pill('p-grey', 'Cancelled');
+    if (x.send_status === 'failed') return pill('p-bad', 'Text failed');
+    return pill('p-grey', 'Not texted');
+  }
+  function tbtxProgress(x) {
+    if (x.submitted_at) return pill('p-ok', 'Submitted ' + tbtxWhen(x.submitted_at));
+    if (x.opened_at) return pill('p-warn', 'Opened ' + tbtxWhen(x.opened_at) + ', not submitted');
+    if (x.send_status === 'sent') return pill('p-warn', 'Not opened yet');
+    return '<span class="muted">—</span>';
+  }
+  function tbtxCount(x) {
+    return (x.attendees || []).length + (x.manual_attendees || []).length;
+  }
+  function tbtxPanelHtml() {
+    if (TBTX.state === 'idle' || TBTX.state === 'loading') {
+      return '<div class="panel"><div class="panel-hd"><h3>Sent by text</h3></div>' +
+        '<div class="panel-bd"><div class="small muted">Loading texted Toolbox Talks…</div></div></div>';
+    }
+    if (TBTX.state === 'err') {
+      return '<div class="panel"><div class="panel-hd"><h3>Sent by text</h3></div>' +
+        '<div class="panel-bd"><div class="small muted">Texted Toolbox Talks could not be loaded. ' +
+        '<button class="btn btn-sm" id="tbtx-retry">Try again</button></div></div></div>';
+    }
+    var rows = TBTX.rows.map(function (x) {
+      var who = esc(x.recipient_name || '—') + (x.is_test ? ' ' + pill('p-grey', 'Test') : '') +
+        '<div class="t-sub">' + (x.role === 'leader' ? 'Foreman' : 'Individual') +
+        (x.phone_last4 ? ' · ends ' + esc(x.phone_last4) : '') + '</div>';
+      var crew = x.role === 'leader'
+        ? esc(jobName(x.crew_job_id)) + '<div class="t-sub">' + esc(jobNum(x.crew_job_id)) + '</div>'
+        : '<span class="muted">—</span>';
+      var att = x.submitted_at && x.role === 'leader' ? String(tbtxCount(x)) : '—';
+      return '<tr class="click" data-tbtx="' + esc(x.id) + '">' +
+        '<td><span class="t-main">' + who + '</span></td>' +
+        '<td>' + esc(x.talk_title || '—') + '</td>' +
+        '<td>' + crew + '</td>' +
+        '<td>' + tbtxDelivery(x) + '</td>' +
+        '<td>' + tbtxProgress(x) + '</td>' +
+        '<td class="r num">' + att + '</td></tr>';
+    });
+    return '<div class="panel"><div class="panel-hd"><h3>Sent by text</h3>' +
+      '<button class="btn btn-sm" id="tbtx-refresh">Refresh</button></div>' +
+      '<div class="panel-bd flush">' + tableWrap(
+        [{ t: 'Sent to' }, { t: 'Toolbox Talk' }, { t: 'Crew' }, { t: 'Text' }, { t: 'Status' }, { t: 'Attended', r: 1 }],
+        rows, 'No Toolbox Talks have been texted yet.') + '</div></div>';
+  }
+  function openTbtx(id) {
+    var x = TBTX.rows.filter(function (r) { return r.id === id; })[0];
+    if (!x) return;
+    var h = '<div class="sec-h">Text</div>' +
+      kv('Sent to', (x.recipient_name || '—') + (x.phone_last4 ? ' (ends ' + x.phone_last4 + ')' : '')) +
+      kv('Type', x.role === 'leader' ? 'Foreman-led group talk' : 'Individual') +
+      (x.role === 'leader' ? kv('Crew', jobName(x.crew_job_id) + (jobNum(x.crew_job_id) ? ' (' + jobNum(x.crew_job_id) + ')' : '')) : '') +
+      kv('Scheduled for', tbtxWhen(x.send_at)) +
+      kv('Text status', x.send_status === 'sent' ? 'Sent ' + tbtxWhen(x.sent_at)
+        : x.send_status === 'held' ? 'On hold, not sent' : (x.send_status || 'Not texted'), x.send_status === 'failed') +
+      '<div class="sec-h">Progress</div>' +
+      kv('Opened', tbtxWhen(x.opened_at)) +
+      kv('Last activity', tbtxWhen(x.last_active_at)) +
+      kv('Submitted', x.submitted_at ? tbtxWhen(x.submitted_at) : 'Not yet') +
+      (x.format_used ? kv('Format', x.format_used === 'guided' ? 'Guided talk' : 'Original document') : '') +
+      (x.active_ms ? kv('Time on the talk', Math.max(1, Math.round(x.active_ms / 60000)) + ' min') : '');
+    if (x.role === 'leader') {
+      var list = (x.attendees || []).concat((x.manual_attendees || []).map(function (n) { return n + ' (typed in)'; }));
+      h += '<div class="sec-h">Who was there</div>' +
+        (x.submitted_at ? kv('Presented by', x.presenter || '—') + kv('Attended', list.length + ' people') +
+          list.map(function (n) {
+            return '<div class="bullet"><span class="m d">•</span><span>' + esc(n) + '</span></div>';
+          }).join('')
+        : '<div class="small muted">Shows here once the foreman submits the crew list.</div>');
+    }
+    drawer(x.talk_title || 'Toolbox Talk', (x.recipient_name || '') + (x.is_test ? ' · test' : ''), h);
   }
 
   /* Text a prepared toolbox talk to a foreman — same link workflow as inspections. */
