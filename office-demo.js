@@ -125,6 +125,10 @@
     });
     d.jhaLadderUse = ladder;
     if (ladder === 'yes') {
+      // Tony, Oct 9: who will inspect the ladders prior to use, picked from the
+      // crew list, and when that pick was made.
+      d.jhaLadderInspectors = crew.slice(1, 2).length ? crew.slice(1, 2) : crew.slice(0, 1);
+      d.jhaLadderInspectorsAt = wdAt(day, 6, 50);
       // Job-assigned ladders, each with its own check (selected, never typed).
       var check = function (id, desc, today) {
         return { ladder_id: id, description: desc, last_inspected_at: wdAt(day + 1, 7, 5),
@@ -159,6 +163,7 @@
       d.jhaLadderObstacle1 = 'Sprinkler main';
       d.jhaLadderObstacle2 = 'Cable tray';
       delete d.jhaLadderIds; delete d.jhaLadderChecks; delete d.jhaLadderDefects;
+      delete d.jhaLadderInspectors; delete d.jhaLadderInspectorsAt;   // never asked back then
     }
     return d;
   }
