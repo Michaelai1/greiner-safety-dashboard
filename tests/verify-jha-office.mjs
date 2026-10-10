@@ -31,7 +31,7 @@ await check('jha-model.js is the shared JHA-MODEL block', async () => {
   assert.ok(model.startsWith('/* JHA-MODEL:BEGIN') && model.trimEnd().endsWith('/* JHA-MODEL:END */'));
 });
 const PHONE_INDEX = process.env.PHONE_INDEX ||
-  path.resolve(ROOT, '../greiner-qr-tony-feedback-2026-10-02/index.html');
+  path.resolve(ROOT, '../greiner-qr-ladder-inspector/index.html');
 if (fs.existsSync(PHONE_INDEX)) {
   await check('jha-model.js matches the phone copy byte for byte', async () => {
     const html = fs.readFileSync(PHONE_INDEX, 'utf8');
@@ -110,6 +110,9 @@ try {
     assert.ok(all.includes('Estimated Time of Completion = 15:30'));
     assert.ok(all.includes('Who will conduct the lift inspections? = Demo Foreman, Alex Rivera (Demo)'));
     assert.ok(all.includes('Which ladder or ladders will be used today? = LAD-101'));
+    // Tony, Oct 9: the ladder inspector and the time they were picked.
+    assert.ok(all.includes('Who will inspect the ladders prior to use? = Alex Rivera (Demo)'), 'the ladder inspector shows');
+    assert.ok(/Ladder inspector selected at = \w{3} \d{1,2}, \d{4}/.test(all), 'the time the ladder inspector was picked shows');
     assert.ok(all.includes('Ladder LAD-101 \u2014 Inspected by = Alex Rivera (Demo)'));
     assert.ok(all.includes('Ladder LAD-101 \u2014 Inspection for today\u2019s use = Confirmed safe for use by Demo Foreman'));
     assert.ok(all.includes('Which ladder or ladders will be used today? = LAD-101, LAD-204'), 'multiple ladders');
@@ -137,6 +140,7 @@ try {
     assert.ok(t.includes('Corridor too narrow for a scissor lift at this location.'));
     assert.ok(t.includes('Above-ceiling hindrances / obstacles 1') && t.includes('Sprinkler main'));
     assert.ok(t.includes('New or Revised'), 'the old New/Revised answer still shows on the old record');
+    assert.ok(!/Who will inspect the ladders|Ladder inspector selected at/.test(t), 'an older JHA was never asked about the ladder inspector');
   });
 
   await check('26. Hot Work office detail shows the type above the description', async () => {

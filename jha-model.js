@@ -403,6 +403,13 @@
     ['jhaJobsiteSafety', 'Jobsite Safety Requirements — PPE, housekeeping, dust walls, spark-proof tools, etc.']
   ];
   var LADDER_USE_LABEL = 'Is any ladder use planned or expected today?';
+  /* Tony, Oct 9 2026: ladder use = Yes asks one thing — who will inspect the
+     ladders before use — picked from the job crew list like the aerial lift
+     inspectors. The JHA keeps the names and the time they were picked.
+     JHAs stored before this change have neither and render without them. */
+  var LADDER_WHO_LABEL = 'Who will inspect the ladders prior to use?';
+  var LADDER_WHO_AT_LABEL = 'Ladder inspector selected at';
+  var LADDER_WHO_REQUIRED = 'Select at least one person who will inspect the ladders prior to use.';
   var LADDER_PICK_LABEL = 'Which ladder or ladders will be used today?';
   var NO_LADDERS_ASSIGNED = 'No ladders are assigned to this job. Contact the office before using a ladder.';
   var AERIAL_USE_LABEL = 'Will any aerial lift devices be used today?';
@@ -439,6 +446,16 @@
     // previous review build; new JHAs use the job-assigned selection instead.
     delete d.jhaLadderId; delete d.jhaLadderInspection;
     if (d.jhaLadderUse === 'yes') {
+      // Left absent when absent: a JHA stored before the question existed
+      // must not gain an empty answer to it.
+      if (d.jhaLadderInspectors != null) {
+        var lw = parseMaybe(d.jhaLadderInspectors, []);
+        d.jhaLadderInspectors = (Array.isArray(lw) ? lw : []).filter(function (n, i, a) {
+          return n && a.indexOf(n) === i; });
+      }
+      // The selection time is kept only with a selection, and only as a real instant.
+      if (!(d.jhaLadderInspectors || []).length || !filled(d.jhaLadderInspectorsAt) ||
+          isNaN(new Date(d.jhaLadderInspectorsAt))) delete d.jhaLadderInspectorsAt;
       var ids = parseMaybe(d.jhaLadderIds, []);
       d.jhaLadderIds = (Array.isArray(ids) ? ids : []).map(normalizeLadderId)
         .filter(function (x, i, a) { return x && a.indexOf(x) === i; });
@@ -450,6 +467,7 @@
       var defects = parseMaybe(d.jhaLadderDefects, []);
       d.jhaLadderDefects = Array.isArray(defects) ? defects : [];
     } else {
+      delete d.jhaLadderInspectors; delete d.jhaLadderInspectorsAt;
       delete d.jhaLadderIds; delete d.jhaLadderChecks; delete d.jhaLadderDefects;
     }
     if (d.jhaAerialUse === 'yes') {
@@ -511,6 +529,15 @@
     var lad = [];
     if (filled(d.jhaLadderUse)) lad.push(item('jhaLadderUse', LADDER_USE_LABEL, yesNo(d.jhaLadderUse)));
     if (d.jhaLadderUse === 'yes') {
+      // Shown only when the record has the answer: older JHAs were never asked.
+      if (d.jhaLadderInspectors != null) {
+        var lw = parseMaybe(d.jhaLadderInspectors, []);
+        lad.push(item('jhaLadderInspectors', LADDER_WHO_LABEL,
+          (Array.isArray(lw) && lw.length) ? lw.join(', ') : 'None selected'));
+        if (filled(d.jhaLadderInspectorsAt)) {
+          lad.push(item('jhaLadderInspectorsAt', LADDER_WHO_AT_LABEL, fmtIndy(d.jhaLadderInspectorsAt)));
+        }
+      }
       var ids = parseMaybe(d.jhaLadderIds, []);
       if (Array.isArray(ids) && ids.length) lad.push(item('jhaLadderIds', LADDER_PICK_LABEL, ids.join(', ')));
       (parseMaybe(d.jhaLadderChecks, []) || []).forEach(function (c) {
@@ -567,22 +594,28 @@
   }
 
   /* Submit-time checks the HTML required attributes can't express.
-     ctx.ladders: { assigned: [ids assigned to this job], states: { id: lookup } } */
+     ctx.ladders: { assigned: [ids assigned to this job], states: { id: lookup } }
+     — passed only where ladder ID selection is switched on (the demo today);
+     without it no ladder ID is asked for or checked. */
   function jhaSubmitProblems(data, ctx) {
     var d = data || {}, p = [], lad = (ctx && ctx.ladders) || null;
     if (d.jhaLadderUse === 'yes') {
+      var lw = parseMaybe(d.jhaLadderInspectors, []);
+      if (!Array.isArray(lw) || !lw.length) p.push(LADDER_WHO_REQUIRED);
       var ids = parseMaybe(d.jhaLadderIds, []);
-      if (lad && !(lad.assigned || []).length) p.push(NO_LADDERS_ASSIGNED);
-      else if (!Array.isArray(ids) || !ids.length) p.push('Select which ladder or ladders will be used today.');
-      else if (lad) {
-        ids.forEach(function (id) {
-          var st = (lad.states || {})[id];
-          if ((lad.assigned || []).indexOf(id) === -1) p.push('Ladder ' + id + ' is not assigned to this job.');
-          else if (st && st.state === 'duplicate') p.push(st.message);
-          else if (st && st.status === 'do-not-use') {
-            p.push('Ladder ' + id + ' is marked Do Not Use. Remove it and select a different assigned ladder.');
-          }
-        });
+      if (lad) {
+        if (!(lad.assigned || []).length) p.push(NO_LADDERS_ASSIGNED);
+        else if (!Array.isArray(ids) || !ids.length) p.push('Select which ladder or ladders will be used today.');
+        else {
+          ids.forEach(function (id) {
+            var st = (lad.states || {})[id];
+            if ((lad.assigned || []).indexOf(id) === -1) p.push('Ladder ' + id + ' is not assigned to this job.');
+            else if (st && st.state === 'duplicate') p.push(st.message);
+            else if (st && st.status === 'do-not-use') {
+              p.push('Ladder ' + id + ' is marked Do Not Use. Remove it and select a different assigned ladder.');
+            }
+          });
+        }
       }
     }
     if (d.jhaAerialUse === 'yes') {
@@ -616,6 +649,7 @@
     TZ: TZ, JHA_REVISION_RULES: JHA_REVISION_RULES, LADDER_INSPECTION_CADENCE: LADDER_INSPECTION_CADENCE,
     LEGACY_FIELDS: LEGACY_FIELDS, HEADER_FIELDS: HEADER_FIELDS,
     LADDER_USE_LABEL: LADDER_USE_LABEL, LADDER_PICK_LABEL: LADDER_PICK_LABEL, NO_LADDERS_ASSIGNED: NO_LADDERS_ASSIGNED,
+    LADDER_WHO_LABEL: LADDER_WHO_LABEL, LADDER_WHO_AT_LABEL: LADDER_WHO_AT_LABEL, LADDER_WHO_REQUIRED: LADDER_WHO_REQUIRED,
     AERIAL_USE_LABEL: AERIAL_USE_LABEL, AERIAL_WHO_LABEL: AERIAL_WHO_LABEL,
     LADDER_SAFE_ATTESTATION: LADDER_SAFE_ATTESTATION, LADDER_DEFECT_ACK: LADDER_DEFECT_ACK,
     SIGN_IN_REQUIRED: SIGN_IN_REQUIRED,
