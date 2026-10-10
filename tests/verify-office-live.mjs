@@ -82,6 +82,7 @@ const FIELD_SESSION = { ok: true, session: 'sess-field', expires_at: new Date(Da
 const COMPANY_WIDE = new Set(['cs_portal_bundle', 'cs_portal_field_inspections', 'cs_portal_findings',
   'cs_portal_incidents', 'cs_portal_job_field_users']);
 let calls = [];
+let assignFail = false;   // when set, the IU job's assignment read fails
 const RPC = {
   cs_portal_login: (b) => b.p_pin === '4826' ? FIELD_SESSION : { ok: false, error: 'Wrong code' },
   cs_portal_bundle: () => BUNDLE,
@@ -122,6 +123,9 @@ async function open(url, { width = 1440, height = 900, session = null } = {}) {
       const fieldTok = body.p_token === 'sess-field' || body.p_token === 'sess-legacy';
       if (fieldTok && COMPANY_WIDE.has(m[1])) {
         return r.fulfill({ status: 400, headers: cors, contentType: 'application/json', body: JSON.stringify({ message: 'insufficient scope' }) });
+      }
+      if (assignFail && m[1] === 'cs_portal_job_field_users' && body.p_job_id === IU) {
+        return r.fulfill({ status: 503, headers: cors, contentType: 'application/json', body: JSON.stringify({ message: 'temporarily unavailable' }) });
       }
       const f = RPC[m[1]];
       return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(f ? f(body) : []) });
@@ -205,6 +209,23 @@ try {
     const html = await mainMarkup(p);
     assert.ok(!BANNED.test(html), `live All Metrics shows "${(html.match(BANNED) || [])[0]}"`);
     await noOverflow(p, 'analytics all metrics 1024');
+    assert.deepEqual(p.errors, []);
+    await p.context().close();
+  });
+
+  await check('If the job assignments cannot be read, compliance says so; Refresh data recovers', async () => {
+    assignFail = true;
+    const p = await open('office.html#analytics', { session: FULL });
+    await p.waitForSelector('.an-grid.an-g3');
+    await p.waitForFunction(() => !/Loading job assignments/.test(document.querySelector('#main').textContent));
+    const t = (await p.innerText('.an-c[data-an-go="compliance"]')).replace(/\s+/g, ' ');
+    assert.match(t, /Could not load the job assignments that set what is due/);
+    assert.ok(!/No daily JHA was due|%/.test(t), 'no rate and no "nothing due" when the load failed');
+    assignFail = false;
+    await p.click('#refresh-data');
+    await p.waitForFunction(() => /Required/.test(document.querySelector('.an-c[data-an-go="compliance"]').textContent));
+    const t2 = (await p.innerText('.an-c[data-an-go="compliance"]')).replace(/\s+/g, ' ');
+    assert.match(t2, new RegExp(`\\b1 Completed ${elapsedWeekdays - 1} Missed ${elapsedWeekdays} Required`), 'Refresh data re-reads the assignments');
     assert.deepEqual(p.errors, []);
     await p.context().close();
   });

@@ -2488,6 +2488,7 @@
       hydrateWorkers();
       FIELDRAW = res[1] || [];
       CREW = crewFromField(res[1]);
+      SI_ASSIGN = null;                        // the next Analytics view re-reads the job assignments
       renderNav();
       return B;
     });
@@ -3213,10 +3214,11 @@
      The frequency is policy attached to the form type (SI_FORMS_READY), not a
      per-job record, so nothing here can drift out of step with Jobs.        */
   var SI_ASSIGN = null;                 // job_id -> [form keys], from the RPC
+  var SI_ASSIGN_FAILED = 0;             // jobs whose assignments could not be read on the last load
   function siLoadAssignments(then) {
     var jobs = ((TBT_DEMO && window.DEMO) ? window.DEMO.jobs : (B && B.jobs)) || [];
-    var out = {}, left = jobs.length;
-    if (!left) { SI_ASSIGN = out; if (then) then(); return; }
+    var out = {}, left = jobs.length, failed = 0;
+    if (!left) { SI_ASSIGN = out; SI_ASSIGN_FAILED = 0; if (then) then(); return; }
     jobs.forEach(function (j) {
       post('cs_portal_job_field_users', { p_job_id: j.id }).then(function (users) {
         var keys = {};
@@ -3226,8 +3228,8 @@
           fk.forEach(function (k) { keys[k] = 1; });
         });
         out[j.id] = Object.keys(keys);
-      }).catch(function () { out[j.id] = []; }).then(function () {
-        if (--left === 0) { SI_ASSIGN = out; if (then) then(); }
+      }).catch(function () { out[j.id] = []; failed++; }).then(function () {
+        if (--left === 0) { SI_ASSIGN = out; SI_ASSIGN_FAILED = failed; if (then) then(); }
       });
     });
   }
@@ -4200,6 +4202,9 @@
     var compBody;
     if (LIVE && anAssignPending) {
       compBody = '<div class="an-mid"><div class="an-none">Loading job assignments…</div></div>';
+    } else if (LIVE && SI_ASSIGN_FAILED) {
+      compBody = '<div class="an-mid"><div class="an-none">Could not load the job assignments that set what is due. ' +
+        'Use Refresh data to try again.</div></div>';
     } else {
       compBody = '<div class="an-mid">' + (LIVE && !comp.required.length
           ? '<div class="an-none">No daily JHA was due in this date range</div>'
@@ -4413,6 +4418,9 @@
 
     if (LIVE && anAssignPending) html += anGroup('Daily Compliance', [
       anRow('Daily JHA compliance', 'Loading…', null, 'Waiting for the job assignments to load', null)
+    ]);
+    else if (LIVE && SI_ASSIGN_FAILED) html += anGroup('Daily Compliance', [
+      anRow('Daily JHA compliance', 'Not loaded', null, 'The job assignments could not be read. Use Refresh data to try again.', null)
     ]);
     else html += anGroup('Daily Compliance', [
       anRow('Required submissions', comp.required.length, p.comp.required.length,

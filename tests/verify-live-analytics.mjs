@@ -89,6 +89,7 @@ function livePage(bundle, fieldraw, assign) {
       pending: function () { SI_ASSIGN = null; anAssignPending = false; anTab = 'visual';
         // the per-job assignment load never answers here, so the page must say it is loading
         siLoadAssignments = function () {}; pgAnalytics(); return painted; },
+      failed: function (tab) { SI_ASSIGN_FAILED = 1; anAssignPending = false; anTab = tab || 'visual'; pgAnalytics(); return painted; },
       anlCorrective: function () { return anlCorrective(); }
     };
   `)(bundle, fieldraw, {}, assign);
@@ -362,6 +363,13 @@ const weekdayBack = (n) => {
   const R = livePage({ jobs, reports: [], finding_actions: {}, findings: [], incidents: [], near_misses: [], equipment: [] }, field, assign);
   const r = text(R.pending());
   assert.match(r, /Loading job assignments/, 'compliance waits for its denominator');
+
+  // If the job assignments could not be read, it says so: never "nothing due", never 0%.
+  const F = livePage({ jobs, reports: [], finding_actions: {}, findings: [], incidents: [], near_misses: [], equipment: [] }, field, {});
+  const fv = text(F.failed('visual'));
+  assert.match(fv, /Could not load the job assignments that set what is due\. Use Refresh data to try again\./);
+  assert.ok(!/No daily JHA was due/.test(fv) && !/\b0%/.test(fv), 'a failed load is not reported as nothing due');
+  assert.match(text(F.failed('all')), /Daily JHA compliance Not loaded/, 'All Metrics says it too');
 }
 
 console.log('Live analytics verification passed (empty, partial and populated real-data bundles; live route renders real data only).');
