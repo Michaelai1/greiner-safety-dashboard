@@ -1733,19 +1733,6 @@
     });
   }
 
-  /* ====================== ANALYTICS (bridge) ========================= */
-  /* The dashboard builder lives in analytics.js; office.js hands it the data
-     and helpers so it never re-implements the app. */
-  function anCtx() {
-    return { getB: function () { return B; }, esc: esc, fmtDate: fmtDate, head: head, paint: paint,
-      $: $, $$: $$, jobName: jobName, subName: subName, catName: catName, drawer: drawer,
-      closeDrawer: closeDrawer, toast: toast, go: go, workerRoster: workerRoster };
-  }
-  function pgAnalytics() {
-    if (window.SDAnalytics) { window.SDAnalytics.init(anCtx()); window.SDAnalytics.page(); }
-    else paint('<div class="empty">Analytics module failed to load.</div>');
-  }
-
   var navGroupsCollapsed = {};   // group name -> true when collapsed (session only)
   function navLink(p, c) {
     var a = el('a', p.id === page ? 'on' : '');
@@ -1794,7 +1781,7 @@
     page = id;
     if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
     renderNav();
-    ({ overview: pgOverview, analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics), permits: pgPermits, incidents: pgIncidents, obs: (TBT_DEMO ? pgObsDemo : pgObs),
+    ({ overview: pgOverview, analytics: pgAnalytics, permits: pgPermits, incidents: pgIncidents, obs: (TBT_DEMO ? pgObsDemo : pgObs),
        insp: pgInsp, equipment: pgEquipment, corrective: pgCorrective, talks: pgTalks, nearmiss: pgNearMiss,
        subs: pgSubs, training: pgTraining, templates: pgTemplates, jobs: pgJobs, docs: pgDocs,
        automations: pgAutomations, orient: pgOrient, assign: pgAssign,
@@ -1812,214 +1799,6 @@
     return '<div class="tw"><table><thead><tr>' +
       cols.map(function (c) { return '<th' + (c.r ? ' class="r"' : '') + '>' + esc(c.t) + '</th>'; }).join('') +
       '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
-  }
-
-  /* ====================== ANALYTICS ==================================== */
-  /* A small, polished executive view. Every number is DERIVED from the same
-     demo state the rest of the app uses — no separate analytics dataset. The
-     Date Range and Jobsite filters recompute everything on change. */
-  var anlRange = 30, anlJob = '';                 // 7 | 30 | 90 | 'ytd'
-  function anlRangeLabel() {
-    return anlRange === 'ytd' ? 'Year to date' : 'Last ' + anlRange + ' days';
-  }
-  // Small chart primitives — pure HTML/CSS, no external library.
-  function anlCols(items) {                        // vertical column chart
-    if (!items.length) return '<div class="anl-empty">No data for this period.</div>';
-    var max = Math.max(1, Math.max.apply(null, items.map(function (i) { return i.value; })));
-    return '<div class="anl-cols">' + items.map(function (it) {
-      var h = Math.max(it.value ? 3 : 0, Math.round(it.value / max * 100));
-      return '<div class="anl-col"><div class="anl-col-v">' + (it.value || '') + '</div>' +
-        '<div class="anl-col-bar" style="height:' + h + '%"></div>' +
-        '<div class="anl-col-l">' + esc(it.label) + '</div></div>';
-    }).join('') + '</div>';
-  }
-  function anlBars(items, keepZero) {               // horizontal bar chart
-    var rows = keepZero ? items : items.filter(function (i) { return i.value > 0; });
-    if (!rows.length || !items.some(function (i) { return i.value > 0; })) return '<div class="anl-empty">No data for this period.</div>';
-    var max = Math.max(1, Math.max.apply(null, rows.map(function (i) { return i.value; })));
-    return '<div class="anl-bars">' + rows.map(function (it) {
-      var w = Math.max(2, Math.round(it.value / max * 100));
-      return '<div class="anl-barrow"><div class="anl-barlbl">' + esc(it.label) + '</div>' +
-        '<div class="anl-bartrack"><div class="anl-barfill" style="width:' + w + '%;background:' + (it.color || 'var(--accent)') + '"></div></div>' +
-        '<div class="anl-barval">' + it.value + '</div></div>';
-    }).join('') + '</div>';
-  }
-  function anlDonut(segs) {                         // SVG donut + legend
-    var total = segs.reduce(function (a, s) { return a + s.value; }, 0);
-    if (!total) return '<div class="anl-empty">No data for this period.</div>';
-    var R = 54, CIRC = 2 * Math.PI * R, off = 0;
-    var arcs = segs.map(function (s) {
-      var len = s.value / total * CIRC;
-      var c = '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="' + s.color + '" stroke-width="20" ' +
-        'stroke-dasharray="' + len.toFixed(2) + ' ' + (CIRC - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 70 70)"/>';
-      off += len; return c;
-    }).join('');
-    var legend = segs.map(function (s) {
-      return '<div class="anl-leg"><span style="background:' + s.color + '"></span>' + esc(s.label) + ' · <b>' + s.value + '</b></div>';
-    }).join('');
-    return '<div class="anl-donut"><svg viewBox="0 0 140 140" width="140" height="140" aria-hidden="true">' + arcs +
-      '<text x="70" y="70" text-anchor="middle" dominant-baseline="central" font-size="24" font-weight="700" fill="#0b1120">' + total + '</text></svg>' +
-      '<div class="anl-legend">' + legend + '</div></div>';
-  }
-  function anlPanel(title, sub, body) {
-    return '<div class="panel"><div class="panel-hd"><div><h3>' + esc(title) + '</h3>' +
-      (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div></div><div class="panel-bd">' + body + '</div></div>';
-  }
-  function pgAnalytics() {
-    // PILOT: Analytics is intentionally locked until Greiner has accumulated
-    // more real safety data. No sample charts, no fabricated trends. The full
-    // dashboard code below is preserved and unlocks by removing this block.
-    paint(head('Analytics', '', '') +
-      '<div class="panel"><div class="panel-bd" style="text-align:center;padding:56px 24px">' +
-      '<div style="font-size:16px;font-weight:650;margin-bottom:8px">Analytics will become available as Greiner builds more real safety data.</div>' +
-      '<div class="small muted" style="max-width:520px;margin:0 auto">Every inspection, finding and corrective action recorded now feeds this page. Nothing to set up — it unlocks automatically once there is enough real history to be meaningful.</div>' +
-      '</div></div>');
-    return;
-    var jobs = B.jobs || [];
-    var jobIdByName = function (nm) { for (var i = 0; i < jobs.length; i++) if (jobs[i].name === nm) return jobs[i].id; return null; };
-    var now = new Date();
-    var yearStart = new Date(now.getFullYear(), 0, 1);
-    var start = anlRange === 'ytd' ? yearStart : new Date(now.getTime() - anlRange * 86400000);
-    var inJob = function (jid) { return !anlJob || jid === anlJob; };
-
-    // Every field submission, normalized. Same records the rest of the app shows.
-    var subs = [];
-    (B.reports || []).forEach(function (r) { if (r.report_date) subs.push({ t: new Date(repDay(r) + 'T09:00:00'), type: 'Observation', job_id: r.job_id, timed: false }); });
-    (CREW || []).forEach(function (r) {
-      var when = r.submitted_at ? new Date(r.submitted_at) : (r.inspection_date ? new Date(r.inspection_date + 'T09:00:00') : null);
-      if (!when) return;
-      var type = r.asset_id ? 'Equipment Inspection' : (/jha/i.test(r.form_type || r.inspection_subtype || '') ? 'JHA' : 'Inspection');
-      subs.push({ t: when, type: type, job_id: jobIdByName(r.jobsite), timed: !!r.submitted_at });
-    });
-    (B.permits || []).forEach(function (p) { if (p.issued_at) subs.push({ t: new Date(p.issued_at), type: 'Permit', job_id: p.job_id, timed: true }); });
-    (B.talks || []).forEach(function (t) { if (t.date) subs.push({ t: new Date(t.date + 'T10:00:00'), type: 'Toolbox Talk', job_id: t.job_id, timed: false }); });
-    var inRange = subs.filter(function (s) { return s.t >= start && inJob(s.job_id); });
-
-    // ---- KPIs (job-filtered; range applies to submissions + score) ----
-    var openCA = (B.findings || []).filter(function (f) { return f.status === 'open' && inJob(f.job_id); });
-    var overdueCA = openCA.filter(function (f) { return f.due && new Date(f.due) < now; });
-    var closedCA = (B.findings || []).filter(function (f) { return f.status === 'closed' && inJob(f.job_id); });
-    // Genuine Greiner metrics exclude demo_sample records so no fictional injury
-    // history is presented as real. (The Injury Analytics panel below is a clearly
-    // labeled illustrative sample.)
-    var incYTD = (B.incidents || []).filter(function (i) { return !i.demo_sample && i.date && new Date(i.date) >= yearStart && inJob(i.job_id); });
-    var nmYTD = (B.near_misses || []).filter(function (i) { return !i.demo_sample && i.date && new Date(i.date) >= yearStart && inJob(i.job_id); });
-    var pass = 0, tot = 0;
-    (B.reports || []).forEach(function (r) {
-      if (!inJob(r.job_id) || !r.report_date || new Date(repDay(r) + 'T09:00:00') < start) return;
-      var it = r.items || {}; Object.keys(it).forEach(function (k) { var v = it[k]; if (v === 'yes') { pass++; tot++; } else if (v === 'no') { tot++; } });
-    });
-    var score = tot ? Math.round(pass / tot * 100) : null;
-    var soon = new Date(now.getTime() + 30 * 86400000), cCur = 0, cSoon = 0, cExp = 0;
-    (B.certs || []).forEach(function (c) { var e = c.expires ? new Date(c.expires) : null; if (!e) { cCur++; return; } if (e < now) cExp++; else if (e < soon) cSoon++; else cCur++; });
-    var certTot = (B.certs || []).length, comp = certTot ? Math.round(cCur / certTot * 100) : null;
-
-    var cards = '<div class="cards">' +
-      kpi(String(inRange.length), 'Reports Submitted', anlRangeLabel() + ' · all field records', '') +
-      (overdueCA.length ? actionKpi(String(openCA.length), 'Open Corrective Actions', overdueCA.length + ' overdue')
-                        : kpi(String(openCA.length), 'Open Corrective Actions', 'all on time', '')) +
-      kpi(score == null ? '—' : score + '%', 'Avg Inspection Score', 'pass rate on inspection items', '') +
-      kpi(comp == null ? '—' : comp + '%', 'Training Compliance', cSoon + ' expiring soon', '') +
-      kpi(String(incYTD.length), 'Incidents YTD', 'year to date', '') +
-      kpi(String(nmYTD.length), 'Near Misses YTD', 'year to date', '') +
-      '</div>';
-
-    // ---- Chart 1: submissions over time (adaptive buckets) ----
-    var mode = anlRange === 7 ? 'day' : (anlRange === 30 ? 'week' : 'month');
-    var buckets = [], seen = {};
-    if (mode === 'month') {
-      var dm = new Date(start.getFullYear(), start.getMonth(), 1);
-      while (dm <= now) { var km = dm.getFullYear() + '-' + dm.getMonth(); seen[km] = { label: dm.toLocaleDateString('en-US', { month: 'short' }), value: 0 }; buckets.push(km); dm = new Date(dm.getFullYear(), dm.getMonth() + 1, 1); }
-    } else {
-      var step = mode === 'day' ? 1 : 7;
-      var dd = new Date(start); if (mode === 'week') { var offs = (dd.getDay() + 6) % 7; dd.setDate(dd.getDate() - offs); } dd.setHours(0, 0, 0, 0);
-      while (dd <= now) { var kd = dd.toISOString().slice(0, 10); seen[kd] = { label: dd.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), value: 0 }; buckets.push(kd); dd = new Date(dd.getTime() + step * 86400000); }
-    }
-    function keyOf(t) {
-      if (mode === 'month') return t.getFullYear() + '-' + t.getMonth();
-      if (mode === 'day') return t.toISOString().slice(0, 10);
-      var w = new Date(t); var o = (w.getDay() + 6) % 7; w.setDate(w.getDate() - o); w.setHours(0, 0, 0, 0); return w.toISOString().slice(0, 10);
-    }
-    inRange.forEach(function (s) { var k = keyOf(s.t); if (seen[k]) seen[k].value++; });
-    var series = buckets.map(function (k) { return seen[k]; });
-
-    // ---- Chart 2: by type ----
-    var typeOrder = ['JHA', 'Inspection', 'Equipment Inspection', 'Permit', 'Toolbox Talk', 'Observation', 'Near Miss'];
-    var typeCount = {}; inRange.forEach(function (s) { typeCount[s.type] = (typeCount[s.type] || 0) + 1; });
-    typeCount['Near Miss'] = (B.near_misses || []).filter(function (i) { return i.date && new Date(i.date) >= start && inJob(i.job_id); }).length;
-    var byType = typeOrder.map(function (t) { return { label: t, value: typeCount[t] || 0 }; });
-
-    // ---- Chart 3: time of day (records that carry a real submission timestamp) ----
-    var tod = [{ label: 'Before 7 AM', value: 0 }, { label: '7–9 AM', value: 0 }, { label: '9 AM–12 PM', value: 0 }, { label: '12–3 PM', value: 0 }, { label: 'After 3 PM', value: 0 }];
-    var timedN = 0;
-    inRange.filter(function (s) { return s.timed; }).forEach(function (s) {
-      timedN++; var h = s.t.getHours();
-      tod[h < 7 ? 0 : h < 9 ? 1 : h < 12 ? 2 : h < 15 ? 3 : 4].value++;
-    });
-
-    // ---- Chart 4: corrective action status ----
-    var caSegs = [
-      { label: 'Open', value: openCA.length - overdueCA.length, color: 'var(--warn)' },
-      { label: 'Overdue', value: overdueCA.length, color: 'var(--fail)' },
-      { label: 'Closed', value: closedCA.length, color: 'var(--ok)' }
-    ];
-
-    // ---- Chart 5: workforce compliance ----
-    var certSegs = [
-      { label: 'Current', value: cCur, color: 'var(--ok)' },
-      { label: 'Expiring soon', value: cSoon, color: 'var(--warn)' },
-      { label: 'Expired', value: cExp, color: 'var(--fail)' }
-    ];
-
-    // ---- Chart 6: safety events by month (YTD, stacked) ----
-    var months = [], mSeen = {};
-    var d6 = new Date(yearStart.getFullYear(), yearStart.getMonth(), 1);
-    while (d6 <= now) { var k6 = d6.getMonth(); mSeen[k6] = { label: d6.toLocaleDateString('en-US', { month: 'short' }), a: 0, b: 0 }; months.push(k6); d6 = new Date(d6.getFullYear(), d6.getMonth() + 1, 1); }
-    incYTD.forEach(function (i) { var m = new Date(i.date).getMonth(); if (mSeen[m]) mSeen[m].a++; });
-    nmYTD.forEach(function (i) { var m = new Date(i.date).getMonth(); if (mSeen[m]) mSeen[m].b++; });
-    var eventMonths = months.map(function (k) { return mSeen[k]; });
-    var maxEv = Math.max(1, Math.max.apply(null, eventMonths.map(function (m) { return m.a + m.b; })));
-    var eventsChart = (incYTD.length + nmYTD.length) ? ('<div class="anl-cols">' + eventMonths.map(function (m) {
-      var ha = Math.round(m.a / maxEv * 100), hb = Math.round(m.b / maxEv * 100);
-      return '<div class="anl-col"><div class="anl-col-v">' + ((m.a + m.b) || '') + '</div>' +
-        '<div style="width:70%;max-width:32px;display:flex;flex-direction:column;justify-content:flex-end;height:100%">' +
-        (ha ? '<div style="height:' + ha + '%;background:var(--fail)' + (hb ? '' : ';border-radius:4px 4px 0 0') + '"></div>' : '') +
-        (hb ? '<div style="height:' + hb + '%;background:var(--warn);border-radius:4px 4px 0 0"></div>' : '') +
-        '</div><div class="anl-col-l">' + esc(m.label) + '</div></div>';
-    }).join('') + '</div><div class="anl-legend" style="flex-direction:row;gap:16px;margin-top:12px">' +
-      '<div class="anl-leg"><span style="background:var(--fail)"></span>Incidents</div>' +
-      '<div class="anl-leg"><span style="background:var(--warn)"></span>Near misses</div></div>')
-      : '<div class="anl-empty">No safety events recorded.</div>';
-
-    var jobOpts = '<option value="">All Jobs</option>' + jobs.map(function (j) {
-      return '<option value="' + esc(j.id) + '"' + (anlJob === j.id ? ' selected' : '') + '>' + esc(j.name) + '</option>';
-    }).join('');
-    var rangeOpts = [[7, 'Last 7 Days'], [30, 'Last 30 Days'], [90, 'Last 90 Days'], ['ytd', 'Year to Date']].map(function (o) {
-      return '<option value="' + o[0] + '"' + (String(anlRange) === String(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>';
-    }).join('');
-
-    // Only render charts that have real data — never show an empty/fabricated chart.
-    var panels = [];
-    if (inRange.length) panels.push(anlPanel('Reports Submitted', anlRangeLabel() + ' · inspections, JHAs, permits, toolbox talks', anlCols(series)));
-    if (inRange.length || typeCount['Near Miss']) panels.push(anlPanel('Reports by Type', 'Distribution of field submissions', anlBars(byType)));
-    if (timedN) panels.push(anlPanel('Submission Activity by Time of Day', timedN + ' timestamped field submissions', anlBars(tod, true)));
-    if ((openCA.length + closedCA.length) > 0) panels.push(anlPanel('Corrective Action Status', 'Findings across the selected scope', anlDonut(caSegs)));
-    if ((cCur + cSoon + cExp) > 0) panels.push(anlPanel('Workforce Compliance', 'Certifications company-wide', anlDonut(certSegs)));
-    if ((incYTD.length + nmYTD.length) > 0) panels.push(anlPanel('Safety Events by Month', 'Incidents and near misses · year to date', eventsChart));
-
-    var html = head('Analytics', 'Company-wide safety trends with jobsite-level filtering.') +
-      '<div class="anl-filters">' +
-        '<div class="fg"><label for="anl-range">Date Range</label><select id="anl-range">' + rangeOpts + '</select></div>' +
-        '<div class="fg"><label for="anl-job">Jobsite</label><select id="anl-job">' + jobOpts + '</select></div>' +
-      '</div>' +
-      cards +
-      (panels.length
-        ? '<div class="anl-grid">' + panels.join('') + '</div>'
-        : '<div class="panel" style="margin-top:16px"><div class="panel-bd"><div class="anl-empty">No trend charts yet — they appear here as inspections, findings, incidents and training records accumulate.</div></div></div>');
-
-    paint(html);
-    var rs = $('#anl-range'); if (rs) rs.onchange = function () { var v = this.value; anlRange = v === 'ytd' ? 'ytd' : +v; pgAnalytics(); };
-    var js = $('#anl-job'); if (js) js.onchange = function () { anlJob = this.value; pgAnalytics(); };
   }
 
   /* ====================== OVERVIEW ====================================== */
@@ -3967,13 +3746,21 @@
     });
   }
 
-  /* ==================== ANALYTICS — DEMO ONLY ==========================
-     Reached with office.html?demo=1. Production analytics stays locked (see
-     pgAnalytics) because Greiner does not have enough real history yet; this
-     page is fixtures and says so on every screen.
+  /* ==================== ANALYTICS ======================================
+     One page, two data sources. With office.html?demo=1 it reads the
+     fixtures and says so on every screen. Without the flag it reads only
+     Greiner's real records (anSrc), and shows only the sections that real
+     records can fill: daily JHA compliance, JHAs submitted, open corrective
+     actions, field form activity, hot work and lift inspections.
 
-     Every number below is computed from the fixture records and every card
-     can be opened to show exactly the records it counted. No total is stored
+     Left out of the live page, because production has no data behind them:
+     the Toolbox Talk participation rate (the demo's weekly roster), JHA
+     revisions (production JHAs carry no revision chain), incidents and near
+     misses (intake is still on hold, and near misses are not loaded), the
+     safety baseline (days since last recordable) and the setup checklist.
+
+     Every number below is computed from the records and every card can be
+     opened to show exactly the records it counted. No total is stored
      separately from the records that produce it.
      ==================================================================== */
   var anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '', range: 'week' };
@@ -4088,14 +3875,21 @@
       return { live: false, jobs: window.DEMO.jobs || [], field: window.DEMO.field || [],
                findings: window.DEMO.findings || [], incidents: window.DEMO.incidents || [],
                nearMisses: window.DEMO.nearMisses || [], equipment: window.DEMO.equipment || [],
-               baseline: window.DEMO.baseline || {}, toolbox: true };
+               baseline: window.DEMO.baseline || {}, toolbox: true,
+               revisions: true, incidentsLive: true };
     }
+    /* Stored form_type -> the form keys the analytics count by. The phone
+       stores hot work and aerial lift submissions under their long names;
+       without this map every real hot work permit and aerial inspection would
+       count as zero. */
+    var AN_FORM_KEY = { hot_work_permit: 'hotwork', aerial_platform: 'aerial' };
     return {
       live: true,
       jobs: ((B && B.jobs) || []).filter(function (j) { return !j.archived; }),
       // real crew submissions, in the same shape the demo fixtures use
       field: (FIELDRAW || []).map(function (r) {
-        return { id: r.id, form_type: r.form_type, form_title: r.form_title || r.form_type,
+        return { id: r.id, form_type: AN_FORM_KEY[r.form_type] || r.form_type,
+                 form_title: r.form_title || r.form_type,
                  job_id: r.job_id, job_name: r.job_name || jobName(r.job_id),
                  inspector_name: r.inspector_name, submitted_at: r.submitted_at,
                  has_defects: !!r.has_defects, defect_count: r.defect_count || 0,
@@ -4106,15 +3900,22 @@
                  revision_number: r.revision_number || 1 };
       }),
       findings: (B && B.findings) || [],
-      incidents: ((B && B.incidents) || []).filter(function (i) { return !i.demo_sample; }),
+      // cs_incidents rows carry occurred_on; the calculators read date
+      incidents: ((B && B.incidents) || []).filter(function (i) { return !i.demo_sample; })
+        .map(function (i) { return i.date ? i : Object.assign({}, i, { date: i.occurred_on || '' }); }),
       nearMisses: ((B && B.near_misses) || []).filter(function (i) { return !i.demo_sample; }),
       equipment: (B && B.equipment) || [],
       // No baseline is stored anywhere yet, so live always reports it missing
       // rather than showing a zero.
       baseline: { last_recordable: null, last_lost_time: null, recordkeeping_start: null },
-      // The weekly Toolbox Talk system is not live yet. Rather than compute a
-      // participation rate from nothing, the section says so.
-      toolbox: false
+      // What production cannot fill yet. The live page leaves these sections
+      // out rather than show a number computed from nothing:
+      //  toolbox       - the demo's weekly roster and participation rate
+      //  revisions     - production JHAs carry no revision chain
+      //  incidentsLive - incident intake is on hold and near misses are not loaded
+      toolbox: false,
+      revisions: false,
+      incidentsLive: false
     };
   }
   function anIsoDay(d) {
@@ -4202,13 +4003,30 @@
   }
 
   /* ---- G. corrective actions -------------------------------------------
-     Uses the dashboard's own allCorrective() aggregation, filtered to the
-     selected job. Only sources that actually carry records contribute — with
-     no incidents there are no incident corrective actions, and none are
-     invented to fill the gap. */
+     Demo: the dashboard's own allCorrective() aggregation. Live: the same
+     findings the Safety Inspections > Corrective actions tab lists
+     (deriveFindings: every failed Safety 101 item and every field form
+     flagged with a problem, with saved closeouts applied). Production has no
+     separate findings feed, so allCorrective() would read zero there.
+     Filtered to the selected job. Only sources that actually carry records
+     contribute, and none are invented to fill a gap. */
+  function anFindingSource(f) {
+    var id = String(f.id || '');
+    if (id.indexOf('cf|') === 0) return 'Field form flagged';
+    if (/\|s101\||\|imported$/.test(id)) return 'Safety 101 inspection';
+    return 'Safety report';
+  }
+  function anLiveCorrective() {
+    return deriveFindings().map(function (f) {
+      return { text: f.action || f.description, detail: f.action ? f.description : '',
+        src: anFindingSource(f), owner: f.closed_by || '', job: f.job_id,
+        due: f.due, status: f.status === 'closed' ? 'closed' : 'open', ref: f.id };
+    });
+  }
   function anlCorrective() {
     var jobIds = anlJobs().map(function (j) { return j.id; });
-    var all = allCorrective().filter(function (c) { return jobIds.indexOf(c.job) !== -1; });
+    var all = (anSrc().live ? anLiveCorrective() : allCorrective())
+      .filter(function (c) { return jobIds.indexOf(c.job) !== -1; });
     var open = all.filter(function (c) { return c.status !== 'closed'; });
     var today = anIsoDay(anDayOffset(0));
     var overdue = open.filter(function (c) { return c.due && c.due < today; });
@@ -4320,30 +4138,41 @@
 
   var AN_TONE = { ok: '#16a34a', warn: '#d97706', bad: '#dc2626', info: '#2563eb', grey: '#94a3b8' };
 
-  function pgAnalyticsDemo() {
+  /* Live: the job assignments that define "required" load per job. Until they
+     are in, compliance says it is loading instead of showing 0%. */
+  var anAssignPending = false;
+  function pgAnalytics() {
+    var src = anSrc(), LIVE = src.live;
     // Compliance is derived from the Jobs assignments, so load them here too —
     // the Analytics page can be opened without visiting Safety Inspections.
-    if (SI_ASSIGN === null) { SI_ASSIGN = {}; siLoadAssignments(pgAnalyticsDemo); }
-    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    if (SI_ASSIGN === null) {
+      SI_ASSIGN = {}; anAssignPending = true;
+      siLoadAssignments(function () { anAssignPending = false; if (page === 'analytics') pgAnalytics(); });
+    }
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = src.toolbox ? anlToolbox() : null;
     var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts(), ic = anlIncidents();
     var ca = anlCorrective();
-    var jobs = (anSrc().jobs || []);
-    var s = tb.stats;
+    var jobs = (src.jobs || []);
+    var s = tb ? tb.stats : null;
 
     var html = anStyle() +
-      '<div class="pg-hd"><div><h2>Analytics <span class="an-pill">Demo Data</span></h2></div>' +
+      '<div class="pg-hd"><div><h2>Analytics' + (LIVE ? '' : ' <span class="an-pill">Demo Data</span>') + '</h2></div>' +
       subtabs(anTab, [['visual', 'Visual Dashboard'], ['all', 'All Metrics']], 'an') + '</div>';
 
-    /* ---- one compact filter row ---- */
+    /* ---- one compact filter row ----
+       Live has one company, so no company picker, and leaves out the form and
+       status pickers, which do not change any number. */
     html += '<div class="an-bar">' +
+      (LIVE ? '' :
       '<select id="an-company" class="an-ctl">' + Object.keys(TBT_COMPANIES).map(function (k) {
         return '<option value="' + k + '"' + (anF.company === k ? ' selected' : '') + '>' +
-          esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>' +
-      '<select id="an-job" class="an-ctl"' + (anF.company === 'greiner' ? '' : ' disabled') + '>' +
+          esc(TBT_COMPANIES[k].name) + '</option>'; }).join('') + '</select>') +
+      '<select id="an-job" class="an-ctl"' + (LIVE || anF.company === 'greiner' ? '' : ' disabled') + '>' +
         '<option value="">All jobsites</option>' + jobs.map(function (j) {
           return '<option value="' + esc(j.id) + '"' + (anF.job === j.id ? ' selected' : '') + '>' +
             esc(j.name) + '</option>'; }).join('') + '</select>' +
       anRangeControl() +
+      (LIVE ? '' :
       '<select id="an-form" class="an-ctl"><option value="">All forms</option>' +
         '<option value="jha"' + (anF.form === 'jha' ? ' selected' : '') + '>JHA</option>' +
         '<option value="hotwork"' + (anF.form === 'hotwork' ? ' selected' : '') + '>Hot Work</option>' +
@@ -4351,7 +4180,7 @@
         '<option value="toolbox"' + (anF.form === 'toolbox' ? ' selected' : '') + '>Toolbox Talk</option></select>' +
       '<select id="an-status" class="an-ctl"><option value="">All statuses</option>' +
         '<option value="done"' + (anF.status === 'done' ? ' selected' : '') + '>Complete</option>' +
-        '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding</option></select>' +
+        '<option value="out"' + (anF.status === 'out' ? ' selected' : '') + '>Outstanding</option></select>') +
       '<button class="an-reset" id="an-reset">Reset</button>' +
       '</div>';
 
@@ -4362,31 +4191,35 @@
       return;
     }
 
-    /* ---- primary row: the four things that matter ---- */
-    html += '<div class="an-grid">';
+    /* ---- primary row: the four things that matter ----
+       Live shows six cards in one grid of three columns: the demo's
+       Toolbox Talk and Incidents cards have no production data behind them. */
+    html += '<div class="an-grid' + (LIVE ? ' an-g3' : '') + '">';
 
     // 1 · Daily safety compliance
+    var compBody;
+    if (LIVE && anAssignPending) {
+      compBody = '<div class="an-mid"><div class="an-none">Loading job assignments…</div></div>';
+    } else {
+      compBody = '<div class="an-mid">' + (LIVE && !comp.required.length
+          ? '<div class="an-none">No daily JHA was due in this date range</div>'
+          : anDonut(comp.pct, 'complete',
+              comp.pct >= 90 ? AN_TONE.ok : comp.pct >= 70 ? AN_TONE.warn : AN_TONE.bad)) + '</div>' +
+        '<div class="an-foot3">' +
+          '<div><b class="ok">' + comp.completed.length + '</b><span>Completed</span></div>' +
+          '<div><b class="bad">' + comp.missed.length + '</b><span>Missed</span></div>' +
+          '<div><b>' + comp.required.length + '</b><span>Required</span></div>' +
+        '</div>';
+    }
     html += anCardOpen('compliance') +
-      anHead('Daily Safety Compliance',
-        'One daily JHA per active job per day. An original plus any number of revisions counts once.', 1) +
-      '<div class="an-mid">' + anDonut(comp.pct, 'complete',
-        comp.pct >= 90 ? AN_TONE.ok : comp.pct >= 70 ? AN_TONE.warn : AN_TONE.bad) + '</div>' +
-      '<div class="an-foot3">' +
-        '<div><b class="ok">' + comp.completed.length + '</b><span>Completed</span></div>' +
-        '<div><b class="bad">' + comp.missed.length + '</b><span>Missed</span></div>' +
-        '<div><b>' + comp.required.length + '</b><span>Required</span></div>' +
-      '</div>' + anCardClose('compliance');
+      anHead('Daily Safety Compliance', LIVE
+        ? 'One daily JHA per job, Monday to Friday, on every job where a field login may submit a JHA. ' +
+          'A day counts as completed when that job has at least one JHA that day.'
+        : 'One daily JHA per active job per day. An original plus any number of revisions counts once.', 1) +
+      compBody + anCardClose('compliance');
 
-    // 2 · Toolbox talk participation
-    if (!anSrc().toolbox) {
-      html += anCardOpen('') +
-        anHead('Toolbox Talk Participation',
-          'The weekly Toolbox Talk system is not live yet, so there is nothing to measure here. ' +
-          'No rate is shown rather than one calculated from nothing.', 0) +
-        '<div class="an-zero3"><div class="an-zrow"><b class="need">Not yet live</b>' +
-          '<span>weekly scheduling and completion</span></div></div>' +
-        anCardClose('');
-    } else
+    // 2 · Toolbox talk participation (demo only: production has no weekly roster)
+    if (src.toolbox)
     html += anCardOpen('toolbox') +
       anHead('Toolbox Talk Participation',
         s.mode === 'group' ? 'Counted by job or meeting group. Manual attendees add to attendance only.'
@@ -4402,6 +4235,14 @@
 
     // 3 · JHA activity
     var recent = jha.recent.slice(0, 3);
+    if (!src.revisions) {
+      // Production JHAs carry no revision chain, so only the count is shown.
+      html += anCardOpen('jhareview') +
+        anHead('JHA Activity', 'JHAs submitted in this date range. Each JHA counts once.', 1) +
+        '<div class="an-mid"><div class="an-big">' + jha.unique + '</div>' +
+          '<div class="an-cap">JHA' + (jha.unique === 1 ? '' : 's') + ' submitted</div></div>' +
+        anCardClose('jhareview');
+    } else
     html += anCardOpen('jhareview') +
       anHead('JHA Activity', 'Unique JHAs, and what changed after the original submission.', 1) +
       '<div class="an-mid">' + anBars([
@@ -4425,7 +4266,10 @@
       if (d <= 7) ages['0-7']++; else if (d <= 30) ages['8-30']++; else ages['31+']++;
     });
     html += anCardOpen('findings') +
-      anHead('Open Corrective Actions', 'From inspection findings. No incident actions exist yet.', 1) +
+      anHead('Open Corrective Actions', LIVE
+        ? 'Every failed Safety 101 item and every field form flagged with a problem: the same list as ' +
+          'Safety Inspections, Corrective actions. A finding is due 7 days after it was found.'
+        : 'From inspection findings. No incident actions exist yet.', 1) +
       '<div class="an-mid">' + anBars([
         { label: '0–7 days', value: ages['0-7'], color: AN_TONE.ok },
         { label: '8–30 days', value: ages['8-30'], color: AN_TONE.warn },
@@ -4437,15 +4281,15 @@
         '<div><b class="ok">' + ca.closed.length + '</b><span>Closed</span></div>' +
       '</div>' + anCardClose('findings');
 
-    html += '</div>';
-
-    /* ---- secondary row ---- */
-    html += '<div class="an-grid">';
+    /* ---- secondary row (live: the same grid continues) ---- */
+    if (!LIVE) html += '</div><div class="an-grid">';
 
     // Field form activity
     var palette = [AN_TONE.info, AN_TONE.ok, AN_TONE.warn, AN_TONE.grey, '#7c3aed'];
     html += anCardOpen('forms') +
-      anHead('Field Form Activity', 'A JHA and its revisions count as one submission.', 1) +
+      anHead('Field Form Activity', LIVE
+        ? 'Every field form submitted in this date range, by form.'
+        : 'A JHA and its revisions count as one submission.', 1) +
       '<div class="an-mid">' + (ff.total
         ? anStack(ff.types.map(function (t, i) {
             return { label: t.title.replace(' Inspection', '').replace(' Permit', ''),
@@ -4486,7 +4330,9 @@
           '<div><b class="ok">0</b><span>Failed</span></div></div>') +
       anCardClose('lift-all');
 
-    // Incidents and near misses — honest compact empty state
+    // Incidents and near misses — honest compact empty state (demo only:
+    // production incident intake is on hold and near misses are not loaded)
+    if (src.incidentsLive)
     html += anCardOpen('') +
       anHead('Incidents & Near Misses',
         'The incident workflow is built but nothing has been submitted. Zero means nothing entered, ' +
@@ -4500,7 +4346,8 @@
 
     html += '</div>';
 
-    /* ---- one collapsed setup panel ---- */
+    /* ---- one collapsed setup panel (demo only) ---- */
+    if (!LIVE)
     html += '<details class="an-need"><summary>Finish analytics setup · ' +
       ANL_DATA_NEEDED.length + ' items needed</summary><div class="an-needbody">' +
       ANL_DATA_NEEDED.map(function (d) {
@@ -4555,26 +4402,36 @@
   }
 
   function anAllMetricsHtml() {
-    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    var src = anSrc(), LIVE = src.live;
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = src.toolbox ? anlToolbox() : null;
     var ff = anlFieldForms(), hw = anlHotWork(), lf = anlLifts(), ca = anlCorrective();
     var ic = anlIncidents(), p = anlPrevious();
-    var s = tb.stats;
+    var s = tb ? tb.stats : null;
     var html = '';
+    // Live: a rate needs something to divide by; with nothing due there is no rate.
+    var rate = function (c) { return (LIVE && !c.required.length) ? '—' : c.pct + '%'; };
 
-    html += anGroup('Daily Compliance', [
+    if (LIVE && anAssignPending) html += anGroup('Daily Compliance', [
+      anRow('Daily JHA compliance', 'Loading…', null, 'Waiting for the job assignments to load', null)
+    ]);
+    else html += anGroup('Daily Compliance', [
       anRow('Required submissions', comp.required.length, p.comp.required.length,
         'Daily requirements × elapsed applicable weekdays', 'required'),
       anRow('Completed', comp.completed.length, p.comp.completed.length,
         'Job/days with at least one JHA family', 'completed'),
       anRow('Missed', comp.missed.length, p.comp.missed.length,
         'Required job/days with no JHA', 'missed'),
-      anRow('Compliance rate', comp.pct + '%', p.comp.pct + '%',
+      anRow('Compliance rate', rate(comp), rate(p.comp),
         'Completed ÷ required', 'completed'),
       anRow('Not yet due', comp.upcoming.length, null,
         'Applicable days still ahead in the range', null)
     ]);
 
-    html += anGroup('JHA Activity', [
+    // Live: production JHAs carry no revision chain, so only the count is shown.
+    if (!src.revisions) html += anGroup('JHA Activity', [
+      anRow('Unique JHAs', jha.unique, p.jha.unique, 'JHAs submitted in the date range; each counts once', 'jha-unique')
+    ]);
+    else html += anGroup('JHA Activity', [
       anRow('Unique JHAs', jha.unique, p.jha.unique, 'Distinct root_jha_id in range', 'jha-unique'),
       anRow('JHAs revised', jha.revised.length, p.jha.revised.length,
         'Families with at least one revision', 'jha-revised'),
@@ -4586,7 +4443,7 @@
         'Revision events ÷ revised families', 'jha-events')
     ]);
 
-    html += anGroup('Toolbox Talks', [
+    if (tb) html += anGroup('Toolbox Talks', [
       anRow('Talk this week', tb.talk ? tb.talk.t : '—', null,
         'First queued talk, or auto-selected when the queue is empty', null),
       anRow('Completion method', s.mode === 'group' ? 'Foreman-led group' : 'Individual', null,
@@ -4604,7 +4461,7 @@
 
     html += anGroup('Field Submissions', [
       anRow('Total submissions', ff.total, p.ff.total,
-        'All field forms; a JHA family counts once', 'forms'),
+        LIVE ? 'All field forms submitted in the date range' : 'All field forms; a JHA family counts once', 'forms'),
       anRow('Form types used', ff.types.length, p.ff.types.length, 'Distinct form_type in range', 'forms'),
       anRow('Flagged with defects', ff.withDefects.length, p.ff.withDefects.length,
         'Submissions where has_defects is true', 'forms-flagged')
@@ -4635,14 +4492,18 @@
 
     var today = anIsoDay(anDayOffset(0));
     html += anGroup('Corrective Actions', [
-      anRow('Open', ca.open.length, null, 'Status not closed, from inspection findings', 'ca-open'),
+      anRow('Open', ca.open.length, null, LIVE
+        ? 'Not closed yet; failed Safety 101 items and flagged field forms'
+        : 'Status not closed, from inspection findings', 'ca-open'),
       anRow('Overdue', ca.overdue.length, null, 'Open with a due date before today', 'ca-overdue'),
       anRow('Closed', ca.closed.length, null, 'Status closed', 'ca-closed'),
-      anRow('Total on record', ca.all.length, null, 'All corrective actions with a source record', 'ca-open'),
-      anRow('From incidents', 0, null, 'No incidents have been submitted', null)
-    ]);
+      anRow('Total on record', ca.all.length, null, 'All corrective actions with a source record', 'ca-open')
+    ].concat(src.incidentsLive
+      ? [anRow('From incidents', 0, null, 'No incidents have been submitted', null)] : []));
 
-    html += anGroup('Incidents', [
+    // Demo only: production incident intake is on hold, near misses are not
+    // loaded, and no safety baseline or setup data is stored.
+    if (src.incidentsLive) html += anGroup('Incidents', [
       anRow('Incidents entered ' + ic.year, ic.incidents.length, null,
         'Records in the incident table for this year', null),
       anRow('Days since last recordable', ic.daysSinceRecordable === null
@@ -4652,7 +4513,7 @@
         'Needed so zero reads as "none in this period"', null)
     ]);
 
-    html += anGroup('Near Misses', [
+    if (src.incidentsLive) html += anGroup('Near Misses', [
       anRow('Near misses entered ' + ic.year, ic.nearMisses.length, null,
         'Records in the near-miss table for this year', null),
       anRow('Open / under review', ic.nearMisses.filter(function (n) { return n.status !== 'closed'; }).length,
@@ -4661,7 +4522,7 @@
         null, 'Severity recorded as high', null)
     ]);
 
-    html += anGroup('Data Readiness', ANL_DATA_NEEDED.map(function (d) {
+    if (!LIVE) html += anGroup('Data Readiness', ANL_DATA_NEEDED.map(function (d) {
       return anRow(d[0], 'Not supplied', null, d[1], null);
     }));
 
@@ -4715,8 +4576,9 @@
       '.an-reset:hover{background:var(--bg)}' +
       /* grid */
       '.an-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;align-items:stretch}' +
-      '@media (max-width:1180px){.an-grid{grid-template-columns:repeat(2,1fr)}}' +
-      '@media (max-width:700px){.an-grid{grid-template-columns:1fr}}' +
+      '.an-grid.an-g3{grid-template-columns:repeat(3,1fr)}' +
+      '@media (max-width:1180px){.an-grid,.an-grid.an-g3{grid-template-columns:repeat(2,1fr)}}' +
+      '@media (max-width:700px){.an-grid,.an-grid.an-g3{grid-template-columns:1fr}}' +
       '.an-c{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:12px;' +
         'padding:14px 15px;text-align:left;font:inherit;color:inherit}' +
       '.an-c.is-link{cursor:pointer}' +
@@ -4798,19 +4660,19 @@
   }
 
   function anlWire() {
-    wireSubtabs('an', function (v) { anTab = v; pgAnalyticsDemo(); });
+    wireSubtabs('an', function (v) { anTab = v; pgAnalytics(); });
     var c = $('#an-company');
-    if (c) c.onchange = function () { anF.company = c.value; anF.job = ''; pgAnalyticsDemo(); };
-    var j = $('#an-job'); if (j) j.onchange = function () { anF.job = j.value; pgAnalyticsDemo(); };
-    var r = $('#an-range'); if (r) r.onchange = function () { anF.range = r.value; pgAnalyticsDemo(); };
-    var f = $('#an-from'); if (f) f.onchange = function () { anF.from = f.value; pgAnalyticsDemo(); };
-    var t = $('#an-to'); if (t) t.onchange = function () { anF.to = t.value; pgAnalyticsDemo(); };
-    var fm = $('#an-form'); if (fm) fm.onchange = function () { anF.form = fm.value; pgAnalyticsDemo(); };
-    var st = $('#an-status'); if (st) st.onchange = function () { anF.status = st.value; pgAnalyticsDemo(); };
+    if (c) c.onchange = function () { anF.company = c.value; anF.job = ''; pgAnalytics(); };
+    var j = $('#an-job'); if (j) j.onchange = function () { anF.job = j.value; pgAnalytics(); };
+    var r = $('#an-range'); if (r) r.onchange = function () { anF.range = r.value; pgAnalytics(); };
+    var f = $('#an-from'); if (f) f.onchange = function () { anF.from = f.value; pgAnalytics(); };
+    var t = $('#an-to'); if (t) t.onchange = function () { anF.to = t.value; pgAnalytics(); };
+    var fm = $('#an-form'); if (fm) fm.onchange = function () { anF.form = fm.value; pgAnalytics(); };
+    var st = $('#an-status'); if (st) st.onchange = function () { anF.status = st.value; pgAnalytics(); };
     var rs = $('#an-reset');
     if (rs) rs.onclick = function () {
       anF = { company: 'greiner', job: '', from: '', to: '', form: '', status: '', range: 'week' };
-      pgAnalyticsDemo();
+      pgAnalytics();
     };
     // calculation detail lives behind the info icon, not in the card
     $$('[data-an-info]').forEach(function (b) {
@@ -4818,7 +4680,7 @@
         e.stopPropagation();
         drawer('How this is calculated', '', '<p class="small">' +
           esc(b.getAttribute('data-an-info')) + '</p>' +
-          '<p class="small muted" style="margin-top:10px">Demo fixture records.</p>');
+          (anSrc().live ? '' : '<p class="small muted" style="margin-top:10px">Demo fixture records.</p>'));
       };
     });
     // the card itself is the click target
@@ -4834,6 +4696,11 @@
   /* A card either opens the workspace view that owns it, or the record list
      behind the number. */
   function anGo(which) {
+    if (anSrc().live) {
+      if (which === 'findings') { obsTab = 'ca'; go('obs'); return; }   // the live Corrective actions tab
+      anlDrill(which === 'compliance' ? 'required' : which === 'jhareview' ? 'jha-unique' : which);
+      return;
+    }
     var toSi = { compliance: 'rules', jhareview: 'jha', findings: 'find' };
     if (toSi[which]) {
       siTab = toSi[which];
@@ -4852,7 +4719,8 @@
 
   /* Every drilldown renders the exact records the card counted. */
   function anlDrill(which) {
-    var comp = anlCompliance(), jha = anlJhaActivity(), tb = anlToolbox();
+    var src = anSrc(), LIVE = src.live;
+    var comp = anlCompliance(), jha = anlJhaActivity(), tb = src.toolbox ? anlToolbox() : null;
     var title = '', sub = '', body = '';
 
     function famRows(list) {
@@ -4866,6 +4734,16 @@
       });
     }
     function famTable(list) {
+      if (!src.revisions) {
+        // Live JHAs have no revision chain: one row per JHA submitted.
+        return tableWrap([{ t: 'Job' }, { t: 'Work date' }, { t: 'Submitted' }, { t: 'Submitted by' }],
+          list.map(function (f) {
+            return '<tr><td><span class="t-main">' + esc(f.job_name) + '</span></td>' +
+              '<td>' + esc(f.work_date) + '</td>' +
+              '<td>' + esc(fmtWhen(f.original_submitted_at)) + '</td>' +
+              '<td>' + esc(f.original_submitter || '—') + '</td></tr>';
+          }), 'No records.');
+      }
       return tableWrap([{ t: 'Job / description' }, { t: 'Work date' }, { t: 'Original submitted' },
                         { t: 'Revisions' }, { t: 'Status', r: 1 }], famRows(list), 'No records.');
     }
@@ -4888,7 +4766,9 @@
             '<td class="r">' + (r.done ? pill('p-ok', 'Completed') : pill('p-bad', 'Missed')) + '</td></tr>';
         }), 'Nothing in this range.');
     } else if (which === 'jha-unique') {
-      title = 'Unique JHAs submitted'; sub = jha.unique + ' JHAs (originals, not revisions)';
+      title = 'Unique JHAs submitted';
+      sub = LIVE ? jha.unique + ' JHA' + (jha.unique === 1 ? '' : 's') + ' in this date range'
+                 : jha.unique + ' JHAs (originals, not revisions)';
       body = famTable(jha.families);
     } else if (which === 'jha-revised') {
       title = 'JHAs later revised'; sub = jha.revised.length + ' of ' + jha.unique + ' JHAs';
@@ -4907,7 +4787,7 @@
         });
       });
       body = tableWrap([{ t: 'JHA' }, { t: 'Revision' }, { t: 'When' }, { t: 'By' }], evRows, 'No revisions.');
-    } else if (which.indexOf('tb-') === 0) {
+    } else if (which.indexOf('tb-') === 0 && tb) {
       var s = tb.stats, def = tb.def, co = tb.co;
       var coName = TBT_COMPANIES[tb.company].name;
       if (which === 'tb-assigned' || which === 'tb-done' || which === 'tb-out') {
@@ -5006,8 +4886,9 @@
       var cl = which === 'ca-open' ? cc.open : which === 'ca-overdue' ? cc.overdue : cc.closed;
       title = which === 'ca-open' ? 'Open corrective actions'
             : which === 'ca-overdue' ? 'Overdue corrective actions' : 'Closed corrective actions';
-      sub = cl.length + ' action' + (cl.length === 1 ? '' : 's') +
-        ' — from inspection findings and report fixes';
+      sub = cl.length + ' action' + (cl.length === 1 ? '' : 's') + (LIVE
+        ? ' — failed Safety 101 items and flagged field forms'
+        : ' — from inspection findings and report fixes');
       var todayStr = anIsoDay(anDayOffset(0));
       body = tableWrap([{ t: 'Corrective action' }, { t: 'Source' }, { t: 'Job' },
                         { t: 'Owner' }, { t: 'Due' }, { t: 'Status', r: 1 }],
@@ -5023,8 +4904,9 @@
               : late ? pill('p-bad', 'Overdue') : pill('p-warn', 'Open')) + '</td></tr>';
         }), 'No corrective actions.');
     }
-    drawer(title, sub, body + '<p class="small muted" style="margin-top:12px">Demo fixture records — ' +
-      'this is exactly what the card counted.</p>');
+    drawer(title, sub, body + '<p class="small muted" style="margin-top:12px">' +
+      (LIVE ? 'These are the records the card counted.'
+            : 'Demo fixture records — this is exactly what the card counted.') + '</p>');
   }
 
   /* ==================== JHA SUBMISSIONS — DEMO ONLY ====================

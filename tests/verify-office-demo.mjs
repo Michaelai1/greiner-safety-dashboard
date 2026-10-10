@@ -35,7 +35,7 @@ const localStorage = {
 
 // Slice the two demo modules out of office.js and run them over the fixtures.
 const jhaStart = js.indexOf('  /* ==================== JHA SUBMISSIONS — DEMO ONLY');
-const anStart = js.indexOf('  /* ==================== ANALYTICS — DEMO ONLY');
+const anStart = js.indexOf('  /* ==================== ANALYTICS ====');
 const tbStart = js.indexOf('  /* ==================== TOOLBOX TALKS — DEMO ONLY');
 const tbLogicEnd = js.indexOf('  function pgTalksDemo() {');
 assert.ok(jhaStart > -1 && anStart > -1 && tbStart > -1, 'demo modules missing from office.js');
@@ -75,7 +75,7 @@ const M = new Function('window', 'localStorage', 'location', 'URLSearchParams', 
   ${slice('anlHotWork', 'anlLifts')}
   ${slice('anlLifts', 'anlCorrective')}
   ${slice('anlCorrective', 'anlIncidents')}
-  ${slice('anlIncidents', 'pgAnalyticsDemo')}
+  ${slice('anlIncidents', 'pgAnalytics')}
   ${slice('allCorrective', 'reportPBody')}
   function jobName(id){ var j=(window.DEMO.jobs||[]).filter(function(x){return x.id===id;})[0]; return j?j.name:id; }
   function subName(){ return ''; }
@@ -688,7 +688,7 @@ assert.ok(js.indexOf("var incF = { job:") < js.indexOf('function pgIncidents()')
 {
   // These may be NAMED in "Data needed" as things that cannot be calculated,
   // but must never appear as a computed metric.
-  const analytics = js.slice(js.indexOf('function pgAnalyticsDemo()'),
+  const analytics = js.slice(js.indexOf('function pgAnalytics()'),
     js.indexOf('function anCard('));
   for (const banned of ['trirValue', 'dartValue', 'ltirValue', 'incidentRate',
     'trainingCompliance', 'ppeCompliance', 'injuryTrend', 'incidentStreak']) {
@@ -1012,13 +1012,12 @@ includes(js, 'if (TBT_DEMO) return pgTalksDemo();',
   'the Toolbox Talk demo must stay behind the ?demo=1 gate');
 includes(js, 'obs: (TBT_DEMO ? pgObsDemo : pgObs),',
   'Safety Inspections must use the demo workspace only in the demo build');
-includes(js, 'analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics)',
-  'production analytics must stay on the production function');
-// The production analytics lock is untouched.
-includes(js, 'PILOT: Analytics is intentionally locked until Greiner has accumulated',
-  'the production analytics lock must remain');
-includes(js, 'Analytics will become available as Greiner builds more real safety data.',
-  'the production analytics message must remain');
+// Analytics is one page: the demo reads fixtures, production reads only real
+// records through anSrc() (see verify-live-analytics.mjs). The old lock is gone.
+includes(js, 'analytics: pgAnalytics,',
+  'analytics must route to the one page for demo and production');
+includes(js, "(LIVE ? '' : ' <span class=\"an-pill\">Demo Data</span>')",
+  'the Demo Data pill must show only in the demo');
 // Demo-only pages never reach the production sidebar.
 includes(js, 'if (p.demoOnly && !TBT_DEMO) return false;',
   'demo-only pages must be filtered out of the production nav');
@@ -1090,7 +1089,6 @@ assert.match(html, /office\.js\?v=\d+/, 'office.js must be cache-busted');
   for (const gate of [
     'if (TBT_DEMO && window.DEMO) {',
     'obs: (TBT_DEMO ? pgObsDemo : pgObs),',
-    'analytics: (TBT_DEMO ? pgAnalyticsDemo : pgAnalytics)',
     'if (TBT_DEMO) return pgTalksDemo();',
   ]) includes(js, gate, `demo surface must be gated: ${gate}`);
 
@@ -1109,7 +1107,7 @@ assert.match(html, /office\.js\?v=\d+/, 'office.js must be cache-busted');
     'C.demo must sit inside the TBT_DEMO boot gate');
 
   // No fixture total is hardcoded into the page.
-  const analytics = js.slice(js.indexOf('function pgAnalyticsDemo()'), js.indexOf('function anStyle()'));
+  const analytics = js.slice(js.indexOf('function pgAnalytics()'), js.indexOf('function anStyle()'));
   assert.ok(!/>\s*(3|6|15|10|9|127)\s*</.test(analytics.replace(/viewBox[^"]*"[^"]*"/g, '')),
     'analytics must not hardcode a fixture total into the markup');
 }
