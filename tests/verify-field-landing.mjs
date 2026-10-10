@@ -2,7 +2,9 @@
  * one job, in a real browser (WebKit). Every server call is answered inside this
  * test; nothing leaves the machine. Covers: PIN sign-in resolves the employee,
  * the job picker, IU forms, IU job documents (Open / Download Original with
- * identical bytes), honest empty and error states, and the job-scoped form ticket.
+ * identical bytes), the Resource Center block (its own block above Job documents,
+ * none at all when a job has no Resource Center files), honest empty and error
+ * states, and the job-scoped form ticket.
  *
  * Needs playwright-webkit (PLAYWRIGHT_NODE_MODULES). SCREENSHOT_DIR saves screenshots.
  */
@@ -35,14 +37,16 @@ const BASE = `http://127.0.0.1:${server.address().port}/`;
 
 const IU = 'job-iu', C785 = 'job-c785';
 const docs = [['Safety and Permits', 'Gilbane Hot Work Permit', 'hot work permit (2).pdf'],
-  ['Field Operations', 'Field Timesheet', 'Fillable field timesheet.pdf']].map(([section, title, filename], i) => {
+  ['Field Operations', 'Field Timesheet', 'Fillable field timesheet.pdf'],
+  ['Resource Center', 'Fall Protection Plan', 'Fall protection plan.pdf'],
+  ['Resource Center', 'Emergency Action Plan', 'EAP 2026.pdf']].map(([section, title, filename], i) => {
   const bytes = Buffer.from(`%PDF-1.7\n% test original ${i} é\n%%EOF\n`, 'utf8');
   return { id: 'doc-' + i, job_id: IU, section, title, filename, mime: 'application/pdf', size_bytes: bytes.length,
     sha256: crypto.createHash('sha256').update(bytes).digest('hex'), source_date: null, bytes };
 });
 let STATE;
 function reset() {
-  STATE = { jobs: [C785, IU], docsFail: false, calls: [], tickets: [] };
+  STATE = { jobs: [C785, IU], docsFail: false, noResourceCenter: false, calls: [], tickets: [] };
 }
 const job = (id) => id === IU
   ? { id: IU, job_number: 'C799-2025', name: 'IU Health Plaza G Med. Gas', address: '1330 N Senate Ave, Indianapolis, IN 46202',
@@ -56,7 +60,8 @@ const RPC = {
   cs_portal_job_docs: (b) => {
     if (STATE.docsFail) return { __status: 400, message: 'temporarily unavailable' };
     if (!STATE.jobs.includes(b.p_job_id)) return { __status: 400, message: 'not permitted' };
-    return b.p_job_id === IU ? docs.map(({ bytes, ...d }) => d) : [];
+    if (b.p_job_id !== IU) return [];
+    return docs.filter((d) => !STATE.noResourceCenter || d.section !== 'Resource Center').map(({ bytes, ...d }) => d);
   },
   cs_portal_field_ticket: (b) => { STATE.tickets.push(b.p_job_id); return { ticket: 'ft_test_' + b.p_job_id }; },
   cs_portal_log_event: () => null, cs_portal_event: () => null
@@ -136,6 +141,27 @@ try {
     if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await p.locator('#f-docs').scrollIntoViewIfNeeded(); await p.screenshot({ path: path.join(SHOTS, '11-phone-iu-job-documents.png') }); }
   });
 
+  await check('Resource Center files show in their own block above Job documents', async () => {
+    await p.waitForSelector('#f-rc [data-jobdoc]');
+    const rcSec = await p.$('#f-rc-sec');
+    assert.ok(await rcSec.isVisible(), 'the Resource Center block is shown');
+    assert.equal((await p.innerText('#f-rc-sec h2')).trim(), 'Resource Center');
+    const rc = await p.innerText('#f-rc');
+    assert.ok(rc.includes('Fall Protection Plan') && rc.includes('Emergency Action Plan'), 'both Resource Center files are listed');
+    assert.ok(!rc.includes('Gilbane Hot Work Permit') && !rc.includes('Field Timesheet'), 'job documents stay out of it');
+    assert.deepEqual(await p.$$eval('#f-rc [data-jobdoc] [data-docact]', (b) => b.map((x) => x.textContent)),
+      ['Open Original', 'Download Original', 'Open Original', 'Download Original'], 'same Open / Download buttons');
+    // Job documents are exactly as before: their two sections, no Resource Center inside.
+    const d = await p.innerText('#f-docs');
+    assert.ok(!d.includes('Resource Center') && !d.includes('Fall Protection Plan'), 'Resource Center files are not repeated in Job documents');
+    assert.deepEqual(await p.$$eval('#f-docs h3', (h) => h.map((x) => x.textContent)), ['Safety and Permits', 'Field Operations']);
+    assert.equal(await p.$$eval('#f-docs [data-jobdoc]', (c) => c.length), 2);
+    // Order on the page: Resource Center, then Job documents.
+    assert.ok(await p.evaluate(() => !!(document.querySelector('#f-rc-sec').compareDocumentPosition(document.querySelector('#f-docs')) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      'Resource Center sits above Job documents');
+    if (SHOTS) { await p.locator('#f-rc-sec').scrollIntoViewIfNeeded(); await p.screenshot({ path: path.join(SHOTS, '12-phone-iu-resource-center.png') }); }
+  });
+
   await check('Download Original returns the exact bytes under the original filename', async () => {
     for (const d of docs) {
       const [dl] = await Promise.all([p.waitForEvent('download'), p.click(`[data-docact="download"][data-id="${d.id}"]`)]);
@@ -155,6 +181,22 @@ try {
     await p.selectOption('#f-job', C785);
     await p.waitForFunction(() => /No documents for this job yet/.test(document.querySelector('#f-docs').textContent));
     assert.deepEqual(await p.$$eval('[data-ngform]', (b) => b.map((x) => x.dataset.ngform)), ['jha']);
+    assert.ok(!(await (await p.$('#f-rc-sec')).isVisible()), 'no empty Resource Center block');
+    assert.equal(await p.$$eval('#f-rc [data-jobdoc]', (c) => c.length), 0);
+  });
+
+  await check('A job with documents but no Resource Center files shows no Resource Center block', async () => {
+    STATE.noResourceCenter = true;
+    const q = await open(390);
+    await signIn(q);
+    await q.selectOption('#f-job', IU);
+    await q.waitForSelector('#f-docs [data-jobdoc]');
+    assert.ok(!(await (await q.$('#f-rc-sec')).isVisible()), 'the Resource Center block stays hidden');
+    assert.equal((await q.innerText('#f-rc')).trim(), '', 'and empty');
+    assert.deepEqual(await q.$$eval('#f-docs h3', (h) => h.map((x) => x.textContent)), ['Safety and Permits', 'Field Operations']);
+    assert.ok(!(await q.innerText('#fieldapp')).includes('Resource Center'), 'the words Resource Center do not appear at all');
+    await q.close();
+    STATE.noResourceCenter = false;
   });
 
   await check('Starting a form on C799 asks for a C799-only ticket and opens the existing QR app URL', async () => {
@@ -187,13 +229,27 @@ try {
     STATE.jobs = [C785, IU];
   });
 
-  await check('No horizontal overflow at 390, 820, 1024 and 1440', async () => {
+  await check('No horizontal overflow at 390, 820, 1024 and 1440; centered and readable on a computer', async () => {
     for (const w of [390, 820, 1024, 1440]) {
       const q = await open(w);
       await signIn(q);
       await q.selectOption('#f-job', IU);
       await q.waitForSelector('#f-docs [data-jobdoc]');
+      await q.waitForSelector('#f-rc [data-jobdoc]');
       await noOverflow(q, `field landing ${w}`);
+      if (w >= 1024) {
+        // One centered column of a readable width, header lined up with it.
+        const g = await q.evaluate(() => {
+          const r = (s) => document.querySelector(s).getBoundingClientRect();
+          return { main: r('#fieldapp main.wrap'), hdr: r('#fieldapp .hdr-in'), vw: document.documentElement.clientWidth,
+                   font: parseFloat(getComputedStyle(document.querySelector('#fieldapp [data-ngform]')).fontSize) };
+        });
+        assert.ok(g.main.width <= 860 && g.main.width >= 600, `${w}: content column ${g.main.width}px`);
+        assert.ok(Math.abs(g.main.left - (g.vw - g.main.right)) <= 2, `${w}: content is centered`);
+        assert.ok(Math.abs(g.hdr.left - g.main.left) <= 2, `${w}: header lines up with the content`);
+        assert.ok(g.font >= 15, `${w}: form buttons stay readable`);
+        if (SHOTS) await q.screenshot({ path: path.join(SHOTS, `13-desktop-${w}-field-landing.png`), fullPage: true });
+      }
       assert.deepEqual(q.errors, []);
       await q.close();
     }

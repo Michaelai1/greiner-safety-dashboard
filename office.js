@@ -9819,7 +9819,8 @@
      library above. Stored privately; opened through a short-lived signed link
      after the server checks the session may read that job's documents. The
      bytes reach the browser unchanged. */
-  var JOB_DOC_SECTIONS = ['Safety and Permits', 'Field Operations'];
+  // 'Resource Center' files show on the field view in their own block.
+  var JOB_DOC_SECTIONS = ['Safety and Permits', 'Field Operations', 'Resource Center'];
   var JOB_DOCS = {};
   function jobDocsPanelHtml(j) {
     return '<div class="panel" id="job-docs" data-job-docs="' + esc(j.id) + '"><div class="panel-hd"><div>' +

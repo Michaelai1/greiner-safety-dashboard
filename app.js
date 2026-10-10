@@ -2022,6 +2022,9 @@
       h += '<p class="muted small" style="margin:.2rem 0 .5rem">Hot work on this job uses the general contractor’s permit process.</p>';
     }
     h += '</div></div>';
+    // Resource Center: company files filed on the job under that section. The
+    // block stays hidden until the job actually has some.
+    h += '<div class="sec hide" id="f-rc-sec"><div class="sec-h"><h2>Resource Center</h2></div><div id="f-rc"></div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Job documents</h2></div><div id="f-docs" role="status"><div class="empty">Loading documents…</div></div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
     h += '</main><div style="height:2rem"></div>';
@@ -2058,41 +2061,60 @@
      handed to the phone unchanged. */
   var FIELD_DOCS = {};
   var JOB_DOC_ORDER = ['Safety and Permits', 'Field Operations'];
+  // Files filed under this section show in their own Resource Center block,
+  // above Job documents, instead of as a section inside it.
+  var RESOURCE_CENTER = 'Resource Center';
   function fmtSize(n) { return !n ? '' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+  function jobDocCardHtml(d) {
+    var btn = 'flex:1 1 140px;min-height:44px';
+    return '<div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem" data-jobdoc="' + esc(d.id) + '">' +
+      '<div style="font-weight:700">' + esc(d.title) + '</div>' +
+      '<div class="muted small" style="overflow-wrap:anywhere">' + esc(d.section) + ' · ' + esc(d.filename) + '</div>' +
+      '<div class="muted small" style="margin-bottom:.55rem">PDF' + (d.size_bytes ? ' · ' + fmtSize(d.size_bytes) : '') +
+        (d.source_date ? ' · ' + esc(d.source_date) : '') + '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+        '<button class="btn btn-gold btn-sm" style="' + btn + '" data-docact="open" data-id="' + esc(d.id) + '">Open Original</button>' +
+        '<button class="btn btn-out btn-sm" style="' + btn + '" data-docact="download" data-id="' + esc(d.id) + '">Download Original</button>' +
+      '</div></div>';
+  }
+  function wireDocButtons(host) {
+    Array.prototype.forEach.call(host.querySelectorAll('[data-docact]'), function (b) {
+      b.onclick = function () { openJobDoc(FIELD_DOCS[b.dataset.id], b.dataset.docact === 'download', b); };
+    });
+  }
+  // Fill (or hide) the Resource Center block. Nothing shows when there is none.
+  function renderResourceCenter(list) {
+    var sec = $('#f-rc-sec'), box = $('#f-rc'); if (!sec || !box) return;
+    if (!list.length) { box.innerHTML = ''; sec.classList.add('hide'); return; }
+    box.innerHTML = list.map(jobDocCardHtml).join('');
+    sec.classList.remove('hide');
+    wireDocButtons(box);
+  }
   function loadFieldDocs(jobId) {
     var box = $('#f-docs'); if (!box) return;
+    renderResourceCenter([]);
     if (!jobId) { box.innerHTML = '<div class="empty">No job selected.</div>'; return; }
     rpc('cs_portal_job_docs', { p_job_id: jobId }).then(function (docs) {
       if (!FIELD_JOB || FIELD_JOB.id !== jobId) return;   // the user switched jobs meanwhile
       if (!Array.isArray(docs)) throw new Error('unexpected response');
       FIELD_DOCS = {};
+      docs.forEach(function (d) { FIELD_DOCS[d.id] = d; });
+      renderResourceCenter(docs.filter(function (d) { return d.section === RESOURCE_CENTER; }));
+      docs = docs.filter(function (d) { return d.section !== RESOURCE_CENTER; });
       if (!docs.length) { box.innerHTML = '<div class="empty">No documents for this job yet.</div>'; return; }
       var bySec = {};
-      docs.forEach(function (d) { FIELD_DOCS[d.id] = d; (bySec[d.section] = bySec[d.section] || []).push(d); });
+      docs.forEach(function (d) { (bySec[d.section] = bySec[d.section] || []).push(d); });
       var secs = Object.keys(bySec).sort(function (a, b) {
         var ia = JOB_DOC_ORDER.indexOf(a), ib = JOB_DOC_ORDER.indexOf(b);
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
       });
-      var btn = 'flex:1 1 140px;min-height:44px';
       var h = '<p class="muted small" style="margin:0 0 .7rem">Originals as Greiner received them. Fillable fields work in most PDF apps; some phone browsers show a form read-only — download it and open it in a PDF app to fill it in.</p>';
       secs.forEach(function (sec) {
         h += '<h3 style="font-size:.95rem;margin:.9rem 0 .5rem">' + esc(sec) + '</h3>';
-        bySec[sec].forEach(function (d) {
-          h += '<div class="card" style="padding:.8rem 1rem;margin-bottom:.7rem" data-jobdoc="' + esc(d.id) + '">' +
-            '<div style="font-weight:700">' + esc(d.title) + '</div>' +
-            '<div class="muted small" style="overflow-wrap:anywhere">' + esc(d.section) + ' · ' + esc(d.filename) + '</div>' +
-            '<div class="muted small" style="margin-bottom:.55rem">PDF' + (d.size_bytes ? ' · ' + fmtSize(d.size_bytes) : '') +
-              (d.source_date ? ' · ' + esc(d.source_date) : '') + '</div>' +
-            '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' +
-              '<button class="btn btn-gold btn-sm" style="' + btn + '" data-docact="open" data-id="' + esc(d.id) + '">Open Original</button>' +
-              '<button class="btn btn-out btn-sm" style="' + btn + '" data-docact="download" data-id="' + esc(d.id) + '">Download Original</button>' +
-            '</div></div>';
-        });
+        bySec[sec].forEach(function (d) { h += jobDocCardHtml(d); });
       });
       box.innerHTML = h;
-      Array.prototype.forEach.call(box.querySelectorAll('[data-docact]'), function (b) {
-        b.onclick = function () { openJobDoc(FIELD_DOCS[b.dataset.id], b.dataset.docact === 'download', b); };
-      });
+      wireDocButtons(box);
     }).catch(function (e) {
       if (!FIELD_JOB || FIELD_JOB.id !== jobId) return;
       box.innerHTML = '<div class="empty">Could not load documents — ' + esc(e.message || 'try again') +
