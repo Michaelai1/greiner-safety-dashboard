@@ -1027,8 +1027,8 @@ includes(js, 'if (p.demoHide && TBT_DEMO) return false;',
 includes(js, 'cs_portal_login', 'the production login RPC must still exist');
 includes(js, "fetch(C.creekside.url + '/rest/v1/rpc/' + fn", 'the production transport must remain');
 includes(js, 'function getSession()', 'the production session must remain');
-includes(js, '    var s = getSession();\n    if (s) openApp(s);\n  }',
-  'production must still open from a stored session');
+includes(js, '    var s = getSession();\n    if (s && isFieldSession(s)) openFieldView();\n    else if (s) openApp(s);\n  }',
+  'production must still open from a stored session (a field login goes to its field view)');
 includes(js, 'if (TBT_DEMO && window.DEMO) {',
   'the demo boot must be gated on the demo flag');
 includes(js, 'function pgTalks() {', 'the production Toolbox Talks page must still exist');

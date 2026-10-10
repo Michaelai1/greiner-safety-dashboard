@@ -11430,12 +11430,16 @@
     setWho();
     var rsel = $('#role-sel');
     if (rsel) { rsel.value = ROLE; rsel.onchange = function () { ROLE = this.value; setWho(); if (B) go(page); }; }
+    // Wait for all four calls to settle before acting on a failed bundle, so
+    // no late answer can undo what the error handler below stores.
+    var bundleErr = null;
     Promise.all([
-      post('cs_portal_bundle', { p_token: sess.session }),
+      post('cs_portal_bundle', { p_token: sess.session }).catch(function (e) { bundleErr = e; return null; }),
       post('cs_portal_field_inspections', { p_token: sess.session }).catch(function () { return []; }),
       post('cs_portal_findings', { p_token: sess.session }).catch(function () { return []; }),
       post('cs_portal_incidents', { p_token: sess.session }).catch(function () { return []; })
     ]).then(function (res) {
+      if (bundleErr) throw bundleErr;
       B = normalizeBundle(res[0], res[2], res[3]);
       EQ.loaded = false;                       // equipment tab reloads its inventory into B.equipment
       B.workers = (res[0] && res[0].workers) || [];
@@ -11447,23 +11451,26 @@
       var want = (location.hash || '').replace('#', '');
       go(PAGES.some(function (p) { return p.id === want; }) ? want : 'overview');
     }).catch(function (e) {
-      // A field/crew code was used on the office dashboard — the company-wide
-      // load is admin-only, so it comes back "insufficient scope". Point them
-      // at the phone app instead of showing a cryptic error.
+      // A field session that carries no role (signed in before roles were
+      // stored): the company-wide load is office-only and the server answers
+      // "insufficient scope". post() has already dropped the stored session, so
+      // put it back marked as a field login and open the field view with it.
       if (/insufficient scope/i.test(e.message || '')) {
-        $('#main').innerHTML = '<div class="empty" style="max-width:460px;margin:12vh auto;line-height:1.5">' +
-          '<div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px">This is the office dashboard</div>' +
-          'Crew codes work on the <b>phone app</b>, not here. Open ' +
-          '<a href="https://greiner.creeksidesafety.com/index.html" style="color:var(--accent);font-weight:600">greiner.creeksidesafety.com/index.html</a> ' +
-          'and sign in with your code.<br><br>' +
-          '<button class="btn btn-sm" id="scope-signout">Back to sign in</button></div>';
-        var so = $('#scope-signout');
-        if (so) so.onclick = function () { try { localStorage.removeItem(SKEY); } catch (x) {} location.reload(); };
+        try { localStorage.setItem(SKEY, JSON.stringify(Object.assign({}, sess, { role: 'field' }))); } catch (x) {}
+        openFieldView();
         return;
       }
       $('#main').innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>';
     });
   }
+
+  /* Foremen and crew sign in with the same code on the phone and on a
+     computer. A field login is limited to its own job: the company-wide office
+     data refuses it on the server. So office.html never opens the office for
+     it; it hands the same session to the field view (index.html), which shows
+     only that person's job, forms, job documents and submissions. */
+  function isFieldSession(s) { return !!s && (s.role === 'field' || s.scope === 'field'); }
+  function openFieldView() { location.replace('index.html'); }
 
   function signIn() {
     var pin = $('#gate-in').value.trim();
@@ -11479,6 +11486,7 @@
           return;
         }
         localStorage.setItem(SKEY, JSON.stringify(res));
+        if (isFieldSession(res)) { openFieldView(); return; }
         openApp(res);
       })
       .catch(function (e) { err.textContent = e.message; })
@@ -11534,6 +11542,7 @@
     openApp(window.DEMO.session);
   } else {
     var s = getSession();
-    if (s) openApp(s);
+    if (s && isFieldSession(s)) openFieldView();
+    else if (s) openApp(s);
   }
 })();
