@@ -42,6 +42,33 @@
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   }
 
+  function finishSignOut() {
+    clearSession();
+    STATE.bundle = null; STATE.tg = []; STATE.fieldInsp = [];
+    var app = $('#app'), field = $('#fieldapp');
+    if (app) app.classList.add('hide');
+    if (field) field.classList.add('hide');
+    showGate();
+    location.replace(location.pathname + location.search);
+  }
+
+  function signOut(button, question) {
+    if (!confirm(question)) return;
+    var sess = getSession();
+    if (!sess) { finishSignOut(); return; }
+    var oldText = button.textContent;
+    button.disabled = true; button.textContent = 'Signing out…';
+    post('cs_portal_logout', { p_token: sess }).then(finishSignOut).catch(function (e) {
+      // If the server says the token is already invalid, sign-out is complete.
+      if (/invalid token/i.test((e && e.message) || '')) { finishSignOut(); return; }
+      // Keep the local session and the current screen on a network/server
+      // failure. That lets the person retry instead of falsely claiming the
+      // still-live server session was ended.
+      toast('Could not sign out. Check your connection and try again.');
+      button.disabled = false; button.textContent = oldText;
+    });
+  }
+
   /* Usage telemetry — fire-and-forget, never throws/blocks, no-ops without a
      session or the cs_portal_log RPC. Feeds the NextGen console's Usage view. */
   function logEvent(ev, meta) {
@@ -1615,11 +1642,7 @@
       : 'Prepared by ' + C.brand;
 
     $('#signout').onclick = function () {
-      if (!confirm('Sign out of this dashboard?')) return;
-      var sess = getSession();
-      clearSession();
-      if (sess) post('cs_portal_logout', { p_token: sess }).catch(function () {});
-      location.reload();
+      signOut(this, 'Sign out of this dashboard?');
     };
     // In-place data refresh — re-pulls everything without reloading the page,
     // so the session and current tab never reset.
@@ -1692,6 +1715,9 @@
 
   function showGate() {
     $('#app').classList.add('hide');
+    var field = $('#fieldapp');
+    if (field) { field.classList.add('hide'); field.innerHTML = ''; }
+    STATE.bundle = null; STATE.tg = []; STATE.fieldInsp = [];
     $('#gate').classList.remove('hide');
     var i = $('#gate-in');
     if (i) { i.value = ''; }
@@ -1972,10 +1998,7 @@
   // Sign out and Refresh in the field view's header.
   function wireFieldHeader() {
     $('#f-signout').onclick = function () {
-      if (!confirm('Sign out?')) return;
-      var s = getSession(); clearSession();
-      if (s) post('cs_portal_logout', { p_token: s }).catch(function () {});
-      location.reload();
+      signOut(this, 'Sign out?');
     };
     // In-place refresh — re-pulls the field feed without reloading the page.
     $('#f-refresh').onclick = function () {

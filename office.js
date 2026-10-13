@@ -65,11 +65,38 @@
         if (!r.ok) {
           if (/invalid token|insufficient scope/i.test((b && b.message) || '')) {
             try { localStorage.removeItem(SKEY); } catch (e) {}
+            B = null; CREW = []; FIELDRAW = [];
+            if ($('#app')) $('#app').classList.add('hide');
+            if ($('#gate')) $('#gate').classList.remove('hide');
           }
           throw new Error((b && b.message) || 'request failed');
         }
         return b;
       });
+    });
+  }
+
+  function finishSignOut() {
+    try { localStorage.removeItem(SKEY); } catch (e) {}
+    B = null; CREW = []; FIELDRAW = [];
+    $('#app').classList.add('hide');
+    $('#gate').classList.remove('hide');
+    location.replace(location.pathname + location.search);
+  }
+
+  function signOut(button) {
+    if (!confirm('Sign out?')) return;
+    var sess = getSession();
+    if (!sess || !sess.session) { finishSignOut(); return; }
+    var oldText = button.textContent;
+    button.disabled = true; button.textContent = 'Signing out…';
+    post('cs_portal_logout', { p_token: sess.session }).then(finishSignOut).catch(function (e) {
+      // An already-invalid token is also a completed sign-out. For transport
+      // or server failures, keep the local session so the person can retry and
+      // the UI never claims a still-live server session was ended.
+      if (/invalid token/i.test((e && e.message) || '')) { finishSignOut(); return; }
+      toast('Could not sign out. Check your connection and try again.');
+      button.disabled = false; button.textContent = oldText;
     });
   }
 
@@ -11507,9 +11534,7 @@
   $('#gate-go').onclick = signIn;
   $('#gate-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
   $('#signout').onclick = function () {
-    if (!confirm('Sign out?')) return;
-    localStorage.removeItem(SKEY);
-    location.reload();
+    signOut(this);
   };
   // In-place data refresh: re-pulls the bundle and field feeds and re-renders
   // the current page. No browser reload, so the session and view never reset.
