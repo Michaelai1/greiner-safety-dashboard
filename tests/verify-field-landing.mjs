@@ -229,6 +229,26 @@ try {
     STATE.jobs = [C785, IU];
   });
 
+  await check('A sign in with no job says so plainly: no job name, no forms, no documents; Sign out still works', async () => {
+    STATE.jobs = [];
+    try {
+      const q = await open(390);
+      await q.fill('#gate-in', '9137');
+      await q.click('#gate-go');
+      await q.waitForSelector('#f-nojob', { timeout: 5000 });
+      const t = await q.innerText('#fieldapp');
+      assert.match(t, /No job is assigned to your sign in right now/);
+      assert.equal(await q.$('[data-ngform]'), null, 'no form buttons');
+      assert.equal(await q.$('#f-docs'), null, 'no job documents');
+      assert.ok(!/C799-2025|C785-2023|—/.test(t), t.slice(0, 200));
+      await noOverflow(q, 'no job at 390');
+      q.once('dialog', (d) => d.accept());
+      await q.click('#f-signout');
+      await q.waitForSelector('#gate-in', { timeout: 5000 });
+      await q.close();
+    } finally { STATE.jobs = [C785, IU]; }
+  });
+
   await check('No horizontal overflow at 390, 820, 1024 and 1440; centered and readable on a computer', async () => {
     for (const w of [390, 820, 1024, 1440]) {
       const q = await open(w);

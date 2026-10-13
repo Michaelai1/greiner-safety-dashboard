@@ -1969,6 +1969,26 @@
       host.innerHTML = '<div style="padding:2rem;text-align:center" class="muted">Could not load: ' + esc(e.message) + '</div>';
     });
   }
+  // Sign out and Refresh in the field view's header.
+  function wireFieldHeader() {
+    $('#f-signout').onclick = function () {
+      if (!confirm('Sign out?')) return;
+      var s = getSession(); clearSession();
+      if (s) post('cs_portal_logout', { p_token: s }).catch(function () {});
+      location.reload();
+    };
+    // In-place refresh — re-pulls the field feed without reloading the page.
+    $('#f-refresh').onclick = function () {
+      var rb = $('#f-refresh');
+      rb.disabled = true; rb.textContent = 'Refreshing…';
+      rpc('cs_portal_field_home').then(function (d2) {
+        renderFieldHome(d2); toast('Up to date');
+      }).catch(function () {
+        rb.disabled = false; rb.textContent = 'Refresh';
+        toast('Could not refresh — check connection');
+      });
+    };
+  }
   function renderFieldHome(d) {
     var host = $('#fieldapp');
     FIELD_HOME = d;
@@ -1997,6 +2017,20 @@
           return '<option value="' + esc(j.id) + '"' + (j.id === job.id ? ' selected' : '') + '>' +
             esc(j.name) + (j.job_number ? ' · ' + esc(j.job_number) : '') + '</option>';
         }).join('') + '</select></div></div>';
+    }
+    // A sign in with no job assigned (for example a foreman between jobs): say so
+    // plainly, with no forms or documents to open.
+    if (!jobs.length) {
+      h += '<div class="sec"><div class="card" id="f-nojob" style="padding:1rem">' +
+        '<div style="font-weight:700;font-size:1.1rem">No job is assigned to your sign in right now</div>' +
+        '<div class="muted small" style="margin-top:.35rem">Your forms and job documents show here once your job is set up. ' +
+        'If you need a form today, ask your safety manager.</div></div></div>';
+      h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
+      h += '</main><div style="height:2rem"></div>';
+      host.innerHTML = h;
+      wireFieldHeader();
+      renderFieldRecent(d.recent || []);
+      return;
     }
     h += '<div class="sec"><div class="card" style="padding:1rem">' +
       '<div style="font-weight:700;font-size:1.15rem">' + esc(job.name || '—') + '</div>' +
@@ -2029,24 +2063,7 @@
     h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
     h += '</main><div style="height:2rem"></div>';
     host.innerHTML = h;
-
-    $('#f-signout').onclick = function () {
-      if (!confirm('Sign out?')) return;
-      var s = getSession(); clearSession();
-      if (s) post('cs_portal_logout', { p_token: s }).catch(function () {});
-      location.reload();
-    };
-    // In-place refresh — re-pulls the field feed without reloading the page.
-    $('#f-refresh').onclick = function () {
-      var rb = $('#f-refresh');
-      rb.disabled = true; rb.textContent = 'Refreshing…';
-      rpc('cs_portal_field_home').then(function (d2) {
-        renderFieldHome(d2); toast('Up to date');
-      }).catch(function () {
-        rb.disabled = false; rb.textContent = 'Refresh';
-        toast('Could not refresh — check connection');
-      });
-    };
+    wireFieldHeader();
     Array.prototype.forEach.call(host.querySelectorAll('[data-ngform]'), function (b) {
       b.onclick = function () { openFieldForm(b.dataset.ngform, b); };
     });
