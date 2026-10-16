@@ -7872,7 +7872,9 @@
       trainView === 'internal'
         ? 'Your own people — the certifications your company holds. Click a person for the full record and PDF.'
         : 'Subcontractor training, broken down by subcontractor. Pick a company to focus in — each sub crew’s certs live on the subcontractor record.',
-      trainView === 'internal' ? '<button class="btn btn-gold" id="add-training">Add training</button>' : '');
+      trainView === 'internal' ? '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+        '<button class="btn" id="add-employee">Add employee</button>' +
+        '<button class="btn btn-gold" id="add-training">Add training</button></div>' : '');
     html += certExpiryHtml();
     html += subtabs(trainView, tabs, 'tv');
     html += (trainView === 'internal') ? trainingInternalHtml(by) : trainingExternalHtml(sc);
@@ -7882,6 +7884,7 @@
     if (trainView === 'internal') {
       wireSearch('tr-q', function (v) { trainF.q = v; pgTraining(); });
       var ab = $('#add-training'); if (ab) ab.onclick = function () { openAddTraining(''); };
+      var ae = $('#add-employee'); if (ae) ae.onclick = function () { openAddInternalEmployeeNew(null); };
       massInit({ label: 'Download selected', run: function (ids) {
         combinedPrint('Training Records', ids.map(function (nm) {
           var pp = (B.people || []).filter(function (x) { return x.name === nm; })[0] || {};
@@ -8022,7 +8025,17 @@
     var picks = [];
     var nameVal = preName || '';
     var today = new Date().toISOString().slice(0, 10);
-    var names = (B.people || []).map(function (p) { return p.name; });
+    // Live employee identities come from workers, not the demo's people list.
+    // Keep legacy certificate holders and demo names available without duplicates.
+    var nameMap = Object.create(null);
+    (B.workers || []).map(function (w) { return w.name; })
+      .concat((B.certs || []).map(function (c) { return c.worker; }))
+      .concat((B.people || []).map(function (p) { return p.name; }))
+      .forEach(function (name) {
+        var clean = String(name || '').trim(), key = clean.toLowerCase();
+        if (clean && !nameMap[key]) nameMap[key] = clean;
+      });
+    var names = Object.keys(nameMap).map(function (key) { return nameMap[key]; }).sort();
 
     function render() {
       var h = '<div class="f"><label for="at-name">Worker name</label>' +
@@ -8097,9 +8110,9 @@
   }
 
   function workerByName(name) {
-    var n = String(name || '').toLowerCase();
+    var n = String(name || '').trim().toLowerCase();
     return (B.workers || []).filter(function (w) {
-      return String(w.name || '').toLowerCase() === n; })[0] || null;
+      return String(w.name || '').trim().toLowerCase() === n; })[0] || null;
   }
 
   /* Employee Safety Profile — the ONE view of a worker, opened from the
@@ -9128,6 +9141,7 @@
   function openAddInternalEmployeeNew(id) {
     var picks = [];   // optional training entered at creation time
     var nameVal = '', classVal = '', phoneVal = '';
+    var saveLabel = id ? 'Add to ' + jobName(id) : 'Add employee';
     var today = new Date().toISOString().slice(0, 10);
     function render() {
       var h = '<div class="f"><label for="ic-name">Worker name</label>' +
@@ -9154,8 +9168,8 @@
             '</div></div></div>';
         }).join('') + '</div>' +
         '<p class="small" id="ic-err" style="color:var(--fail);min-height:1em;margin:.2rem 0 .6rem"></p>' +
-        '<button class="btn btn-gold" id="ic-save" style="width:100%;justify-content:center">Add to ' + esc(jobName(id)) + '</button>';
-      drawer('Add internal employee', 'Safety roster \u00b7 ' + jobName(id), h);
+        '<button class="btn btn-gold" id="ic-save" style="width:100%;justify-content:center">' + esc(saveLabel) + '</button>';
+      drawer('Add internal employee', id ? 'Safety roster \u00b7 ' + jobName(id) : 'Company safety roster · set a job later with Edit employee', h);
       wire();
     }
     function wire() {
@@ -9174,6 +9188,10 @@
         var name = (nameVal || $('#ic-name').value).trim();
         var err = $('#ic-err');
         if (!name) { err.textContent = 'Enter the worker\u2019s name.'; return; }
+        // Training is company-wide. Reuse an existing identity rather than
+        // upserting it or accidentally moving it from its current job.
+        var existing = !id && workerByName(name);
+        if (existing) { toast('Employee already on the roster'); openPerson(existing.name); return; }
         var sv = $('#ic-save');
         sv.disabled = true; sv.textContent = 'Saving\u2026';
         post('cs_portal_worker_add', {
@@ -9191,9 +9209,11 @@
           });
           return chain;
         }).then(refreshBundle).then(function () {
-          closeDrawer(); toast('Saved'); openJob(id);
+          closeDrawer(); toast('Saved');
+          if (id) openJob(id);
+          else { trainF.q = ''; go('training'); openPerson(name); }
         }).catch(function (e) {
-          sv.disabled = false; sv.textContent = 'Add to ' + jobName(id);
+          sv.disabled = false; sv.textContent = saveLabel;
           err.textContent = 'Could not save \u2014 ' + (e.message || 'try again');
         });
       };
