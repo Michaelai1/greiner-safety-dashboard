@@ -140,7 +140,7 @@
      shape the Inspections/Analytics views expect. */
   function crewFromField(rows) {
     return (rows || []).map(function (r) {
-      return {
+      var row = {
         id: r.id,
         inspector_name: r.inspector_name,
         jobsite: r.job_name || r.job_number || '',
@@ -155,6 +155,13 @@
         pdf_path: r.pdf_path || null,
         fields: {}
       };
+      // JHA revision chain (release SQL, Oct 22). Only present once the SQL is
+      // applied; without it the row is exactly what it was before.
+      if (typeof r.revision_count === 'number') {
+        row.revision_count = r.revision_count;
+        row.head_revision_at = r.head_revision_at || null;
+      }
+      return row;
     });
   }
 
@@ -7623,7 +7630,7 @@
       var rows = crewRows.map(function (r) {
         return '<tr class="click" data-crewi="' + esc(r.id) + '">' + selCell(r.id) +
           '<td><span class="t-main">' + esc(r.inspection_subtype || r.form_type) + '</span>' +
-            (r.asset_id ? '<div class="t-sub">' + esc(r.asset_id) + '</div>' : '') + '</td>' +
+            (r.asset_id ? '<div class="t-sub">' + esc(r.asset_id) + '</div>' : '') + jhaRevBadge(r) + '</td>' +
           '<td>' + esc(fmtDate(r.inspection_date)) +
             (r.submitted_at ? '<div class="t-sub">' + esc(tzTime(r.submitted_at)) + '</div>' : '') + '</td>' +
           '<td>' + esc(r.jobsite) + '</td>' +
@@ -7701,8 +7708,14 @@
   function openCrewInsp(id) {
     var r = CREW.filter(function (x) { return x.id === id; })[0];
     if (!r) return;
+    if (jhaHasChain(r)) { openCrewJha(r); return; }
+    openCrewInspPlain(r, '');
+  }
+  /* The inspection drawer as it has always been. `notice` (HTML) is only
+     used by the JHA view when its version history could not be read. */
+  function openCrewInspPlain(r, notice) {
     var title = r.inspection_subtype || r.form_type;
-    var h = pdfBtn('dl-crewi');
+    var h = (notice || '') + pdfBtn('dl-crewi');
     h += '<div class="sec-h">Details</div>' +
       kv('Form', r.form_type + (r.inspection_subtype ? ' · ' + r.inspection_subtype : '')) +
       (r.asset_id ? kv('Asset', r.asset_id) : '') +
@@ -7744,6 +7757,198 @@
       if (r.pdf_path) { openFieldPdf(r.id); return; }   // real stored field-submission PDF
       printRecord(title, fmtDate(r.inspection_date) + ' · ' + r.jobsite + ' · ' +
         r.inspector_name, crewPBody(r));
+    };
+  }
+
+  /* ---------- JHA: current version + version history (release, Oct 22) ----
+     Once the release SQL is applied, cs_portal_field_inspections carries
+     revision_count and head_revision_at on JHA rows, and
+     cs_portal_jha_history(token, original) returns the original, every
+     revision, the head, the deadline and the revision window. Without those
+     keys nothing below runs and the office looks exactly as it did.
+     A revision never changes the original; each version keeps its own PDF,
+     opened through the field-pdf edge function ('url') with that version's id. */
+  function jhaHasChain(r) {
+    return !!r && String(r.inspection_subtype || '').toLowerCase() === 'jha' && typeof r.revision_count === 'number';
+  }
+  // Inspections list: "Revised (N), current version <date time>".
+  function jhaRevBadge(r) {
+    if (!jhaHasChain(r) || !(r.revision_count > 0)) return '';
+    return '<div class="t-sub jrv-badge"><b class="jrv-tag">Revised (' + r.revision_count + ')</b>' +
+      (r.head_revision_at ? ', current version ' + esc(tzDateTime(r.head_revision_at)) : '') + '</div>';
+  }
+  function jhaFmtDeadline(iso) {
+    if (!iso) return '';
+    return (window.JhaModel && window.JhaModel.fmtDeadline) ? window.JhaModel.fmtDeadline(iso) : tzDateTime(iso);
+  }
+  /* Server history -> { versions:[original, revision 1..N], head, deadline, reason }.
+     Accepts the contract keys (head_revision, deadline_at) and the earlier
+     proposal's (head_revision_number, deadline). */
+  function jhaNormHistory(h, r) {
+    if (!h || typeof h !== 'object' || !h.original || typeof h.original !== 'object') return null;
+    var o = h.original;
+    var ver = function (x, n, label, by) {
+      return { id: x.id, n: n, label: label, at: x.submitted_at || null, by: by || '',
+               pdf: x.pdf_path || null, fields: x.fields || null,
+               has_defects: x.has_defects, defect_count: x.defect_count };
+    };
+    var orig = ver(Object.assign({ id: r.id, submitted_at: r.submitted_at, pdf_path: r.pdf_path }, o), 0, 'Original',
+      o.inspector_name || o.submitted_by || r.inspector_name);
+    var revs = (Array.isArray(h.revisions) ? h.revisions : []).filter(function (x) {
+      return x && x.id && +x.revision_number > 0;
+    }).map(function (x) {
+      return ver(x, +x.revision_number, 'Revision ' + (+x.revision_number), x.submitted_by || x.inspector_name);
+    }).sort(function (a, b) { return a.n - b.n; });
+    var versions = [orig].concat(revs);
+    var headN = h.head_revision;
+    if (headN && typeof headN === 'object') headN = headN.revision_number;
+    if (headN === undefined || headN === null) headN = h.head_revision_number;
+    var head = versions.filter(function (v) { return v.n === +headN; })[0] || versions[versions.length - 1];
+    var deadline = h.deadline_at || h.deadline || null;
+    var reason = h.window_reason === 'open' || h.window_reason === 'closed' || h.window_reason === 'no-window'
+      ? h.window_reason : (h.window_open ? 'open' : (deadline ? 'closed' : 'no-window'));
+    return { versions: versions, head: head, deadline: deadline, reason: reason };
+  }
+  function jhaWindowHtml(hx) {
+    var d = jhaFmtDeadline(hx.deadline);
+    if (hx.reason === 'open') {
+      return '<span class="jrv-win" data-reason="open">' + pill('p-ok', 'Open') + ' until ' + esc(d) + '</span>';
+    }
+    if (hx.reason === 'closed') {
+      return '<span class="jrv-win" data-reason="closed">' + pill('p-grey', 'Closed') +
+        (d ? ' at ' + esc(d) : '') + '</span>';
+    }
+    return '<span class="jrv-win" data-reason="no-window">' + pill('p-grey', 'No revision window') + '</span>';
+  }
+  function jhaCss() {
+    if (document.getElementById('jrv-css')) return;
+    var s = document.createElement('style');
+    s.id = 'jrv-css';
+    s.textContent =
+      '.jrv-tag{color:var(--warn);font-weight:650}' +
+      '.jrv-cur{background:var(--warn-tt);border:1px solid var(--warn-br);border-radius:8px;padding:9px 12px;' +
+        'font-size:13px;margin-bottom:12px;overflow-wrap:anywhere}' +
+      '.jrv-cur.is-orig{background:#f8fafc;border-color:var(--line-2)}' +
+      '.jrv-list{list-style:none;margin:0;padding:0}' +
+      '.jrv-item{border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;margin-bottom:8px}' +
+      '.jrv-item.is-cur{border-color:var(--ok-br);background:var(--ok-tt)}' +
+      '.jrv-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}' +
+      '.jrv-main{min-width:0;flex:1 1 180px}' +
+      '.jrv-name{font-weight:650;font-size:13.5px}' +
+      '.jrv-when{font-size:12px;color:var(--ink-4);overflow-wrap:anywhere}' +
+      '.jrv-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}' +
+      '.jrv-item.is-shown .jrv-show{border-color:var(--ink-4)}' +
+      '.jrv-win .pill{margin-right:4px}' +
+      '.jrv-rule{margin:6px 0 0}';
+    document.head.appendChild(s);
+  }
+  function jhaDrawerFor(id) {
+    var d = $('.drawer');
+    return d && d.getAttribute('data-jrv') === String(id) ? d : null;
+  }
+  function openCrewJha(r) {
+    jhaCss();
+    var title = r.inspection_subtype || r.form_type;
+    drawer(title, fmtDate(r.inspection_date) + ' · ' + r.jobsite,
+      '<div class="small muted" id="jrv-loading">Loading the current version…</div>');
+    var d = $('.drawer'); if (d) d.setAttribute('data-jrv', r.id);
+    post('cs_portal_jha_history', { p_original: r.id }).then(function (h) {
+      var hx = jhaNormHistory(h, r);
+      if (!hx) throw new Error('unexpected history');
+      if (jhaDrawerFor(r.id)) renderCrewJha(r, hx);
+    }).catch(function () {
+      if (!jhaDrawerFor(r.id)) return;
+      // Never show the original as if it were current without saying so.
+      openCrewInspPlain(r, r.revision_count > 0
+        ? '<div class="alert" id="jrv-err">This JHA has been revised ' + r.revision_count +
+          (r.revision_count === 1 ? ' time' : ' times') + ', but its version history could not be loaded. ' +
+          'Showing the original as submitted. Use Refresh data to try again.</div>'
+        : '');
+    });
+  }
+  function renderCrewJha(r, hx) {
+    var d = jhaDrawerFor(r.id); if (!d) return;
+    var head = hx.head, revised = hx.versions.length > 1;
+    var title = r.inspection_subtype || r.form_type;
+    // The history carries no defect flags for a revision: then the result shown is the original's, and says so.
+    var hd = head.has_defects === undefined || head.has_defects === null
+      ? { on: r.has_defects, n: r.defect_count, of: head.n > 0 ? ' (original)' : '' }
+      : { on: !!head.has_defects, n: head.defect_count || 0, of: '' };
+    var h = '<div class="jrv-cur' + (revised ? '' : ' is-orig') + '" id="jrv-cur">' + (revised
+      ? 'Showing the current version: <b>' + esc(head.label) + '</b>, ' + esc(head.at ? tzDateTime(head.at) : '—') +
+        (head.by ? ' by ' + esc(head.by) : '') + '.'
+      : 'Showing the original. This JHA has not been revised.') + '</div>';
+    h += (head.pdf || !revised)
+      ? '<button class="btn btn-sm" id="dl-crewi" style="margin-bottom:14px">Download PDF' +
+        (revised ? ' (current version)' : '') + '</button>'
+      : '<p class="small muted" id="jrv-nopdf" style="margin:0 0 14px">The PDF for ' + esc(head.label) +
+        ' is not attached yet. Earlier versions are listed below.</p>';
+    h += '<div class="sec-h">Details</div>' +
+      kv('Form', r.form_type + (r.inspection_subtype ? ' · ' + r.inspection_subtype : '')) +
+      (r.asset_id ? kv('Asset', r.asset_id) : '') +
+      kv('Site', r.jobsite) +
+      kv('Completed by', r.inspector_name) +
+      kv('Date', fmtDate(r.inspection_date)) +
+      (r.submitted_at ? kv('Submitted', tzDateTime(r.submitted_at)) : '') +
+      kv('Current version', revised ? head.label + ' · ' + (head.at ? tzDateTime(head.at) : '—') : 'Original (not revised)') +
+      kv('Result' + hd.of, hd.on ? hd.n + ' defect' + (hd.n === 1 ? '' : 's') : 'All items passed');
+    h += '<div class="sec-h">Revision window</div>' +
+      '<div class="kv"><span class="k">Revisions</span><span class="v" id="jrv-window">' + jhaWindowHtml(hx) + '</span></div>' +
+      '<p class="small muted jrv-rule">' + (hx.reason === 'no-window'
+        ? 'This JHA was submitted on a weekend or after 6:00 PM Friday, so it cannot be revised. A new JHA can be started instead.'
+        : 'A JHA can be revised until 6:00 PM Friday of the week it was first submitted. Revising does not move that deadline.') +
+      ' The original is never changed.</p>';
+    h += '<div class="sec-h">Version history</div><ol class="jrv-list" id="jrv-list">' +
+      hx.versions.map(function (v) {
+        var cur = v === head;
+        return '<li class="jrv-item' + (cur ? ' is-cur is-shown' : '') + '" data-jrv-ver="' + v.n + '">' +
+          '<div class="jrv-row"><div class="jrv-main">' +
+            '<div class="jrv-name">' + esc(v.label) + (cur ? ' ' + pill('p-ok', 'Current') : '') + '</div>' +
+            '<div class="jrv-when">' + esc(v.at ? tzDateTime(v.at) : '—') + (v.by ? ' · ' + esc(v.by) : '') + '</div>' +
+          '</div><div class="jrv-acts">' +
+            '<button class="btn btn-sm jrv-show" data-jrv-show="' + v.n + '">Answers</button>' +
+            (v.pdf ? '<button class="btn btn-sm" data-jrv-pdf="' + esc(v.id) + '">View PDF</button>'
+                   : '<span class="small muted">No PDF yet</span>') +
+          '</div></div></li>';
+      }).join('') + '</ol>';
+    h += '<div class="sec-h" id="jrv-items-h">Inspection Items · ' + esc(head.label) + '</div>' +
+      '<div id="crew-doc" class="small muted">Loading inspection…</div>';
+    d.querySelector('.drawer-bd').innerHTML = h;
+
+    function showVersion(v) {
+      if (!jhaDrawerFor(r.id)) return;
+      $$('.drawer .jrv-item').forEach(function (li) {
+        li.classList.toggle('is-shown', li.getAttribute('data-jrv-ver') === String(v.n));
+      });
+      var hh = $('#jrv-items-h'); if (hh) hh.textContent = 'Inspection Items · ' + v.label;
+      var box = $('#crew-doc'); if (!box) return;
+      if (v.fields && v.fields.doc) { box.innerHTML = docDetailHtml(v.fields.doc); return; }
+      if (v.n === 0) {   // the original as the office has always read it
+        box.innerHTML = 'Loading inspection…';
+        post('cs_portal_field_doc', { p_id: r.id }).then(function (x) {
+          if (jhaDrawerFor(r.id) && $('#crew-doc')) $('#crew-doc').innerHTML = docDetailHtml(x && x.doc);
+        }).catch(function () {
+          if (jhaDrawerFor(r.id) && $('#crew-doc')) $('#crew-doc').innerHTML = '<div class="small muted">The full record is available in the PDF.</div>';
+        });
+        return;
+      }
+      box.innerHTML = docDetailHtml(null);
+    }
+    showVersion(head);
+    $$('.drawer [data-jrv-show]').forEach(function (b) {
+      b.onclick = function () {
+        var n = +b.getAttribute('data-jrv-show');
+        showVersion(hx.versions.filter(function (v) { return v.n === n; })[0] || head);
+      };
+    });
+    $$('.drawer [data-jrv-pdf]').forEach(function (b) {
+      b.onclick = function () { openFieldPdf(b.getAttribute('data-jrv-pdf')); };
+    });
+    var dl = $('#dl-crewi');
+    if (dl) dl.onclick = function () {
+      if (head.pdf) { openFieldPdf(head.id); return; }   // the current version's own PDF
+      printRecord(title, fmtDate(r.inspection_date) + ' · ' + r.jobsite + ' · ' +
+        r.inspector_name, crewPBody(r));                // unrevised, no stored PDF: as before
     };
   }
 

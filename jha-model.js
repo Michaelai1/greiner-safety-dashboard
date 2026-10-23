@@ -10,15 +10,21 @@
 
   var TZ = 'America/Indiana/Indianapolis';
 
-  /* Revision window. Tony (Oct 2): up to three revisions to one JHA within a
-     Monday-to-Friday week; the original never changes. Tony has NOT confirmed
-     weekend behavior — this demo treats Saturday and Sunday as outside the
-     window. Change `workdays` (ISO weekday numbers, Mon=1 ... Sun=7) once he
-     decides; nothing else needs to move. */
+  /* Revision window. Tony (Oct 21) replaced the Oct 2 rule (three revisions
+     within the workweek): a submitted JHA can be revised any number of times
+     until 6:00 PM Indianapolis time on the Friday of the week it was ORIGINALLY
+     submitted. "Original JHA sent on Monday: revisions on that same JHA until
+     6 PM Friday. Original submitted on Wednesday: still only until that
+     Friday." Weeks are ISO weeks (Monday to Sunday), so a JHA first submitted
+     on Friday after 6 PM, Saturday or Sunday is already past its window. The
+     revision count no longer limits anything. The original never changes.
+     `workdays` only labels the week (demo placement, Today/Earlier grouping);
+     `deadline` is what decides. */
   var JHA_REVISION_RULES = {
-    maxRevisions: 3,
+    maxRevisions: null,
     timeZone: TZ,
-    workdays: [1, 2, 3, 4, 5]
+    workdays: [1, 2, 3, 4, 5],
+    deadline: { isoWeekday: 5, hour: 18, minute: 0 }
   };
 
   /* Ladder inspection cadence. Tony mentioned weekly ladder inspections but
@@ -67,6 +73,41 @@
     return d.toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric',
       year: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
+  /* An Indianapolis wall-clock time on a calendar date, as a UTC ISO instant.
+     Tries EDT (UTC-4) then EST (UTC-5) and keeps the offset that reads back as
+     the same local date and time, so it is right on both sides of a
+     daylight-saving change. */
+  var _hmFmt = null;
+  function indyWallTime(isoDate, hour, minute) {
+    if (!_hmFmt) {
+      _hmFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    }
+    var wall = Date.UTC(+isoDate.slice(0, 4), +isoDate.slice(5, 7) - 1, +isoDate.slice(8, 10), hour, minute || 0);
+    for (var off = 4; off <= 5; off++) {
+      var d = new Date(wall + off * 3600000), p = {};
+      _hmFmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+      if (p.year + '-' + p.month + '-' + p.day === isoDate && +p.hour === hour && +p.minute === (minute || 0)) {
+        return d.toISOString();
+      }
+    }
+    return new Date(wall + 5 * 3600000).toISOString();
+  }
+  /* The revision deadline for a JHA: 6:00 PM Indianapolis on the Friday of the
+     ISO week (Monday to Sunday) of its ORIGINAL submission. */
+  function revisionDeadline(originalSubmittedAt) {
+    var p = indyParts(originalSubmittedAt), dl = JHA_REVISION_RULES.deadline;
+    return indyWallTime(isoAddDays(p.iso, dl.isoWeekday - p.dow), dl.hour, dl.minute);
+  }
+  // "Fri, Oct 23, 6:00 PM", assembled from parts so every browser prints the same.
+  function fmtDeadline(iso) {
+    if (!iso) return '';
+    var p = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date(iso))
+      .forEach(function (x) { p[x.type] = x.value; });
+    return p.weekday + ', ' + p.month + ' ' + p.day + ', ' + p.hour + ':' + p.minute + ' ' + String(p.dayPeriod || '').toUpperCase();
+  }
 
   /* ---------------- JHA families and revisions ---------------- */
   // A family is one original JHA plus every revision of it. revision_number is
@@ -85,14 +126,16 @@
   function revisionLabel(n) { return n <= 1 ? 'Original' : 'Revision ' + (n - 1); }
 
   /* Can this family take another revision right now?
-     code: ok | not-found | other-job | other-company | cap | weekend-now |
-           weekend-original | outside-week */
+     code: ok | not-found | other-job | other-company | after-deadline |
+           window-closed
+     There is no count limit (Tony, Oct 21): `remaining` is null. */
   function reviseEligibility(store, rootId, ctx) {
     var versions = familyVersions(store, rootId);
     if (!versions.length) return { ok: false, code: 'not-found', message: 'This JHA was not found.' };
     var orig = versions[0], head = versions[versions.length - 1];
-    var used = versions.length - 1, max = JHA_REVISION_RULES.maxRevisions;
-    var base = { used: used, remaining: Math.max(0, max - used),
+    var used = versions.length - 1;
+    var deadline = revisionDeadline(orig.original_submitted_at);
+    var base = { used: used, remaining: null, deadline: deadline,
                  nextNumber: used + 1, head: head, original: orig };
     function no(code, message) { return Object.assign({ ok: false, code: code, message: message }, base); }
     if (ctx.companyId && orig.company_id && orig.company_id !== ctx.companyId) {
@@ -101,25 +144,21 @@
     if (ctx.jobId && orig.job_id !== ctx.jobId) {
       return no('other-job', 'Only JHAs from this job can be revised here.');
     }
-    var now = workweekOf(ctx.now), was = workweekOf(orig.original_submitted_at);
-    if (!now.isWorkday) {
-      return no('weekend-now', 'JHAs can be revised Monday through Friday. Start a new JHA to document today’s work.');
+    var dl = Date.parse(deadline);
+    if (Date.parse(orig.original_submitted_at) >= dl) {
+      return no('after-deadline', 'This JHA was submitted after 6:00 PM Friday of its week, so it can’t be revised. Start a new JHA instead.');
     }
-    if (!was.isWorkday) {
-      return no('weekend-original', 'This JHA was submitted on a weekend and can’t be revised. Start a new JHA instead.');
-    }
-    if (was.weekStart !== now.weekStart) {
-      return no('outside-week', 'This JHA is from an earlier workweek and can no longer be revised. You can view its history or start a new JHA.');
-    }
-    if (used >= max) {
-      return no('cap', 'This JHA already has ' + max + ' revisions. Start a new JHA to document additional changes.');
+    if (new Date(ctx.now).getTime() >= dl) {
+      return no('window-closed', 'This JHA could be revised until ' + fmtDeadline(deadline) +
+        ' (6:00 PM Friday of the week it was submitted). That time has passed. You can view it or start a new JHA.');
     }
     return Object.assign({ ok: true, code: 'ok', message: '' }, base);
   }
 
-  /* The picker: this job's families from the current workweek, grouped into
-     Today and Earlier this workweek, newest activity first. Capped families
-     stay listed so the foreman sees why, with a Complete New JHA action. */
+  /* The picker: this job's families still inside their revision window,
+     grouped into Today and Earlier this workweek, newest activity first.
+     windowOpen is false once this week's Friday 6:00 PM has passed (and all
+     weekend), when nothing can be revised. */
   function revisionCandidates(store, ctx) {
     var roots = {};
     (store || []).forEach(function (r) { roots[r.root_jha_id] = 1; });
@@ -127,14 +166,14 @@
     Object.keys(roots).forEach(function (rootId) {
       var e = reviseEligibility(store, rootId, ctx);
       if (e.code === 'not-found' || e.code === 'other-job' || e.code === 'other-company') return;
-      if (e.code === 'outside-week' || e.code === 'weekend-original' || e.code === 'weekend-now') { hidden++; return; }
+      if (e.code === 'window-closed' || e.code === 'after-deadline') { hidden++; return; }
       var card = { rootId: rootId, eligibility: e, original: e.original, head: e.head,
         lastActivity: e.head.revised_at || e.original.original_submitted_at };
       (workweekOf(e.original.original_submitted_at).date === now.date ? today : earlier).push(card);
     });
     var newest = function (a, b) { return String(b.lastActivity).localeCompare(String(a.lastActivity)); };
     return { today: today.sort(newest), earlier: earlier.sort(newest), hiddenCount: hidden,
-             windowOpen: now.isWorkday };
+             windowOpen: new Date(ctx.now).getTime() < Date.parse(revisionDeadline(ctx.now)) };
   }
 
   function freezeDeep(o) {
@@ -165,8 +204,8 @@
   }
 
   /* Append the next revision. Refuses (never overwrites) when the JHA moved on
-     since the form opened (stale), when the cap is reached, or when the window
-     is closed. What changed is computed, field by field — the foreman is never
+     since the form opened (stale) or when its revision window (6:00 PM Friday
+     of the original's week) has closed. What changed is computed, field by field — the foreman is never
      asked to explain each change; an optional note can add context. */
   function submitRevision(store, req, serverNow) {
     var e = reviseEligibility(store, req.rootId, { now: serverNow, jobId: req.jobId, companyId: req.companyId });
@@ -656,6 +695,7 @@
     indyParts: indyParts, workweekOf: workweekOf, fmtIndy: fmtIndy, isoAddDays: isoAddDays,
     familyVersions: familyVersions, familyHead: familyHead, revisionsUsed: revisionsUsed,
     revisionLabel: revisionLabel, reviseEligibility: reviseEligibility,
+    revisionDeadline: revisionDeadline, fmtDeadline: fmtDeadline, indyWallTime: indyWallTime,
     revisionCandidates: revisionCandidates, createOriginal: createOriginal,
     submitRevision: submitRevision, dailyJhaCount: dailyJhaCount,
     revisionEventCount: revisionEventCount, freezeDeep: freezeDeep,
