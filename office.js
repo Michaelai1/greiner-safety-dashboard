@@ -6604,7 +6604,16 @@
     });
   }
   function tbtxWhen(t) { return t ? fmtWhen(t) : '—'; }
+  /* format_used is doc | guided | video (video only once the email-channel
+     migration is applied; before it a video completion is stored as null). */
+  function tbtxFormatLabel(f, long) {
+    if (f === 'guided') return long ? 'Guided Talk' : 'Guided talk';
+    if (f === 'video') return 'Video';
+    return 'Original document';
+  }
   function tbtxDelivery(x) {
+    /* channel is absent until the email-channel migration; undefined = text. */
+    if (x.channel === 'email') return pill('p-grey', 'Email');
     if (x.send_status === 'sent') return pill('p-ok', 'Texted ' + tbtxWhen(x.sent_at));
     if (x.send_status === 'scheduled' || x.send_status === 'sending') return pill('p-grey', 'Scheduled ' + tbtxWhen(x.send_at));
     if (x.send_status === 'held') return pill('p-grey', 'On hold (not sent)');
@@ -6634,7 +6643,7 @@
     var rows = TBTX.rows.map(function (x) {
       var who = esc(x.recipient_name || '—') + (x.is_test ? ' ' + pill('p-grey', 'Test') : '') +
         '<div class="t-sub">' + (x.role === 'leader' ? 'Foreman' : 'Individual') +
-        (x.phone_last4 ? ' · ends ' + esc(x.phone_last4) : '') + '</div>';
+        (x.channel === 'email' ? ' · by email' : (x.phone_last4 ? ' · ends ' + esc(x.phone_last4) : '')) + '</div>';
       var crew = x.role === 'leader'
         ? esc(jobName(x.crew_job_id)) + '<div class="t-sub">' + esc(jobNum(x.crew_job_id)) + '</div>'
         : '<span class="muted">—</span>';
@@ -6671,20 +6680,22 @@
       (lib && lib.p ? kv('Length', lib.p + (lib.p === 1 ? ' page' : ' pages')) : '') +
       kv('Presented as', x.format_used === 'guided'
         ? 'Guided Talk' + (gi ? ' (' + gi.sections + ' sections on screen)' : '')
-        : x.format_used === 'doc' ? 'Original document'
+        : (x.format_used === 'doc' || x.format_used === 'video') ? tbtxFormatLabel(x.format_used, true)
         : x.submitted_at ? 'Not recorded' : 'Not opened yet') +
-      '<div class="sec-h">Text</div>' +
-      kv('Sent to', (x.recipient_name || '—') + (x.phone_last4 ? ' (ends ' + x.phone_last4 + ')' : '')) +
+      '<div class="sec-h">' + (x.channel === 'email' ? 'Email' : 'Text') + '</div>' +
+      kv('Sent to', (x.recipient_name || '—') + (x.channel === 'email' ? ' (by email)' : (x.phone_last4 ? ' (ends ' + x.phone_last4 + ')' : ''))) +
       kv('Type', x.role === 'leader' ? 'Foreman-led group talk' : 'Individual') +
       (x.role === 'leader' ? kv('Crew', jobName(x.crew_job_id) + (jobNum(x.crew_job_id) ? ' (' + jobNum(x.crew_job_id) + ')' : '')) : '') +
       kv('Scheduled for', tbtxWhen(x.send_at)) +
-      kv('Text status', x.send_status === 'sent' ? 'Sent ' + tbtxWhen(x.sent_at)
-        : x.send_status === 'held' ? 'On hold, not sent' : (x.send_status || 'Not texted'), x.send_status === 'failed') +
+      (x.channel === 'email'
+        ? kv('Delivery', 'Email link (sent by n8n; delivery is not tracked here)')
+        : kv('Text status', x.send_status === 'sent' ? 'Sent ' + tbtxWhen(x.sent_at)
+            : x.send_status === 'held' ? 'On hold, not sent' : (x.send_status || 'Not texted'), x.send_status === 'failed')) +
       '<div class="sec-h">Progress</div>' +
       kv('Opened', tbtxWhen(x.opened_at)) +
       kv('Last activity', tbtxWhen(x.last_active_at)) +
       kv('Submitted', x.submitted_at ? tbtxWhen(x.submitted_at) : 'Not yet') +
-      (x.format_used ? kv('Format', x.format_used === 'guided' ? 'Guided talk' : 'Original document') : '') +
+      (x.format_used ? kv('Format', tbtxFormatLabel(x.format_used)) : '') +
       (x.active_ms ? kv('Time on the talk', Math.max(1, Math.round(x.active_ms / 60000)) + ' min') : '');
     if (x.role === 'leader') {
       var list = (x.attendees || []).concat((x.manual_attendees || []).map(function (n) { return n + ' (typed in)'; }));
