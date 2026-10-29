@@ -11,6 +11,7 @@ tests/real-names.local.json
 
 # wrangler local state
 .wrangler/
+supabase/.temp/
 
 # Real phone numbers for provisioning. Local only — a PIN may be derived from them.
 provisioning/*.local.json

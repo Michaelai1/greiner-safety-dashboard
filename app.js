@@ -174,6 +174,7 @@
   var FIELD_JOB = null;   // the signed-in field user's CURRENTLY SELECTED job
   var FIELD_HOME = null;  // last cs_portal_field_home payload (for re-render on job switch)
   var FIELD_SELECTED_JOB_ID = null;  // which job the user is working (multi-job)
+  var SITE_SAFETY = { jobId: null, kind: 'all', offset: 0, request: 0 };
   function jobLabelOf(r) {
     return (r && r.job_name) || (FIELD_JOB && FIELD_JOB.name) || C.contractor || '';
   }
@@ -2083,7 +2084,12 @@
     // block stays hidden until the job actually has some.
     h += '<div class="sec hide" id="f-rc-sec"><div class="sec-h"><h2>Resource Center</h2></div><div id="f-rc"></div></div>';
     h += '<div class="sec"><div class="sec-h"><h2>Job documents</h2></div><div id="f-docs" role="status"><div class="empty">Loading documents…</div></div></div>';
-    h += '<div class="sec"><div class="sec-h"><h2>Recent submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
+    h += '<div class="sec hide" id="f-site-safety"><div class="sec-h"><h2>Site safety records</h2></div>' +
+      '<p class="muted small" style="margin:.2rem 0 .7rem">JHAs, inspections and Toolbox Talks linked to this job only.</p>' +
+      '<div id="f-site-tabs" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem"></div>' +
+      '<div id="f-site-list" role="status"></div>' +
+      '<button class="btn btn-out btn-sm hide" id="f-site-more" type="button" style="width:100%;min-height:44px;margin-top:.5rem">Show more</button></div>';
+    h += '<div class="sec" id="f-recent-sec"><div class="sec-h"><h2>Recent job submissions</h2></div><div id="f-recent"><div class="empty">No submissions yet.</div></div></div>';
     h += '</main><div style="height:2rem"></div>';
     host.innerHTML = h;
     wireFieldHeader();
@@ -2094,6 +2100,105 @@
     if (jp) jp.onchange = function () { FIELD_SELECTED_JOB_ID = jp.value; renderFieldHome(FIELD_HOME); };
     renderFieldRecent(d.recent || []);
     loadFieldDocs(job.id);
+    if (SITE_SAFETY.jobId !== job.id) {
+      SITE_SAFETY.jobId = job.id;
+      SITE_SAFETY.kind = 'all';
+      SITE_SAFETY.offset = 0;
+    }
+    loadSiteSafety(job.id, SITE_SAFETY.kind, 0);
+  }
+
+  /* Read-only history for the specifically granted employees. The server
+     checks the current account AND selected job on every page and detail RPC;
+     a hidden section is not used as an authorization boundary. */
+  function loadSiteSafety(jobId, kind, offset) {
+    var seq = ++SITE_SAFETY.request;
+    var section = $('#f-site-safety');
+    if (!section) return;
+    rpc('cs_portal_site_safety', {
+      p_job_id: jobId, p_kind: kind, p_offset: offset, p_limit: 25
+    }).then(function (data) {
+      if (seq !== SITE_SAFETY.request || !FIELD_JOB || FIELD_JOB.id !== jobId) return;
+      if (!data || !Array.isArray(data.items)) throw new Error('site records unavailable');
+      SITE_SAFETY.kind = kind;
+      SITE_SAFETY.offset = offset + (data.items || []).length;
+      section.classList.remove('hide');
+      var recent = $('#f-recent-sec'); if (recent) recent.classList.add('hide');
+      renderSiteSafety(data, offset > 0);
+    }).catch(function (e) {
+      if (seq !== SITE_SAFETY.request || !FIELD_JOB || FIELD_JOB.id !== jobId) return;
+      if (/not permitted|not found|404|unavailable/i.test(e.message || '')) {
+        section.classList.add('hide');
+        var recent = $('#f-recent-sec'); if (recent) recent.classList.remove('hide');
+        return;
+      }
+      section.classList.remove('hide');
+      var list = $('#f-site-list');
+      if (list) list.textContent = 'Could not load site records. Refresh to try again.';
+    });
+  }
+  function siteCard(item) {
+    var card = el('div', 'card');
+    card.style.cssText = 'padding:.8rem 1rem;margin-bottom:.7rem';
+    var title = el('div', '', item.title || item.kind || 'Record');
+    title.style.fontWeight = '700';
+    card.appendChild(title);
+    var when = item.occurred_at ? tzDateTime(item.occurred_at) : '';
+    var meta = el('div', 'muted small', [item.person, when, item.status].filter(Boolean).join(' · '));
+    card.appendChild(meta);
+    if (item.has_defects) card.appendChild(el('div', 'small', (item.defect_count || 0) + ' flagged'));
+    if (item.source === 'field') {
+      var detail = el('button', 'btn btn-out btn-sm', 'View details');
+      detail.type = 'button'; detail.style.cssText = 'min-height:44px;margin-top:.6rem;margin-right:.4rem';
+      detail.onclick = function () {
+        openFieldDetail({ id: item.id, form_title: item.title, form_type: item.form_type,
+          inspector_name: item.person, submitted_at: item.occurred_at,
+          has_defects: item.has_defects, defect_count: item.defect_count });
+      };
+      card.appendChild(detail);
+      if (item.pdf_path) {
+        var pdf = el('button', 'btn btn-out btn-sm', 'View PDF');
+        pdf.type = 'button'; pdf.style.cssText = 'min-height:44px;margin-top:.6rem';
+        pdf.onclick = function () { recordView({ id: item.id, pdf_path: item.pdf_path,
+          form_type: item.form_type, form_title: item.title, submitted_at: item.occurred_at }); };
+        card.appendChild(pdf);
+      }
+    } else if (item.source === 'report') {
+      var button = el('button', 'btn btn-out btn-sm', 'Download inspection PDF');
+      button.type = 'button';
+      button.style.cssText = 'min-height:44px;margin-top:.6rem';
+      button.onclick = function () {
+        button.disabled = true;
+        var call = rpc('cs_portal_site_report', { p_report_id: item.id }).then(function (report) {
+          return buildPdf(report).then(function (blob) { saveBlob(blob, reportFilename(report)); });
+        });
+        call.catch(function () { toast('Could not open this record'); })
+          .then(function () { button.disabled = false; });
+      };
+      card.appendChild(button);
+    }
+    return card;
+  }
+  function renderSiteSafety(data, append) {
+    var tabs = $('#f-site-tabs'), list = $('#f-site-list'), more = $('#f-site-more');
+    if (!tabs || !list || !more) return;
+    tabs.innerHTML = '';
+    [['all', 'All'], ['jha', 'JHAs'], ['inspection', 'Inspections'], ['talk', 'Toolbox Talks']]
+      .forEach(function (pair) {
+        var b = el('button', pair[0] === SITE_SAFETY.kind ? 'btn btn-gold btn-sm' : 'btn btn-out btn-sm', pair[1]);
+        b.type = 'button'; b.style.minHeight = '44px';
+        b.onclick = function () { loadSiteSafety(SITE_SAFETY.jobId, pair[0], 0); };
+        tabs.appendChild(b);
+      });
+    if (!append) list.innerHTML = '';
+    (data.items || []).forEach(function (item) { list.appendChild(siteCard(item)); });
+    if (!append && !(data.items || []).length) {
+      list.appendChild(el('div', 'empty', SITE_SAFETY.kind === 'talk'
+        ? 'No Toolbox Talks are linked to this job yet. Scheduled talk links still work.'
+        : 'No records in this section yet.'));
+    }
+    more.classList.toggle('hide', SITE_SAFETY.offset >= (data.total || 0));
+    more.onclick = function () { loadSiteSafety(SITE_SAFETY.jobId, SITE_SAFETY.kind, SITE_SAFETY.offset); };
   }
 
   /* Original files for the selected job (cs_job_docs). The server checks that
