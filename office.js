@@ -6469,6 +6469,23 @@
        the jobsite filter and the search. Test sends are left out: a test is not
        a talk anybody attended. */
     function tbtxAsLoggedTalks() {
+      // Two foremen on one job (Westin, Oct 29) can both mark the same worker for
+      // the same talk and week, or a worker can also complete it himself. Each
+      // record still shows what its foreman marked; the total counts that worker
+      // once per talk and week, earliest submission first.
+      var seen = {}, counted = {};
+      (TBTX.rows || []).filter(function (x) { return x.submitted_at && !x.is_test; })
+        .sort(function (a, b) { return String(a.submitted_at).localeCompare(String(b.submitted_at)); })
+        .forEach(function (x) {
+          var key = (x.talk_key || x.talk_title || '') + '|' + (x.week_start || '');
+          var s = seen[key] || (seen[key] = {}), n = 0;
+          var names = x.role === 'leader' ? (x.attendees || []).concat(x.manual_attendees || []) : [x.recipient_name || x.id];
+          names.forEach(function (name) {
+            var k = String(name || '').trim().toLowerCase();
+            if (k && !s[k]) { s[k] = 1; n++; }
+          });
+          counted[x.id] = n;
+        });
       return (TBTX.rows || []).filter(function (x) {
         return x.submitted_at && !x.is_test;
       }).map(function (x) {
@@ -6486,6 +6503,7 @@
           // An individual talk is the one person who acknowledged it; a
           // foreman-led talk is whoever he marked present.
           attendees: x.role === 'leader' ? tbtxCount(x) : 1,
+          attendees_counted: counted[x.id],
           note: '',
           archived: false
         };
@@ -6524,7 +6542,7 @@
         .concat(tbtxAsLoggedTalks())
         .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
       var t0 = all.filter(function (t) { return t.date === today; });
-      var att = all.reduce(function (a, t) { return a + t.attendees; }, 0);
+      var att = all.reduce(function (a, t) { return a + (t.attendees_counted != null ? t.attendees_counted : t.attendees); }, 0);
       // Unique sites among the talks actually held today (not the total job count).
       var t0Sites = Object.keys(t0.reduce(function (m, t) { if (t.job_id) m[t.job_id] = 1; return m; }, {})).length;
       html = head('Toolbox Talks',
