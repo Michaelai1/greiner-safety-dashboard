@@ -11739,8 +11739,9 @@
   /* Foremen and crew sign in with the same code on the phone and on a
      computer. A field login is limited to its own job: the company-wide office
      data refuses it on the server. So office.html never opens the office for
-     it; it hands the same session to the field view (index.html), which shows
-     only that person's job, forms, job documents and submissions. */
+     it; it hands the same session to index.html. Specifically granted crews
+     get the live job workspace there, including crew/training and equipment;
+     other field accounts retain their existing field view. */
   function isFieldSession(s) { return !!s && (s.role === 'field' || s.scope === 'field'); }
   function openFieldView() { location.replace('index.html'); }
 

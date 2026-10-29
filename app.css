@@ -213,3 +213,8 @@ input:-webkit-autofill:focus{
   .hdr,.tabs,.filter-row,.range,.no-print{display:none !important}
   .card{border:1px solid #ccc;background:#fff;color:#000}
 }
+#fieldapp main[data-workspace-tab] > [data-job-panel]{display:none!important}
+#fieldapp main[data-workspace-tab="forms"] > [data-job-panel="forms"]:not(.hide),
+#fieldapp main[data-workspace-tab="records"] > [data-job-panel="records"]:not(.hide),
+#fieldapp main[data-workspace-tab="documents"] > [data-job-panel="documents"]:not(.hide){display:block!important}
+#job-workspace-panel .card{overflow-wrap:anywhere}

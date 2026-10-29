@@ -2106,6 +2106,71 @@
       SITE_SAFETY.offset = 0;
     }
     loadSiteSafety(job.id, SITE_SAFETY.kind, 0);
+    loadJobWorkspace(job.id);
+  }
+
+  // The same job workspace on desktop and phone. Only the granted crew get
+  // this navigation; every data request still authorizes the job server-side.
+  var JOB_WORKSPACE_REQUEST = 0;
+  var JOB_WORKSPACE_TAB = 'overview';
+  function loadJobWorkspace(jobId) {
+    var seq = ++JOB_WORKSPACE_REQUEST;
+    rpc('cs_portal_job_workspace', { p_job_id: jobId }).then(function (data) {
+      if (seq !== JOB_WORKSPACE_REQUEST || !FIELD_JOB || FIELD_JOB.id !== jobId || !data || data.job_id !== jobId) return;
+      var main = $('#fieldapp main'); if (!main) return;
+      var blocks = Array.prototype.slice.call(main.children);
+      blocks.forEach(function(block){block.dataset.jobPanel=block.querySelector('#f-forms')?'forms':block.id==='f-site-safety'?'records':block.querySelector('#f-docs')||block.id==='f-rc-sec'?'documents':'legacy';});
+      var nav = el('nav'); nav.id = 'job-workspace-nav'; nav.setAttribute('aria-label', 'Your job workspace');
+      nav.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;padding:1rem 0;border-bottom:1px solid var(--navy-3);margin-bottom:1rem';
+      var panel = el('section'); panel.id = 'job-workspace-panel';
+      main.insertBefore(panel, main.firstChild); main.insertBefore(nav, panel);
+      var choices = [['overview','Job overview'],['forms','Forms'],['records','Safety records'],['documents','Documents'],['people','Crew and training'],['equipment','Equipment'],['incidents','Incident status']];
+      function infoCard(title, lines) {
+        var box=el('div','card'); box.style.cssText='padding:1rem;margin-bottom:.75rem';
+        box.appendChild(el('h3','',title));
+        lines.filter(Boolean).forEach(function(line){box.appendChild(el('p','muted small',line));});return box;
+      }
+      function show(tab) {
+        main.dataset.workspaceTab=tab;
+        JOB_WORKSPACE_TAB=tab; panel.innerHTML=''; panel.classList.remove('hide');
+        blocks.forEach(function(block){
+          var keep=tab==='forms'&&!!block.querySelector('#f-forms') || tab==='records'&&block.id==='f-site-safety' || tab==='documents'&&(!!block.querySelector('#f-docs')||block.id==='f-rc-sec');
+          if(block.id==='f-rc-sec') keep=keep&&!!block.querySelector('#f-rc .card');
+          block.classList.toggle('hide',!keep);
+        });
+        Array.prototype.forEach.call(nav.children,function(b){b.className=b.dataset.view===tab?'btn btn-gold btn-sm':'btn btn-out btn-sm';b.setAttribute('aria-current',b.dataset.view===tab?'page':'false');});
+        var j=data.job||{};
+        if(tab==='overview') {
+          panel.appendChild(el('h2','',j.name||'Your job'));
+          panel.appendChild(el('p','muted','Your job workspace. Other jobs and company administration are not accessible.'));
+          panel.appendChild(infoCard('Job details',[j.job_number,j.address,j.status?'Status: '+j.status:'',j.foreman_name?'Lead foreman: '+j.foreman_name:'',j.pm_name?'Project manager: '+j.pm_name:'',j.gc_name?'General contractor: '+j.gc_name:'']));
+          panel.appendChild(infoCard('Site records',[String((data.people||[]).length)+' crew members',String((data.certs||[]).length)+' training records',String((data.equipment||[]).length)+' equipment records','Use the tabs for all available job records, documents and forms.']));
+          panel.appendChild(el('p','muted small','Loaded from live records at '+tzDateTime(data.checked_at)+'. Use Refresh for updates.'));
+        } else if(tab==='people') {
+          panel.appendChild(el('h2','','Crew and training'));
+          (data.people||[]).forEach(function(person){
+            var certs=(data.certs||[]).filter(function(cert){return (cert.worker||'').toLowerCase()===person.name.toLowerCase();});
+            panel.appendChild(infoCard(person.name,[person.classification].concat(certs.length?certs.map(function(cert){return cert.cert_type+(cert.issued?' · issued '+cert.issued:'')+(cert.expires?' · expires '+cert.expires:' · no expiry recorded');}):['No training record on file. This does not mean the person is untrained.'])));
+          });
+          if(!(data.people||[]).length)panel.appendChild(el('div','empty','No crew records assigned to this job.'));
+        } else if(tab==='equipment') {
+          panel.appendChild(el('h2','','Job equipment'));
+          (data.equipment||[]).forEach(function(q){panel.appendChild(infoCard(q.unit_number||q.equipment_type,[q.equipment_type,[q.make,q.model].filter(Boolean).join(' '),q.serial?'Serial: '+q.serial:'',q.active?'Active':'Inactive']));});
+          if(!(data.equipment||[]).length)panel.appendChild(el('div','empty','No equipment assigned to this job.'));
+        } else if(tab==='incidents') {
+          panel.appendChild(el('h2','','Incident status'));
+          panel.appendChild(el('p','muted small','Job incident status only. Confidential investigation details remain with the safety office.'));
+          (data.incidents||[]).forEach(function(i){panel.appendChild(infoCard(i.incident_no||i.type,[i.type,i.occurred_on,i.status,i.assigned_to?'Assigned to: '+i.assigned_to:'']));});
+          if(!(data.incidents||[]).length)panel.appendChild(el('div','empty','No incidents recorded against this job.'));
+        } else { panel.classList.add('hide'); }
+      }
+      choices.forEach(function(pair){var b=el('button','btn btn-out btn-sm',pair[1]);b.type='button';b.dataset.view=pair[0];b.style.minHeight='44px';b.onclick=function(){show(pair[0]);};nav.appendChild(b);});
+      show(JOB_WORKSPACE_TAB);
+    }).catch(function(e){
+      // Other field accounts retain the existing landing. A transport error
+      // must not be advertised as a successful workspace load.
+      if(!/not permitted|not found|404/i.test(e.message||'')&&seq===JOB_WORKSPACE_REQUEST)toast('Job workspace could not refresh. Your existing forms remain available.');
+    });
   }
 
   /* Read-only history for the specifically granted employees. The server
