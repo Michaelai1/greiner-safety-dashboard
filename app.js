@@ -3,6 +3,12 @@
    specific, so this file is copied verbatim for the next contractor. */
 (function () {
   'use strict';
+  // Nov 2026: the imported Safety 101 originals (source-safety101/) were taken off
+  // this public site. Database rows still name those files, so every read of
+  // source_pdf / source_pages goes through these two helpers and never links there.
+  // The record itself still opens from its saved line items.
+  function keptSrc(p) { return (p && !/^\/?source-safety101\//i.test(String(p))) ? p : null; }
+  function keptPages(a) { return (a || []).filter(function (x) { return keptSrc(typeof x === 'string' ? x : (x && (x.src || x.url || x.path))); }); }
   var C = window.CONFIG;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var el = function (t, c, txt) {
@@ -583,13 +589,13 @@
     var br = el('div', 'btn-row');
     // Imported Safety 101 records carry the ACTUAL source document — always
     // serve that, never an app-generated stand-in.
-    var srcUrl = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+    var srcUrl = keptSrc(r.source_pdf) ? String(keptSrc(r.source_pdf)).split('/').map(encodeURIComponent).join('/') : null;
     var srcName = ('Safety 101 Inspection ' + (r.report_date || r.id) + '.pdf').replace(/[\/\\?%*:|"<>]/g, '-');
     var v = el('button', 'btn btn-gold btn-sm', 'View');
     v.onclick = function () {
-      if (r.source_pages && r.source_pages.length) {
+      if (keptPages(r.source_pages).length) {
         openSourceViewer(templateTitle(r.template_code) + ' · ' + fmtDate(r.report_date),
-          r.source_pages, 'Back');
+          keptPages(r.source_pages), 'Back');
         return;
       }
       if (srcUrl) { window.open(srcUrl, '_blank', 'noopener'); return; }
@@ -784,7 +790,7 @@
       saved = saved || {};
       var rows = [];
       reps.forEach(function (r) {
-        var srcPdf = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+        var srcPdf = keptSrc(r.source_pdf) ? String(keptSrc(r.source_pdf)).split('/').map(encodeURIComponent).join('/') : null;
         if (r.s101 && r.s101.length) {
           // Imported record WITH line items: every FAIL line is an open finding.
           r.s101.forEach(function (sec, si) {
@@ -795,7 +801,7 @@
                 job_id: r.job_id, date: r.report_date, due: addDays(r.report_date, 7),
                 from: 'Safety 101 inspection · ' + (r.inspector_name || ''),
                 note: it.comments || '', srcPdf: srcPdf,
-                srcPages: r.source_pages, srcTitle: 'Safety 101 · ' + (r.report_date || ''),
+                srcPages: keptPages(r.source_pages), srcTitle: 'Safety 101 · ' + (r.report_date || ''),
                 status: 'open' });
             });
           });

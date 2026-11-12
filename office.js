@@ -11,6 +11,12 @@
    ========================================================================== */
 (function () {
   'use strict';
+  // Nov 2026: the imported Safety 101 originals (source-safety101/) were taken off
+  // this public site. Database rows still name those files, so every read of
+  // source_pdf / source_pages goes through these two helpers and never links there.
+  // The record itself still opens from its saved line items.
+  function keptSrc(p) { return (p && !/^\/?source-safety101\//i.test(String(p))) ? p : null; }
+  function keptPages(a) { return (a || []).filter(function (x) { return keptSrc(typeof x === 'string' ? x : (x && (x.src || x.url || x.path))); }); }
   var C = window.CONFIG;
   if (!C) { document.body.innerHTML = '<p style="padding:3rem">config.js did not load.</p>'; return; }
 
@@ -7266,7 +7272,7 @@
   // inspection. Failed items are the source observations; their corrective
   // actions live in Corrective Actions (open until a real correction is added).
   function openImportedReport(r) {
-    var h = (r.source_pdf
+    var h = (keptSrc(r.source_pdf)
       ? '<button class="btn btn-sm" id="dl-rep" style="margin-bottom:14px">Download Safety 101 PDF</button>'
       : pdfBtn('dl-rep'));
     h += '<div class="src-badge" style="margin:0 0 12px">Imported Safety 101 Record</div>';
@@ -7324,9 +7330,9 @@
         h += '<div class="kv"><span class="k" style="color:var(--ink-2)">' + esc(it.q) + '</span>' + chip + '</div>';
       });
     });
-    if (r.source_pdf) {
+    if (keptSrc(r.source_pdf)) {
       h += '<div class="sec-h">Source document</div>' +
-        '<a class="btn btn-sm" href="' + esc(r.source_pdf) + '" target="_blank" rel="noopener">Open original Safety 101 PDF</a>';
+        '<a class="btn btn-sm" href="' + esc(keptSrc(r.source_pdf)) + '" target="_blank" rel="noopener">Open original Safety 101 PDF</a>';
     }
     drawer(r.report_type || 'Safety 101 Inspection', repDateDisp(r) + ' · ' + jobName(r.job_id) + ' · Imported', h);
     $$('.drawer [data-viewfind]').forEach(function (b) {
@@ -7339,10 +7345,10 @@
       };
     });
     $('#dl-rep').onclick = function () {
-      if (r.source_pdf) {
+      if (keptSrc(r.source_pdf)) {
         // Download the ACTUAL imported Safety 101 source PDF, not an app-generated one.
         var a = document.createElement('a');
-        a.href = r.source_pdf.split('/').map(encodeURIComponent).join('/');
+        a.href = keptSrc(r.source_pdf).split('/').map(encodeURIComponent).join('/');
         a.download = ('Safety 101 Inspection ' + (r.report_date || r.id) + '.pdf').replace(/[\/\\?%*:|"<>]/g, '-');
         document.body.appendChild(a); a.click(); a.remove();
         return;
@@ -7363,7 +7369,7 @@
     var rows = [];
     ((B && B.reports) || []).filter(function (r) { return (r.defect_count || 0) > 0; })
       .forEach(function (r) {
-        var srcPdf = r.source_pdf ? String(r.source_pdf).split('/').map(encodeURIComponent).join('/') : null;
+        var srcPdf = keptSrc(r.source_pdf) ? String(keptSrc(r.source_pdf)).split('/').map(encodeURIComponent).join('/') : null;
         if (r.s101 && r.s101.length) {
           r.s101.forEach(function (sec, si) {
             (sec.items || []).forEach(function (it, ii) {
