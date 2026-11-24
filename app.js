@@ -2124,12 +2124,16 @@
     rpc('cs_portal_job_workspace', { p_job_id: jobId }).then(function (data) {
       if (seq !== JOB_WORKSPACE_REQUEST || !FIELD_JOB || FIELD_JOB.id !== jobId || !data || data.job_id !== jobId) return;
       var main = $('#fieldapp main'); if (!main) return;
-      var blocks = Array.prototype.slice.call(main.children);
+      // "Working on which jobsite?" (a crew member on more than one job) stays out of the
+      // workspace tabs so it shows on every tab (Nov 24: Chris Daigle saw only Westin).
+      var blocks = Array.prototype.slice.call(main.children).filter(function (b) { return !b.querySelector('#f-job'); });
       blocks.forEach(function(block){block.dataset.jobPanel=block.querySelector('#f-forms')?'forms':block.id==='f-site-safety'?'records':block.querySelector('#f-docs')||block.id==='f-rc-sec'?'documents':'legacy';});
       var nav = el('nav'); nav.id = 'job-workspace-nav'; nav.setAttribute('aria-label', 'Your job workspace');
       nav.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;padding:1rem 0;border-bottom:1px solid var(--navy-3);margin-bottom:1rem';
       var panel = el('section'); panel.id = 'job-workspace-panel';
       main.insertBefore(panel, main.firstChild); main.insertBefore(nav, panel);
+      var jobBox = $('#f-job'); jobBox = jobBox && jobBox.closest('.sec');
+      if (jobBox && jobBox.parentNode === main) main.insertBefore(jobBox, nav);
       var choices = [['overview','Job overview'],['forms','Forms'],['records','Safety records'],['documents','Documents'],['people','Crew and training'],['equipment','Equipment'],['incidents','Incident status']];
       function infoCard(title, lines) {
         var box=el('div','card'); box.style.cssText='padding:1rem;margin-bottom:.75rem';
@@ -2148,7 +2152,7 @@
         var j=data.job||{};
         if(tab==='overview') {
           panel.appendChild(el('h2','',j.name||'Your job'));
-          panel.appendChild(el('p','muted','Your job workspace. Other jobs and company administration are not accessible.'));
+          panel.appendChild(el('p','muted',(FIELD_HOME&&FIELD_HOME.jobs&&FIELD_HOME.jobs.length>1)?'Your job workspace. To switch to your other job, use "Working on which jobsite?" at the top.':'Your job workspace. Other jobs and company administration are not accessible.'));
           panel.appendChild(infoCard('Job details',[j.job_number,j.address,j.status?'Status: '+j.status:'',j.foreman_name?'Lead foreman: '+j.foreman_name:'',j.pm_name?'Project manager: '+j.pm_name:'',j.gc_name?'General contractor: '+j.gc_name:'']));
           panel.appendChild(infoCard('Site records',[String((data.people||[]).length)+' crew members',String((data.certs||[]).length)+' training records',String((data.equipment||[]).length)+' equipment records','Use the tabs for all available job records, documents and forms.']));
           panel.appendChild(el('p','muted small','Loaded from live records at '+tzDateTime(data.checked_at)+'. Use Refresh for updates.'));
