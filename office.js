@@ -138,6 +138,27 @@
      Guarantee every key the UI reads exists so modules with no backend render
      clean empty states instead of throwing, and overlay the standalone real
      feeds (findings, incidents). Never fabricates data. */
+  /* Incident records (fixed Nov 24 2026): cs_portal_incidents returns cs_incidents rows (type, occurred_on,
+     occurred_at, corrective_actions, ...), but the Incidents page, its drawer and the OSHA 301 print read
+     classification, date, time, corrective, days_away and the CLASS names, which nothing set. The first real incident
+     on file stopped the page with an error. This turns each row into the shape the page reads and leaves the rows
+     that already have it (the demo) alone. */
+  var CLASS = { injury: 'Injury', first_aid: 'First aid', recordable: 'OSHA recordable', lost_time: 'Lost time',
+    property: 'Property damage', property_damage: 'Property damage', near_miss: 'Near miss', vehicle: 'Vehicle', environmental: 'Spill or release', other: 'Other' };
+  function normIncident(r) {
+    if (!r || r.classification) return r;
+    var t = String(r.type || 'other').toLowerCase().replace(/[\s-]+/g, '_');
+    var ca = Array.isArray(r.corrective_actions) ? r.corrective_actions : [];
+    return Object.assign({}, r, {
+      classification: CLASS[t] ? t : 'other', date: r.occurred_on || String(r.created_at || '').slice(0, 10),
+      time: r.occurred_at ? String(r.occurred_at).slice(0, 5) : '', injured: r.injured || '', sub_id: r.sub_id || null,
+      description: r.description || r.title || '', immediate_action: r.immediate_action || '', root_cause: r.root_cause || null,
+      investigator: r.assigned_to || 'Safety', osha_recordable: !!r.osha_recordable, days_away: +r.days_away || 0, restricted_days: +r.restricted_days || 0,
+      status: /^(closed|resolved|done)$/i.test(r.status || '') ? 'closed' : 'investigating', witnesses: Array.isArray(r.witnesses) ? r.witnesses : [], contributing: [],
+      corrective: ca.map(function (x) { return typeof x === 'string' ? { action: x, owner: '', due: null, status: 'open' }
+        : { action: x.action || x.title || x.text || '', owner: x.owner || x.assigned_to || '', due: x.due || x.due_date || null, status: /^(closed|done|complete)/i.test(x.status || '') || x.done ? 'closed' : 'open' }; })
+    });
+  }
   function normalizeBundle(raw, findings, incidents) {
     var b = raw || {};
     ['jobs','reports','certs','stats','docs','subs','permits','permit_types',
@@ -153,6 +174,7 @@
     if (b.ccs === undefined) b.ccs = null;
     if (Array.isArray(findings)) b.findings = findings;
     if (Array.isArray(incidents)) b.incidents = incidents;
+    b.incidents = b.incidents.map(normIncident);
     return b;
   }
 
