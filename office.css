@@ -381,6 +381,8 @@ td.r,th.r{text-align:right}
 @media (max-width:640px){ .eq-sum{grid-template-columns:repeat(2,minmax(0,1fr))} }
 /* Page headers with several action buttons wrap on phones instead of pushing the page sideways. */
 @media (max-width:640px){ .pg-hd{flex-wrap:wrap} .pg-hd > div{min-width:0} .pg-hd > div[style*="flex-shrink:0"]{flex-shrink:1 !important} }
+/* Four Toolbox Talks subsections (Talk Library added Nov 25) do not fit one row on a phone: let them wrap. */
+@media (max-width:640px){ .subtabs{flex-wrap:wrap;max-width:100%} }
 .jd-list{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
 .jd{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--card)}
 .jd-main{min-width:0;flex:1 1 260px;display:flex;flex-direction:column;gap:2px}
