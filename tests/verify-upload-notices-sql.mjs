@@ -128,8 +128,17 @@ await check('the read-only pre-check runs here and changes nothing', async () =>
   const fixtureLacksVaultSecrets = `create view vault.secrets as select name, now() as created_at from vault.decrypted_secrets;`;
   await db.exec(fixtureLacksVaultSecrets);
   const before = await fnDefs(db);
-  await db.exec(PRECHECK.replace("select pg_get_functiondef('public.cs_portal_doc_add'::regproc) as doc_add_body;", ''));
+  const rows = (await db.query(PRECHECK)).rows;
   assert.equal(await fnDefs(db), before);
+  assert.equal(rows.length, 11, 'one result table, one row per question');
+  const ans = Object.fromEntries(rows.map((r) => [r.check_name, r.answer]));
+  assert.match(ans['01 right project'], /greiner_portal=1 company_docs=true job_docs=true talk_sender=true pg_net=true pg_cron=true vault=true/);
+  assert.match(ans['02 new names free'], /library_table=true notices_table=false/);
+  assert.match(ans['03 cs_company_docs columns'], /^id uuid not null, company_id uuid not null, category text/);
+  assert.equal(ans['05 cs_portal_doc_add body'], 'missing');
+  assert.match(ans['08 pipeline email settings'], /notify_provider_url=https:/);
+  assert.ok(!/someone-else@/.test(JSON.stringify(rows)), 'no email address is printed');
+  assert.equal(ans['09 vault secret by name'], '1 named cs_pipeline_email_key');
   assert.ok(!/insert |update |delete |drop |create |alter /i.test(PRECHECK.replace(/--.*$/gm, '')), 'pre-check only reads');
 });
 await db.exec(`insert into cs_tbt_assignments (company_id, talk_key, talk_title, recipient_name, recipient_phone, week_start, is_test,
