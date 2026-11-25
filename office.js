@@ -43,13 +43,38 @@
   }
 
   /* ---------- session ---------------------------------------------------- */
-  var SKEY = 'cs_session_' + C.slug;
+  /* Nov 24 2026 (Michael): the office and the crew app keep separate saved sign-ins. Before, both pages shared one,
+     so opening the office link in a browser that last signed in with a crew code jumped straight to the crew app. */
+  var SKEY = 'cs_office_session_' + C.slug;   // the office's own saved sign-in
+  var PHONE_KEY = 'cs_session_' + C.slug;     // the crew app's saved sign-in (index.html, app.js); never read here to open anything
+  // One-time move: an office sign-in saved under the old shared name is copied, so office users stay signed in. The crew
+  // app keeps its copy. A crew sign-in there stays the crew app's and is ignored by the office.
+  (function () {
+    try {
+      if (localStorage.getItem(SKEY)) return;
+      var old = JSON.parse(localStorage.getItem(PHONE_KEY) || 'null');
+      // Older sign-ins carry no role; they are copied too. If one turns out to be a crew code, the server refuses the
+      // office data and the sign-in screen says why (see openApp), with no jump to the crew app.
+      if (old && old.session && old.role !== 'field' && old.scope !== 'field') localStorage.setItem(SKEY, JSON.stringify(old));
+    } catch (e) {}
+  })();
+  // Drop the office sign-in. A crew app copy holding the SAME session (from the one-time move above) is dropped too when
+  // that session has ended (signed out, expired or refused as invalid), because it cannot work there either.
+  function dropSession(alsoSameOnPhone) {
+    try {
+      var mine = JSON.parse(localStorage.getItem(SKEY) || 'null');
+      localStorage.removeItem(SKEY);
+      if (!alsoSameOnPhone || !mine || !mine.session) return;
+      var ph = JSON.parse(localStorage.getItem(PHONE_KEY) || 'null');
+      if (ph && ph.session === mine.session) localStorage.removeItem(PHONE_KEY);
+    } catch (e) {}
+  }
   function getSession() {
     try {
       var s = JSON.parse(localStorage.getItem(SKEY) || 'null');
       if (!s || !s.session) return null;
       if (s.expires_at && new Date(s.expires_at) <= new Date()) {
-        localStorage.removeItem(SKEY); return null;
+        dropSession(true); return null;
       }
       return s;
     } catch (e) { return null; }
@@ -70,7 +95,7 @@
       return r.json().then(function (b) {
         if (!r.ok) {
           if (/invalid token|insufficient scope/i.test((b && b.message) || '')) {
-            try { localStorage.removeItem(SKEY); } catch (e) {}
+            dropSession(/invalid token/i.test((b && b.message) || ''));
             B = null; CREW = []; FIELDRAW = [];
             if ($('#app')) $('#app').classList.add('hide');
             if ($('#gate')) $('#gate').classList.remove('hide');
@@ -83,7 +108,7 @@
   }
 
   function finishSignOut() {
-    try { localStorage.removeItem(SKEY); } catch (e) {}
+    dropSession(true);
     B = null; CREW = []; FIELDRAW = [];
     $('#app').classList.add('hide');
     $('#gate').classList.remove('hide');
@@ -11747,13 +11772,11 @@
       var want = (location.hash || '').replace('#', '');
       go(PAGES.some(function (p) { return p.id === want; }) ? want : 'overview');
     }).catch(function (e) {
-      // A field session that carries no role (signed in before roles were
-      // stored): the company-wide load is office-only and the server answers
-      // "insufficient scope". post() has already dropped the stored session, so
-      // put it back marked as a field login and open the field view with it.
+      // A crew code reached the office (an old sign-in without a role): the company-wide load is office-only and the
+      // server answers "insufficient scope". post() has already dropped it and shown the sign-in screen. Say why there
+      // instead of jumping to the crew app (Nov 24 2026).
       if (/insufficient scope/i.test(e.message || '')) {
-        try { localStorage.setItem(SKEY, JSON.stringify(Object.assign({}, sess, { role: 'field' }))); } catch (x) {}
-        openFieldView();
+        var ge = $('#gate-err'); if (ge) ge.textContent = 'That code is for the crew app. Sign in with an office code.';
         return;
       }
       $('#main').innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>';
@@ -11782,8 +11805,10 @@
           $('#gate-in').value = ''; $('#gate-in').focus();
           return;
         }
+        // A crew code typed here opens the crew app, signed in (crews use the same code on a computer). It is saved as
+        // the crew app's sign-in only, never the office's.
+        if (isFieldSession(res)) { try { localStorage.setItem(PHONE_KEY, JSON.stringify(res)); } catch (x) {} openFieldView(); return; }
         localStorage.setItem(SKEY, JSON.stringify(res));
-        if (isFieldSession(res)) { openFieldView(); return; }
         openApp(res);
       })
       .catch(function (e) { err.textContent = e.message; })
@@ -11837,7 +11862,8 @@
     openApp(window.DEMO.session);
   } else {
     var s = getSession();
-    if (s && isFieldSession(s)) openFieldView();
+    // Only the office's own sign-in opens anything here; a crew sign-in never sends the office link to the crew app.
+    if (s && isFieldSession(s)) { try { localStorage.removeItem(SKEY); } catch (x) {} }
     else if (s) openApp(s);
   }
 })();

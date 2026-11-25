@@ -77,7 +77,7 @@ async function open({ role = 'full', width = 1440 } = {}) {
     return route.fulfill({ status: 200, headers, contentType: 'application/json', body: JSON.stringify(payload) });
   });
   await page.goto(BASE + 'office.html#training');
-  await page.waitForSelector(role === 'field' ? '#f-signout' : '#add-training');
+  await page.waitForSelector(role === 'field' ? '#gate:not(.hide)' : '#add-training');
   return { page, context, bundle, calls, errors, unexpected, state };
 }
 async function scenario(fn, options) {
@@ -147,8 +147,9 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'training-add-employee-phone.png'), fullPage: true });
   }, { width: 390 }));
-  await check('Field sessions remain redirected out of office employee management', () => scenario(async ({ page, calls }) => {
-    assert.match(page.url(), /index\.html/);
+  // Nov 24 2026: a crew sign-in no longer sends the office link to the crew app; the office shows its sign-in screen.
+  await check('A crew sign-in never opens office employee management', () => scenario(async ({ page, calls }) => {
+    assert.match(page.url(), /office\.html/);
     assert.equal(await page.locator('#add-employee').count(), 0);
     assert.equal(calls.filter(call => call.fn === 'cs_portal_worker_add').length, 0);
   }, { role: 'field', width: 390 }));

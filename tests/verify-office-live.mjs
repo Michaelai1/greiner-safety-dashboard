@@ -252,23 +252,30 @@ try {
     await p.context().close();
   });
 
-  await check('A stored field session opening office.html goes straight to the field view', async () => {
+  // Nov 24 2026: the office and the crew app keep separate saved sign-ins. A crew sign-in saved by the crew app no longer
+  // sends the office link to the crew app; the office shows its own sign-in screen (Michael: "the office link opens the
+  // phone app").
+  await check('A crew sign-in saved by the crew app leaves the office link on the office sign-in', async () => {
+    calls = [];
     const p = await open('office.html', { session: FIELD_SESSION, width: 1024, height: 768 });
-    await p.waitForURL(/\/index\.html$/);
-    await p.waitForSelector('#fieldapp [data-ngform]');
+    await p.waitForSelector('#gate:not(.hide)');
+    assert.ok(/office\.html/.test(p.url()), 'stays on the office');
     assert.equal(await p.$('#nav a'), null, 'no office navigation');
-    await noOverflow(p, 'field view 1024');
+    const kept = JSON.parse(await p.evaluate((k) => localStorage.getItem(k), SKEY));
+    assert.equal(kept.session, FIELD_SESSION.session, 'the crew app keeps its sign-in');
+    assert.deepEqual(calls.filter((c) => /office\.html/.test(c.page) && COMPANY_WIDE.has(c.fn)), [], 'no company-wide data asked for');
     await p.context().close();
   });
 
-  await check('An older field session with no role still lands in the field view, session kept', async () => {
+  await check('An older crew sign-in with no role: office sign-in says why, crew app keeps its sign-in', async () => {
     const legacy = { ok: true, session: 'sess-legacy', expires_at: FIELD_SESSION.expires_at, user: 'Foreman A' };
     const p = await open('office.html', { session: legacy });
-    await p.waitForURL(/\/index\.html$/);
-    await p.waitForSelector('#fieldapp');
-    const stored = JSON.parse(await p.evaluate((k) => localStorage.getItem(k), SKEY));
-    assert.equal(stored.session, 'sess-legacy', 'the same session is kept, not signed out');
-    assert.equal(stored.role, 'field');
+    await p.waitForSelector('#gate:not(.hide)');
+    assert.ok(/office\.html/.test(p.url()), 'stays on the office');
+    await p.waitForFunction(() => /crew app/.test(document.querySelector('#gate-err').textContent));
+    const kept = JSON.parse(await p.evaluate((k) => localStorage.getItem(k), SKEY));
+    assert.equal(kept.session, 'sess-legacy', 'the crew app copy is not signed out');
+    assert.equal(await p.evaluate(() => localStorage.getItem('cs_office_session_greiner')), null, 'the office keeps nothing');
     await p.context().close();
   });
 
