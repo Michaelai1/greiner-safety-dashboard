@@ -6672,14 +6672,31 @@
   }
 
   /* ---- Talk Library (cs_portal_tbt_library) -------------------------------
-     Where the safety manager drops Toolbox Talks: one file, a category and
-     which companies it is for. Filing a talk sends nothing and schedules
+     Where the safety manager drops Toolbox Talks: one file and a category.
+     Every upload belongs to this company (Greiner). Peine and Choice are not
+     mixed in here (Michael, Nov 25): an "Other companies" line links to their
+     own office pages instead. Filing a talk sends nothing and schedules
      nothing; the weekly send is a separate, unchanged path. The file itself
      goes through the same private document store as the Documents tab
      (folder "Toolbox Talks"), then the talk is filed with its category. */
-  var TLIB = { state: 'idle', rows: [], f: { q: '', cat: '', co: '' } };
+  var TLIB = { state: 'idle', rows: [], f: { q: '', cat: '' } };
   var TLIB_FOLDER = 'Toolbox Talks';
-  var TLIB_COMPANIES = [['greiner', 'Greiner Brothers'], ['peine', 'Peine Engineering'], ['choice', 'Choice Mechanical']];
+  // The other companies' own office pages. Peine is a separate app with its own sign-in. Choice has no
+  // office page yet (its talks are loaded by ConfirmSafety); put its address here once one exists and
+  // the line turns into a link.
+  var TLIB_OTHER = [
+    { name: 'Peine Engineering', url: 'https://peine.confirmsafety.com/office/' },
+    { name: 'Choice', url: '', none: 'no office page yet, send Choice talks to ConfirmSafety' }
+  ];
+  function tlibOtherHtml() {
+    return '<div class="tl-other" id="tlib-other"><span class="tl-other-k">Other companies</span>' +
+      TLIB_OTHER.map(function (o) {
+        return o.url
+          ? '<a href="' + esc(o.url) + '" target="_blank" rel="noopener" data-tlother="' + esc(o.name) + '">' +
+              esc(o.name) + ' office page<span aria-hidden="true"> \u2197</span></a>'
+          : '<span data-tlother="' + esc(o.name) + '">' + esc(o.name) + ': <span class="muted">' + esc(o.none) + '</span></span>';
+      }).join('<span class="tl-other-sep" aria-hidden="true">\u00b7</span>') + '</div>';
+  }
   var TLIB_CATS = ['Fall Protection', 'Ladders', 'Hot Work', 'Electrical', 'PPE', 'Hand and Power Tools',
     'Rigging and Cranes', 'Trenching and Excavation', 'Confined Space', 'Cold Weather', 'Heat',
     'Housekeeping', 'Driving and Vehicles', 'Health and Wellness', 'General Safety'];
@@ -6693,10 +6710,6 @@
     }).catch(function () { TLIB.rows = []; TLIB.state = 'err'; }).then(function () {
       if (page === 'talks' && talkTab === 'library') pgTalks();
     });
-  }
-  function tlibCoName(k) {
-    for (var i = 0; i < TLIB_COMPANIES.length; i++) if (TLIB_COMPANIES[i][0] === k) return TLIB_COMPANIES[i][1];
-    return k;
   }
   function tlibCats() {
     var seen = {}, list = [];
@@ -6713,12 +6726,12 @@
   }
   function tlibErr(code) {
     return ({ title_required: 'Give the talk a name.', category_required: 'Choose a category.',
-      company_required: 'Choose at least one company.', bad_doc: 'The file did not save. Try again.',
+      bad_doc: 'The file did not save. Try again.',
       not_found: 'That talk is no longer in the library.' })[code] || 'Could not save. Try again.';
   }
   function tlibHtml(right) {
     var html = head('Toolbox Talks',
-      'Your talk library. Upload a talk once, file it under a category and choose which companies it is for. ' +
+      'Greiner\'s talk library. Upload a talk once and file it under a category. ' +
       'Uploading a talk does not send it to anyone.', right);
     tlibLoad(false);
     html += '<style>' +
@@ -6728,10 +6741,11 @@
       '.tl-cat b{font-weight:600;color:var(--ink-4);margin-left:6px}' +
       '.tl-cat.on{background:var(--accent);border-color:var(--accent);color:#fff}.tl-cat.on b{color:#fff}' +
       '.tl-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:0 0 14px}' +
-      '.tl-checks label{display:flex;align-items:center;gap:9px;padding:9px 0;font-size:14px;cursor:pointer;' +
-        'text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);margin:0}' +
       '[data-tlopen]{white-space:nowrap}' +
-      '.tl-checks input{width:18px;height:18px}' +
+      '.tl-other{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font-size:13px;color:var(--ink-3)}' +
+      '.tl-other-k{font-weight:600;color:var(--ink-2,var(--ink))}' +
+      '.tl-other a{color:var(--accent);font-weight:600;text-decoration:none}.tl-other a:hover{text-decoration:underline}' +
+      '.tl-other-sep{color:var(--ink-4)}' +
       '.tl-files{margin:6px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--ink-3)}' +
       '</style>';
     if (TLIB.state === 'loading' || TLIB.state === 'idle') {
@@ -6745,19 +6759,18 @@
         '<button class="btn btn-sm" id="tlib-retry">Try again</button></div></div>';
     }
     var rows = TLIB.rows, f = TLIB.f, q = f.q.trim().toLowerCase();
-    var byCo = rows.filter(function (r) { return !f.co || (r.companies || []).indexOf(f.co) !== -1; });
-    var counts = {}; byCo.forEach(function (r) { counts[r.category] = (counts[r.category] || 0) + 1; });
+    var counts = {}; rows.forEach(function (r) { counts[r.category] = (counts[r.category] || 0) + 1; });
     var catsUsed = Object.keys(counts).sort(function (a, b) { return a.localeCompare(b); });
     html += '<div class="tl-top"><div class="small muted">' + rows.length + ' talk' + (rows.length === 1 ? '' : 's') +
       ' in ' + Object.keys(rows.reduce(function (m, r) { m[r.category] = 1; return m; }, {})).length + ' categor' +
       (Object.keys(rows.reduce(function (m, r) { m[r.category] = 1; return m; }, {})).length === 1 ? 'y' : 'ies') + '</div>' +
-      '<button class="btn btn-gold" id="tlib-upload">Upload talks</button></div>';
+      '<button class="btn btn-gold" id="tlib-upload">Upload talks</button></div>' + tlibOtherHtml();
     if (!rows.length) {
       return html + '<div class="panel"><div class="panel-bd"><div class="empty">No talks in the library yet. ' +
         'Choose Upload talks to add your first one.</div></div></div>';
     }
     html += '<div class="tl-cats" role="group" aria-label="Category">' +
-      '<button class="tl-cat' + (!f.cat ? ' on' : '') + '" data-tlcat="">All categories<b>' + byCo.length + '</b></button>' +
+      '<button class="tl-cat' + (!f.cat ? ' on' : '') + '" data-tlcat="">All categories<b>' + rows.length + '</b></button>' +
       catsUsed.map(function (c) {
         return '<button class="tl-cat' + (f.cat === c ? ' on' : '') + '" data-tlcat="' + esc(c) + '">' + esc(c) +
           '<b>' + counts[c] + '</b></button>';
@@ -6765,12 +6778,8 @@
     html += '<div class="fbar">' +
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-        '<input id="tlib-q" placeholder="Search talks…" value="' + esc(f.q) + '"></div>' +
-      '<select id="tlib-co" aria-label="Company"><option value="">All companies</option>' +
-      TLIB_COMPANIES.map(function (c) {
-        return '<option value="' + c[0] + '"' + (f.co === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>';
-      }).join('') + '</select></div>';
-    var shown = byCo.filter(function (r) {
+        '<input id="tlib-q" placeholder="Search talks…" value="' + esc(f.q) + '"></div></div>';
+    var shown = rows.filter(function (r) {
       if (f.cat && r.category !== f.cat) return false;
       if (q && (r.title + ' ' + r.category + ' ' + (r.filename || '')).toLowerCase().indexOf(q) === -1) return false;
       return true;
@@ -6779,7 +6788,6 @@
       return '<tr class="click" data-tlib="' + esc(r.id) + '">' +
         '<td><span class="t-main">' + esc(r.title) + '</span><div class="t-sub">' + esc(r.filename || '') + '</div></td>' +
         '<td>' + esc(r.category) + '</td>' +
-        '<td>' + (r.companies || []).map(function (k) { return pill('p-grey', tlibCoName(k)); }).join(' ') + '</td>' +
         '<td>' + (r.status === 'ready' ? pill('p-ok', 'Ready for foremen')
                                        : pill('p-grey', 'Received, phone version being prepared')) + '</td>' +
         '<td>' + esc(fmtDate(String(r.created_at || '').slice(0, 10))) + '</td>' +
@@ -6787,7 +6795,7 @@
         '<td class="r"><button class="btn btn-sm" data-tlopen="' + esc(r.doc_id) + '">Open file</button></td></tr>';
     });
     html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-      [{ t: 'Talk' }, { t: 'Category' }, { t: 'For' }, { t: 'Status' }, { t: 'Uploaded' }, { t: 'Last sent, week of' }, { t: '', r: 1 }],
+      [{ t: 'Talk' }, { t: 'Category' }, { t: 'Status' }, { t: 'Uploaded' }, { t: 'Last sent, week of' }, { t: '', r: 1 }],
       trs, 'No talks match.') + '</div></div>';
     return html;
   }
@@ -6799,7 +6807,6 @@
       q.oninput = function () { TLIB.f.q = q.value; pgTalks(); };
       if (TLIB.f.q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
     }
-    var co = $('#tlib-co'); if (co) co.onchange = function () { TLIB.f.co = co.value; TLIB.f.cat = ''; pgTalks(); };
     $$('[data-tlib]').forEach(function (r) { r.onclick = function () { openTlibEdit(r.dataset.tlib); }; });
     $$('[data-tlopen]').forEach(function (b) {
       b.onclick = function (ev) {
@@ -6822,15 +6829,10 @@
     s.onchange = function () { n.classList.toggle('hide', s.value !== '__new'); if (s.value === '__new') n.focus(); };
     return function () { return s.value === '__new' ? n.value.trim() : s.value; };
   }
-  function tlibCoField(picked) {
-    return '<div class="f"><label>Which companies is it for?</label><div class="tl-checks">' +
-      TLIB_COMPANIES.map(function (c) {
-        return '<label><input type="checkbox" data-tlco="' + c[0] + '"' +
-          (picked.indexOf(c[0]) !== -1 ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
-      }).join('') + '</div></div>';
-  }
-  function tlibPickedCos() {
-    return $$('[data-tlco]').filter(function (c) { return c.checked; }).map(function (c) { return c.dataset.tlco; });
+  // Said once in each drawer: these talks are Greiner's; the other companies keep their own.
+  function tlibOwnNote() {
+    return '<p class="small muted" id="tl-own" style="margin:0 0 10px">Talks you upload here are for Greiner Brothers only. ' +
+      'For Peine, upload on Peine\'s own office page. For Choice, send the talk to ConfirmSafety.</p>';
   }
   function openTlibUpload() {
     var h = '<div class="f"><label for="tlu-file">Talk files <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">· PDF or Word · 15 MB each · pick one or many</span></label>' +
@@ -6838,7 +6840,7 @@
         '<ul class="tl-files" id="tlu-list"></ul></div>' +
       '<div class="f hide" id="tlu-titlewrap"><label for="tlu-title">Talk name</label><input type="text" id="tlu-title" maxlength="160"></div>' +
       tlibCatField('tlu-cat', TLIB.f.cat) +
-      tlibCoField(['greiner']) +
+      tlibOwnNote() +
       '<p class="small muted" style="margin:0 0 10px">Uploading does not send the talk to anyone. ' +
         'ConfirmSafety prepares the phone version, then the talk shows as Ready for foremen.</p>' +
       '<p class="small" id="tlu-err" style="color:var(--fail);min-height:1em"></p>' +
@@ -6863,7 +6865,7 @@
       });
     }
     sv.onclick = function () {
-      var fs = Array.prototype.slice.call(fi.files || []), cat = getCat(), cos = tlibPickedCos();
+      var fs = Array.prototype.slice.call(fi.files || []), cat = getCat();
       err.textContent = '';
       if (!fs.length) { err.textContent = 'Choose a file.'; return; }
       var big = fs.filter(function (f) { return f.size > 15 * 1024 * 1024; })[0];
@@ -6872,7 +6874,6 @@
       if (bad) { err.textContent = bad.name + ' is not a PDF or Word file.'; return; }
       if (fs.length === 1 && !$('#tlu-title').value.trim()) { err.textContent = 'Give the talk a name.'; return; }
       if (!cat) { err.textContent = 'Choose a category.'; return; }
-      if (!cos.length) { err.textContent = 'Choose at least one company.'; return; }
       sv.disabled = true;
       var done = 0, failed = [], filedNow = [];
       // One at a time, so a large batch never floods the connection and a
@@ -6902,7 +6903,7 @@
           }).then(function (docId) {
             filedNow.push(docId);
             return post('cs_portal_tbt_library_add',
-              { p_doc_id: docId, p_title: title, p_category: cat, p_companies: cos });
+              { p_doc_id: docId, p_title: title, p_category: cat });
           }).then(function (r) {
             if (!r || r.ok === false) throw new Error(tlibErr(r && r.error));
             done++;
@@ -6925,7 +6926,6 @@
     var r = TLIB.rows.filter(function (x) { return x.id === id; })[0]; if (!r) return;
     var h = '<div class="f"><label for="tle-title">Talk name</label><input type="text" id="tle-title" maxlength="160" value="' + esc(r.title) + '"></div>' +
       tlibCatField('tle-cat', r.category) +
-      tlibCoField(r.companies || []) +
       kv('File', r.filename || '—') +
       kv('Status', r.status === 'ready' ? 'Ready for foremen' : 'Received, phone version being prepared') +
       '<p class="small" id="tle-err" style="color:var(--fail);min-height:1em"></p>' +
@@ -6940,11 +6940,10 @@
       }).catch(function (e) { err.textContent = e.message || 'Could not save. Try again.'; });
     }
     $('#tle-save').onclick = function () {
-      var title = $('#tle-title').value.trim(), cat = getCat(), cos = tlibPickedCos();
+      var title = $('#tle-title').value.trim(), cat = getCat();
       if (!title) { err.textContent = 'Give the talk a name.'; return; }
       if (!cat) { err.textContent = 'Choose a category.'; return; }
-      if (!cos.length) { err.textContent = 'Choose at least one company.'; return; }
-      send({ p_title: title, p_category: cat, p_companies: cos }, 'Saved');
+      send({ p_title: title, p_category: cat }, 'Saved');
     };
     $('#tle-remove').onclick = function () {
       if (!confirm('Remove "' + r.title + '" from the library? Talks already sent are not affected.')) return;

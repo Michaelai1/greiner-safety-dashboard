@@ -109,40 +109,41 @@ await check('the table is closed to the browser roles; only the three functions 
   assert.deepEqual(r, { rls: true, a: false, b: false });
 });
 let fallId;
-await check('the office files an uploaded document as a talk with a category and companies', async () => {
-  const r = (await one(db, `select cs_portal_tbt_library_add('office', '${D.fall}', '  Fall Protection ', 'Fall Protection', array['Greiner','choice','choice']) as r`)).r;
+await check('the office files an uploaded document as a talk with a category; it belongs to Greiner only', async () => {
+  const r = (await one(db, `select cs_portal_tbt_library_add('office', '${D.fall}', '  Fall Protection ', 'Fall Protection') as r`)).r;
   assert.equal(r.ok, true); fallId = r.id;
-  const row = await one(db, `select title, category, companies, status, company_id from cs_tbt_library where id = $1`, [fallId]);
-  assert.deepEqual(row, { title: 'Fall Protection', category: 'Fall Protection', companies: ['choice', 'greiner'], status: 'received', company_id: GREINER });
+  const row = await one(db, `select title, category, status, company_id from cs_tbt_library where id = $1`, [fallId]);
+  assert.deepEqual(row, { title: 'Fall Protection', category: 'Fall Protection', status: 'received', company_id: GREINER });
+  const cols = (await db.query(`select column_name from information_schema.columns where table_name = 'cs_tbt_library'`)).rows.map((x) => x.column_name);
+  assert.ok(!cols.includes('companies'), 'no "which companies" list: each upload is Greiner\'s');
+  await assert.rejects(db.query(`select cs_portal_tbt_library_add('office', '${D.step}', 'Step', 'Ladders', array['greiner','choice'])`), /does not exist/);
 });
 await check('filing the same file twice gives back the same talk, not a duplicate', async () => {
-  const r = (await one(db, `select cs_portal_tbt_library_add('office', '${D.fall}', 'Again', 'Ladders', array['greiner']) as r`)).r;
+  const r = (await one(db, `select cs_portal_tbt_library_add('office', '${D.fall}', 'Again', 'Ladders') as r`)).r;
   assert.equal(r.id, fallId); assert.equal(r.existing, true);
   assert.equal((await one(db, 'select count(*)::int as n from cs_tbt_library')).n, 1);
 });
-await check('a talk needs a name, a category, a known company and a file of this company', async () => {
+await check('a talk needs a name, a category and a file of this company', async () => {
   const q = async (sql) => (await one(db, `select ${sql} as r`)).r.error;
-  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', ' ', 'Ladders', array['greiner'])`), 'title_required');
-  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', 'Step', '', array['greiner'])`), 'category_required');
-  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', 'Step', 'Ladders', array[]::text[])`), 'company_required');
-  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', 'Step', 'Ladders', array['greiner','acme'])`), 'company_required');
-  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.choice}', 'Step', 'Ladders', array['greiner'])`), 'bad_doc');
-  assert.equal(await q(`cs_portal_tbt_library_add('office', null, 'Step', 'Ladders', array['greiner'])`), 'bad_doc');
+  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', ' ', 'Ladders')`), 'title_required');
+  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.step}', 'Step', '')`), 'category_required');
+  assert.equal(await q(`cs_portal_tbt_library_add('office', '${D.choice}', 'Step', 'Ladders')`), 'bad_doc');
+  assert.equal(await q(`cs_portal_tbt_library_add('office', null, 'Step', 'Ladders')`), 'bad_doc');
   assert.equal((await one(db, 'select count(*)::int as n from cs_tbt_library')).n, 1);
 });
 await check('a crew sign-in, a signed-out token and no token are all refused', async () => {
   for (const t of ['crew', 'nope', '']) {
     await assert.rejects(db.query(`select cs_portal_tbt_library($1)`, [t]), /insufficient scope|invalid token/);
-    await assert.rejects(db.query(`select cs_portal_tbt_library_add($1, '${D.step}', 'Step', 'Ladders', array['greiner'])`, [t]), /insufficient scope|invalid token/);
+    await assert.rejects(db.query(`select cs_portal_tbt_library_add($1, '${D.step}', 'Step', 'Ladders')`, [t]), /insufficient scope|invalid token/);
     await assert.rejects(db.query(`select cs_portal_tbt_library_set($1, '${fallId}', p_archived => true)`, [t]), /insufficient scope|invalid token/);
   }
 });
 await check('the library lists the talk with its file; "last sent" is empty until the phone version is linked', async () => {
-  await db.query(`select cs_portal_tbt_library_add('office', '${D.step}', 'Step Ladder Safety', 'Ladders', array['greiner','peine'])`);
+  await db.query(`select cs_portal_tbt_library_add('office', '${D.step}', 'Step Ladder Safety', 'Ladders')`);
   const rows = (await one(db, `select cs_portal_tbt_library('office') as r`)).r;
-  assert.deepEqual(rows.map((x) => [x.category, x.title, x.filename, x.status, x.times_sent, x.last_week, x.companies.join('+')]), [
-    ['Fall Protection', 'Fall Protection', 'Fall Protection.pdf', 'received', 0, null, 'choice+greiner'],
-    ['Ladders', 'Step Ladder Safety', 'Step_Ladder_Safety.pdf', 'received', 0, null, 'greiner+peine']]);
+  assert.deepEqual(rows.map((x) => [x.category, x.title, x.filename, x.status, x.times_sent, x.last_week, 'companies' in x]), [
+    ['Fall Protection', 'Fall Protection', 'Fall Protection.pdf', 'received', 0, null, false],
+    ['Ladders', 'Step Ladder Safety', 'Step_Ladder_Safety.pdf', 'received', 0, null, false]]);
   assert.ok(!JSON.stringify(rows).includes('g/fall.pdf'), 'the storage path is never returned');
 });
 await check('once the owner links the phone version it reads Ready, with real sends counted and tests left out', async () => {
@@ -155,12 +156,11 @@ await check('another company\'s office sees none of it and cannot change it', as
   assert.deepEqual((await one(db, `select cs_portal_tbt_library('choice-office') as r`)).r, []);
   assert.equal((await one(db, `select cs_portal_tbt_library_set('choice-office', '${fallId}', p_archived => true) as r`)).r.error, 'not_found');
 });
-await check('rename, re-file and re-target; an untouched field stays as it was', async () => {
-  const r = (await one(db, `select cs_portal_tbt_library_set('office', '${fallId}', p_category => 'Working at Height', p_companies => array['peine','greiner','choice']) as r`)).r;
+await check('rename and re-file; an untouched field stays as it was', async () => {
+  const r = (await one(db, `select cs_portal_tbt_library_set('office', '${fallId}', p_category => 'Working at Height') as r`)).r;
   assert.equal(r.ok, true);
-  const row = await one(db, `select title, category, companies, talk_key from cs_tbt_library where id = $1`, [fallId]);
-  assert.deepEqual(row, { title: 'Fall Protection', category: 'Working at Height', companies: ['choice', 'greiner', 'peine'], talk_key: 'fall-protection' });
-  assert.equal((await one(db, `select cs_portal_tbt_library_set('office', '${fallId}', p_companies => array['acme']) as r`)).r.error, 'company_required');
+  const row = await one(db, `select title, category, talk_key from cs_tbt_library where id = $1`, [fallId]);
+  assert.deepEqual(row, { title: 'Fall Protection', category: 'Working at Height', talk_key: 'fall-protection' });
   assert.equal((await one(db, `select cs_portal_tbt_library_set('office', '${fallId}', p_title => '  ') as r`)).r.error, 'title_required');
 });
 await check('removing hides the talk but deletes nothing; the stored file cannot be deleted from under a talk', async () => {
