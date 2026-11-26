@@ -1,6 +1,6 @@
 -- READ ONLY. Changes nothing. Paste into the SQL editor of the creekside-safety project before installing
 -- the Talk Library and upload notices. ONE result table (the SQL editor shows only the last result), one row
--- per question. Prints no phone numbers, PINs, hashes, tokens, keys or email addresses.
+-- per question (12 rows). Prints no phone numbers, PINs, hashes, tokens, keys or email addresses.
 
 with greiner as (select company_id::text as cid from public.cs_portals where slug = 'greiner')
 select * from (
@@ -70,5 +70,16 @@ select * from (
   -- 11. Scheduled jobs (the notice adds cs-upload-notices only with the switch-on file).
   select '11 cron jobs',
          coalesce((select string_agg(jobname || ' ' || schedule || case when active then '' else ' (off)' end, ', ' order by jobname) from cron.job), 'none')
+  union all
+  -- 12. What the "Weeks ahead" view will show as already scheduled: Greiner's talks by week, this week and
+  --     the 8 after it (talk name and how many people only; test sends and cancelled links left out).
+  select '12 greiner weeks ahead, already scheduled',
+         coalesce((select string_agg(week_start::text || ' ' || talk_title || ' (' || people || ')', ' | ' order by week_start, talk_title) from (
+                     select a.week_start, a.talk_title, count(distinct a.recipient_name) as people
+                       from public.cs_tbt_assignments a
+                      where a.company_id::text = (select cid from greiner) and not a.is_test and a.revoked_at is null
+                        and a.week_start between date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date
+                                             and date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date + 56
+                      group by 1, 2) w), 'nothing scheduled yet')
 ) q
 order by check_name;

@@ -171,6 +171,59 @@ await check('removing hides the talk but deletes nothing; the stored file cannot
   await db.query(`select cs_portal_tbt_library_set('office', '${fallId}', p_archived => false)`);
   assert.equal((await one(db, `select cs_portal_tbt_library('office') as r`)).r.length, 2);
 });
+// ---- Nov 26: the week a talk was uploaded for ---------------------------------
+const W = (await one(db, `select date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date::text as w`)).w;
+const wk = (n) => { const d = new Date(W + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 7 * n); return d.toISOString().slice(0, 10); };
+await check('the library table has a planned_week column that only takes a Monday', async () => {
+  const c = await one(db, `select data_type, is_nullable from information_schema.columns where table_name = 'cs_tbt_library' and column_name = 'planned_week'`);
+  assert.deepEqual(c, { data_type: 'date', is_nullable: 'YES' });
+  await assert.rejects(db.exec(`update cs_tbt_library set planned_week = '${wk(1)}'::date + 2 where id = '${fallId}'`), /cs_tbt_library_week_monday/);
+});
+let weekId;
+await check('"Upload for this week" files the talk with its week, Greiner\'s only, and the library returns the week', async () => {
+  const r = (await one(db, `select cs_portal_tbt_library_add_week('office', '${D.other}', 'Arc Welding', 'Hot Work', '${wk(2)}') as r`)).r;
+  assert.equal(r.ok, true); weekId = r.id;
+  const row = await one(db, `select company_id, planned_week::text as w, status from cs_tbt_library where id = $1`, [weekId]);
+  assert.deepEqual(row, { company_id: GREINER, w: wk(2), status: 'received' });
+  const x = (await one(db, `select cs_portal_tbt_library('office') as r`)).r.find((y) => y.id === weekId);
+  assert.equal(x.planned_week, wk(2));
+  const plain = (await one(db, `select cs_portal_tbt_library('office') as r`)).r.find((y) => y.id === fallId);
+  assert.equal(plain.planned_week, null);
+});
+await check('the week must be a Monday from this week up to 26 weeks ahead; the file must be this company\'s', async () => {
+  const q = async (doc, w) => (await one(db, `select cs_portal_tbt_library_add_week('office', '${doc}', 'X', 'Y', ${w}) as r`)).r.error;
+  assert.equal(await q(D.step, `'${wk(1)}'::date + 1`), 'bad_week');
+  assert.equal(await q(D.step, 'null'), 'bad_week');
+  assert.equal(await q(D.step, `'${wk(-1)}'`), 'week_out_of_range');
+  assert.equal(await q(D.step, `'${wk(27)}'`), 'week_out_of_range');
+  assert.equal(await q(D.choice, `'${wk(1)}'`), 'bad_doc');
+  assert.equal((await one(db, 'select count(*)::int as n from cs_tbt_library')).n, 3);
+});
+await check('a talk can be moved to another week or have its week cleared; others cannot touch it', async () => {
+  const set = async (tok, w) => (await one(db, `select cs_portal_tbt_library_week('${tok}', '${weekId}', ${w}) as r`)).r;
+  assert.equal((await set('office', `'${wk(3)}'`)).ok, true);
+  assert.equal((await one(db, `select planned_week::text as w from cs_tbt_library where id = $1`, [weekId])).w, wk(3));
+  assert.equal((await set('office', `'${wk(3)}'::date + 3`)).error, 'bad_week');
+  assert.equal((await set('office', `'${wk(-2)}'`)).error, 'week_out_of_range');
+  assert.equal((await set('choice-office', `'${wk(1)}'`)).error, 'not_found');
+  assert.equal((await set('office', 'null')).ok, true);
+  assert.equal((await one(db, `select planned_week from cs_tbt_library where id = $1`, [weekId])).planned_week, null);
+  for (const t of ['crew', 'nope']) {
+    await assert.rejects(db.query(`select cs_portal_tbt_library_add_week($1, '${D.step}', 'S', 'L', '${wk(1)}')`, [t]), /insufficient scope|invalid token/);
+    await assert.rejects(db.query(`select cs_portal_tbt_library_week($1, '${weekId}', '${wk(1)}')`, [t]), /insufficient scope|invalid token/);
+  }
+});
+await check('the week functions are callable by the browser roles; the 4-argument add is still there unchanged', async () => {
+  const r = await one(db, `select has_function_privilege('anon', 'public.cs_portal_tbt_library_add_week(text,uuid,text,text,date)', 'execute') as a,
+    has_function_privilege('anon', 'public.cs_portal_tbt_library_week(text,uuid,date)', 'execute') as b,
+    to_regprocedure('public.cs_portal_tbt_library_add(text,uuid,text,text)') is not null as c`);
+  assert.deepEqual(r, { a: true, b: true, c: true });
+});
+await check('installing again keeps every planned week', async () => {
+  await db.query(`select cs_portal_tbt_library_week('office', '${weekId}', '${wk(4)}')`);
+  await db.exec(fs.readFileSync(MIGRATION, 'utf8'));
+  assert.equal((await one(db, `select planned_week::text as w from cs_tbt_library where id = $1`, [weekId])).w, wk(4));
+});
 await check('after all of that, every talk record and send is still exactly as it was', async () => {
   assert.equal(await snap(db), before); assert.equal(await fnDefs(db), fnBefore);
 });

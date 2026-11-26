@@ -8,10 +8,19 @@
 --   cs_portal_tbt_library          office reads its own company's library.
 --   cs_portal_tbt_library_add      office files an uploaded document as a talk.
 --   cs_portal_tbt_library_set      office renames, re-files or removes a talk.
+--   (Nov 26 addition, same file, add-only)
+--   cs_tbt_library.planned_week    the Monday of the week the office uploaded a talk FOR ("Weeks ahead" view).
+--                                  A note to ConfirmSafety only: it schedules nothing.
+--   cs_portal_tbt_library_add_week office files an uploaded document as a talk for one week.
+--   cs_portal_tbt_library_week     office moves a talk to another week, or clears its week.
 --
 -- What it does NOT do:
 --   It sends nothing and schedules nothing. cs_tbt_assignments, cs_tbt_sends, the cs-tbt-send cron job and
 --   every existing function are untouched, so the weekly talk goes out exactly as before.
+--   The "Weeks ahead" view reads the weeks already scheduled through the existing read-only
+--   cs_portal_tbt_texts (installed Oct 5); nothing new reads or writes cs_tbt_assignments or cs_tbt_sends.
+--   A planned week on a library row creates no talk record, no text and no email. Michael still sets up
+--   each week's send himself from what the office uploaded.
 --   It does not put a talk on a foreman's phone. A talk is 'received' until ConfirmSafety prepares the phone
 --   version and sets talk_key + status 'ready' (owner step, see the bottom of this file).
 --
@@ -57,6 +66,11 @@ create table if not exists public.cs_tbt_library (
 );
 create unique index if not exists cs_tbt_library_doc on public.cs_tbt_library (doc_id);
 create index if not exists cs_tbt_library_company on public.cs_tbt_library (company_id, category);
+-- Nov 26: the week the office uploaded the talk for (always a Monday; empty = no particular week).
+alter table public.cs_tbt_library add column if not exists planned_week date
+  constraint cs_tbt_library_week_monday check (planned_week is null or extract(isodow from planned_week) = 1);
+create index if not exists cs_tbt_library_week on public.cs_tbt_library (company_id, planned_week)
+  where planned_week is not null;
 alter table public.cs_tbt_library enable row level security;
 revoke all on public.cs_tbt_library from public, anon, authenticated;
 
@@ -77,6 +91,7 @@ begin
       'filename', d.filename,
       'size_bytes', d.size_bytes,
       'created_at', l.created_at,
+      'planned_week', l.planned_week,
       -- How often this talk has really gone out (test sends left out), and the latest week.
       'times_sent', (select count(distinct a.week_start) from cs_tbt_assignments a
                       where a.company_id = v_cid and l.talk_key is not null
@@ -155,6 +170,70 @@ end $$;
 revoke all on function public.cs_portal_tbt_library_set(text, uuid, text, text, boolean) from public;
 grant execute on function public.cs_portal_tbt_library_set(text, uuid, text, text, boolean) to anon, authenticated;
 
+
+-- ---- add, for one week (Nov 26) ---------------------------------------------
+-- Same as cs_portal_tbt_library_add, plus the Monday of the week the office uploaded the talk for. A separate
+-- name (not a new argument on the function above) so the two can never be confused when called by name.
+-- The week is a note to ConfirmSafety: nothing is scheduled, issued or sent.
+create or replace function public.cs_portal_tbt_library_add_week(
+  p_token text, p_doc_id uuid, p_title text, p_category text, p_week date
+) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_cid uuid; v_id uuid; v_this_week date;
+begin
+  v_cid := cs_portal_cid(p_token, 'full');
+  v_this_week := date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date;
+  if nullif(btrim(coalesce(p_title, '')), '') is null then
+    return jsonb_build_object('ok', false, 'error', 'title_required');
+  end if;
+  if nullif(btrim(coalesce(p_category, '')), '') is null then
+    return jsonb_build_object('ok', false, 'error', 'category_required');
+  end if;
+  if p_week is null or extract(isodow from p_week) <> 1 then
+    return jsonb_build_object('ok', false, 'error', 'bad_week');
+  end if;
+  if p_week < v_this_week or p_week > v_this_week + 7 * 26 then
+    return jsonb_build_object('ok', false, 'error', 'week_out_of_range');
+  end if;
+  if p_doc_id is null or not exists (
+      select 1 from cs_company_docs where id = p_doc_id and company_id = v_cid) then
+    return jsonb_build_object('ok', false, 'error', 'bad_doc');
+  end if;
+  select id into v_id from cs_tbt_library where doc_id = p_doc_id;
+  if v_id is not null then
+    return jsonb_build_object('ok', true, 'id', v_id, 'existing', true);
+  end if;
+  insert into cs_tbt_library (company_id, title, category, doc_id, planned_week)
+  values (v_cid, left(btrim(p_title), 160), left(btrim(p_category), 60), p_doc_id, p_week)
+  returning id into v_id;
+  return jsonb_build_object('ok', true, 'id', v_id);
+end $$;
+revoke all on function public.cs_portal_tbt_library_add_week(text, uuid, text, text, date) from public;
+grant execute on function public.cs_portal_tbt_library_add_week(text, uuid, text, text, date) to anon, authenticated;
+
+-- ---- move to another week, or clear the week (Nov 26) -----------------------
+create or replace function public.cs_portal_tbt_library_week(p_token text, p_id uuid, p_week date)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_cid uuid; v_n int; v_this_week date;
+begin
+  v_cid := cs_portal_cid(p_token, 'full');
+  v_this_week := date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date;
+  if p_week is not null and extract(isodow from p_week) <> 1 then
+    return jsonb_build_object('ok', false, 'error', 'bad_week');
+  end if;
+  if p_week is not null and (p_week < v_this_week or p_week > v_this_week + 7 * 26) then
+    return jsonb_build_object('ok', false, 'error', 'week_out_of_range');
+  end if;
+  update cs_tbt_library set planned_week = p_week, updated_at = now()
+   where id = p_id and company_id = v_cid and archived_at is null;
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return jsonb_build_object('ok', false, 'error', 'not_found'); end if;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.cs_portal_tbt_library_week(text, uuid, date) from public;
+grant execute on function public.cs_portal_tbt_library_week(text, uuid, date) to anon, authenticated;
+
 commit;
 
 -- Owner step, by hand, once a talk's phone version is live in greiner-QR (talks/library.js + the TALKS map):
@@ -162,5 +241,8 @@ commit;
 --    where id = '<library id>';
 -- The office then shows that talk as "Ready for foremen".
 
-select 'done: Toolbox Talk Library installed (3 functions, 1 table); nothing sent, nothing scheduled' as result,
+select 'done: Toolbox Talk Library installed (5 functions, 1 table with planned_week); nothing sent, nothing scheduled' as result,
+       (select count(*) from pg_proc where proname like 'cs_portal_tbt_library%') as library_functions,
+       (select count(*) from information_schema.columns
+         where table_schema = 'public' and table_name = 'cs_tbt_library' and column_name = 'planned_week') as planned_week_column,
        (select count(*) from public.cs_tbt_library) as talks_in_library;

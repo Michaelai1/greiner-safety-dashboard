@@ -130,7 +130,7 @@ await check('the read-only pre-check runs here and changes nothing', async () =>
   const before = await fnDefs(db);
   const rows = (await db.query(PRECHECK)).rows;
   assert.equal(await fnDefs(db), before);
-  assert.equal(rows.length, 11, 'one result table, one row per question');
+  assert.equal(rows.length, 12, 'one result table, one row per question');
   const ans = Object.fromEntries(rows.map((r) => [r.check_name, r.answer]));
   assert.match(ans['01 right project'], /greiner_portal=1 company_docs=true job_docs=true talk_sender=true pg_net=true pg_cron=true vault=true/);
   assert.match(ans['02 new names free'], /library_table=true notices_table=false/);
@@ -139,6 +139,8 @@ await check('the read-only pre-check runs here and changes nothing', async () =>
   assert.match(ans['08 pipeline email settings'], /notify_provider_url=https:/);
   assert.ok(!/someone-else@/.test(JSON.stringify(rows)), 'no email address is printed');
   assert.equal(ans['09 vault secret by name'], '1 named cs_pipeline_email_key');
+  assert.ok(/^nothing scheduled yet$|^\d{4}-\d{2}-\d{2} /.test(ans['12 greiner weeks ahead, already scheduled']), ans['12 greiner weeks ahead, already scheduled']);
+  assert.ok(!/\+1555|recipient/.test(ans['12 greiner weeks ahead, already scheduled']), 'talk names and counts only');
   assert.ok(!/insert |update |delete |drop |create |alter /i.test(PRECHECK.replace(/--.*$/gm, '')), 'pre-check only reads');
 });
 await db.exec(`insert into cs_tbt_assignments (company_id, talk_key, talk_title, recipient_name, recipient_phone, week_start, is_test,
@@ -261,6 +263,17 @@ await check('with the Vault secret missing nothing is sent and the notice keeps 
   assert.equal(await n(db, 'net.requests'), sentBefore);
   await db.exec(`update vault.decrypted_secrets set name = 'cs_pipeline_email_key' where name = 'moved'`);
   assert.equal((await send(db)).sent, 1);
+});
+await check('a talk uploaded for a week says which week in the email', async () => {
+  const id = await addDoc(db, GREINER, 'Toolbox Talks', 'Cold_Weather_Safety.pdf');
+  const wk = (await one(db, `select (date_trunc('week', (now() at time zone 'America/Indiana/Indianapolis'))::date + 7) as w`)).w;
+  const label = (await one(db, `select to_char($1::date, 'Mon FMDD') as l`, [wk])).l;
+  const r = (await one(db, `select cs_portal_tbt_library_add_week('office', $1, 'Cold Weather Safety', 'Cold Weather', $2::date) as r`, [id, wk])).r;
+  assert.equal(r.ok, true);
+  await age(db);
+  assert.equal((await send(db)).sent, 1);
+  const q = await one(db, 'select body from net.requests order by id desc limit 1');
+  assert.ok(q.body.text.includes('Toolbox Talks > Talk Library > Cold Weather > for the week of ' + label + ' | Cold Weather Safety'), q.body.text);
 });
 await check('if the notice cannot be written, the upload still succeeds', async () => {
   await db.exec(`alter table cs_upload_notices add constraint break_it check (false) not valid`);

@@ -30,7 +30,10 @@ begin;
 drop function if exists public.cs_portal_tbt_library(text);
 drop function if exists public.cs_portal_tbt_library_add(text, uuid, text, text);
 drop function if exists public.cs_portal_tbt_library_set(text, uuid, text, text, boolean);
--- The cs_tbt_library table is kept (it only names files already in Documents > Toolbox Talks).
+drop function if exists public.cs_portal_tbt_library_add_week(text, uuid, text, text, date);
+drop function if exists public.cs_portal_tbt_library_week(text, uuid, date);
+-- The cs_tbt_library table is kept, with its planned_week column (it only names files already in
+-- Documents > Toolbox Talks and the week each was uploaded for).
 commit;
 
 select 'done: rollback ran; no file, document or talk record was deleted' as result,
