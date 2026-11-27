@@ -6674,33 +6674,35 @@
   /* ---- Talk Library (cs_portal_tbt_library) -------------------------------
      Where the safety manager drops Toolbox Talks: one file and a category.
      Every upload belongs to this company (Greiner). Peine and Choice are not
-     mixed in here (Michael, Nov 25): an "Other companies" line links to their
-     own office pages instead. Filing a talk sends nothing and schedules
+     mixed in here (Michael, Nov 25): the company bar links to Peine's own
+     office page and says Choice talks go to ConfirmSafety. Filing a talk sends nothing and schedules
      nothing; the weekly send is a separate, unchanged path. The file itself
      goes through the same private document store as the Documents tab
      (folder "Toolbox Talks"), then the talk is filed with its category. */
   var TLIB = { state: 'idle', rows: [], view: 'weeks', f: { q: '', cat: '' } };
   var TLIB_FOLDER = 'Toolbox Talks';
-  // The other companies' own office pages. Peine is a separate app with its own sign-in. Choice has no
-  // office page yet (its talks are loaded by ConfirmSafety); put its address here once one exists and
-  // the line turns into a link.
+  // The company bar (Nov 27, same as the next-version demo): Greiner is this page; Peine is a separate app with
+  // its own sign-in, so its button opens Peine's office page. Choice has no office page yet (its talks are loaded
+  // by ConfirmSafety); put its address here once one exists and the quiet line turns into a button.
   var TLIB_OTHER = [
-    { name: 'Peine Engineering', url: 'https://peine.confirmsafety.com/office/' },
-    { name: 'Choice', url: '', none: 'no office page yet, send Choice talks to ConfirmSafety' }
+    { name: 'Peine Engineering', label: 'Peine Toolbox Talks', url: 'https://peine.confirmsafety.com/office/' },
+    { name: 'Choice', label: 'Choice Toolbox Talks', url: '', none: 'Choice has no page yet. Send Choice talks to ConfirmSafety.' }
   ];
   function tlibOtherHtml() {
-    return '<div class="tl-other" id="tlib-other"><span class="tl-other-k">Other companies</span>' +
+    return '<div class="tl-co" id="tlib-other"><span class="tl-co-l">Companies</span>' +
+      '<span class="tl-co-me">Greiner Brothers, this page</span>' +
       TLIB_OTHER.map(function (o) {
         return o.url
-          ? '<a href="' + esc(o.url) + '" target="_blank" rel="noopener" data-tlother="' + esc(o.name) + '">' +
-              esc(o.name) + ' office page<span aria-hidden="true"> \u2197</span></a>'
-          : '<span data-tlother="' + esc(o.name) + '">' + esc(o.name) + ': <span class="muted">' + esc(o.none) + '</span></span>';
-      }).join('<span class="tl-other-sep" aria-hidden="true">\u00b7</span>') + '</div>';
+          ? '<a class="btn btn-sm" href="' + esc(o.url) + '" target="_blank" rel="noopener" data-tlother="' + esc(o.name) + '"' +
+              ' title="Opens ' + esc(o.name) + '\'s own office page in a new tab">' + esc(o.label) +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg></a>'
+          : '<span class="tl-co-q" data-tlother="' + esc(o.name) + '">' + esc(o.none) + '</span>';
+      }).join('') + '</div>';
   }
   var TLIB_CATS = ['Fall Protection', 'Ladders', 'Hot Work', 'Electrical', 'PPE', 'Hand and Power Tools',
     'Rigging and Cranes', 'Trenching and Excavation', 'Confined Space', 'Cold Weather', 'Heat',
     'Housekeeping', 'Driving and Vehicles', 'Health and Wellness', 'General Safety'];
-  /* ---- Weeks ahead (Nov 26) -------------------------------------------------
+  /* ---- Coming up (Nov 26; called Weeks ahead until Nov 27) -----------------
      This week and the 8 after it, Monday dates in Indiana time. Each week shows what is already set up to
      send (read only, from the same cs_portal_tbt_texts rows the Log uses) and the talks the office uploaded
      for that week (cs_tbt_library.planned_week). Uploading for a week is a note to ConfirmSafety: it creates
@@ -6740,37 +6742,44 @@
           : st.failed ? 'Text failed' : 'Set up' };
     });
   }
+  // "Coming up" (Nov 27, laid out like the next-version demo): one panel, a WEEK | TALK table, an Upload per week.
   function tlibWeeksHtml() {
-    var weeks = tlibWeeks(), now = weeks[0];
-    var html = '<div class="tl-wk-intro" id="tlib-weeks-note"><strong>Uploading tells ConfirmSafety which talk to send that week.</strong> ' +
-      'It does not schedule or send anything. ConfirmSafety still sets up each week\'s send from what you upload.</div>';
-    html += '<div class="panel"><div class="panel-bd flush" id="tlib-weeks">' + weeks.map(function (w, i) {
-      var sched;
-      if (TBTX.state === 'err') sched = '<span class="muted">Could not read the schedule right now.</span>';
-      else if (TBTX.state !== 'ok') sched = '<span class="muted">Checking the schedule…</span>';
+    var weeks = tlibWeeks(), now = weeks[0], ok = TBTX.state === 'ok', setN = 0;
+    var trs = weeks.map(function (w, i) {
+      var ups = TLIB.rows.filter(function (r) { return String(r.planned_week || '').slice(0, 10) === w; });
+      var talk;
+      if (TBTX.state === 'err') talk = '<span class="t-sub">Could not read the schedule right now.</span>';
+      else if (!ok) talk = '<span class="t-sub">Checking the schedule…</span>';
       else {
         var list = tlibScheduled(w);
-        sched = list.length ? list.map(function (g) {
-          return '<div class="tl-wk-item" data-tlsched="' + esc(g.title) + '"><b>' + esc(g.title) + '</b> ' +
-            pill(g.status === 'Sent' ? 'p-ok' : g.status === 'Text failed' ? 'p-bad' : 'p-grey', g.status) +
-            '<div class="t-sub">' + g.people + (g.people === 1 ? ' person' : ' people') + '</div></div>';
-        }).join('') : '<span class="muted" data-tlnone>Nothing picked yet</span>';
+        if (list.length) setN++;
+        talk = list.length ? list.map(function (g) {
+          return '<div class="tl-line" data-tlsched="' + esc(g.title) + '"><span class="t-main">' + esc(g.title) + '</span>' +
+            pill(g.status === 'Sent' ? 'p-ok' : g.status === 'Text failed' ? 'p-bad' : g.status === 'Scheduled' ? 'tl-p-sched' : 'p-grey', g.status) +
+            '<span class="tl-ppl">' + g.people + (g.people === 1 ? ' person' : ' people') + '</span></div>';
+        }).join('') : '<span class="tl-none" data-tlnone>Not picked yet</span>';
       }
-      var ups = TLIB.rows.filter(function (r) { return String(r.planned_week || '').slice(0, 10) === w; });
-      var upHtml = ups.length ? ups.map(function (r) {
-        return '<div class="tl-wk-item"><button type="button" class="tl-wk-talk" data-tlibw="' + esc(r.id) + '">' + esc(r.title) + '</button> ' +
+      talk += ups.map(function (r) {
+        return '<div class="tl-up"><span class="tl-up-k">Uploaded</span>' +
+          '<button type="button" class="tl-wk-talk" data-tlibw="' + esc(r.id) + '">' + esc(r.title) + '</button>' +
           (r.status === 'ready' ? pill('p-ok', 'Ready for foremen') : pill('p-grey', 'Received')) +
-          '<div class="t-sub">' + esc(r.category) + '</div></div>';
-      }).join('') : '<span class="muted">None yet</span>';
-      return '<div class="tl-wk' + (w === now ? ' is-now' : '') + '" data-tlweekrow="' + w + '">' +
-        '<div class="tl-wk-d"><b>Week of ' + esc(tlibWeekDay(w)) + '</b>' +
-          (i === 0 ? '<span class="tl-wk-when">This week</span>' : i === 1 ? '<span class="tl-wk-when">Next week</span>' : '') +
-          (TLIB_WEEK_NOTES[w] ? '<div class="tl-wk-note" data-tlnote>' + esc(TLIB_WEEK_NOTES[w]) + '</div>' : '') + '</div>' +
-        '<div class="tl-wk-c"><span class="tl-wk-k">Scheduled to send</span>' + sched + '</div>' +
-        '<div class="tl-wk-c"><span class="tl-wk-k">Uploaded for this week</span>' + upHtml + '</div>' +
-        '<div class="tl-wk-a"><button class="btn btn-sm" data-tlweek="' + w + '">Upload for this week</button></div></div>';
-    }).join('') + '</div></div>';
-    return html;
+          '<span class="tl-ppl">' + esc(r.category) + '</span></div>';
+      }).join('');
+      return '<tr data-tlweekrow="' + w + '"' + (w === now ? ' class="tl-now"' : '') + '>' +
+        '<td><span class="t-main">Week of ' + esc(tlibWeekDay(w)) + '</span>' +
+          (i === 0 ? '<div class="t-sub">This week</div>' : i === 1 ? '<div class="t-sub">Next week</div>' : '') +
+          (TLIB_WEEK_NOTES[w] ? '<div class="t-sub tl-hol" data-tlnote>' + esc(TLIB_WEEK_NOTES[w]) + '</div>' : '') + '</td>' +
+        '<td>' + talk + '</td>' +
+        '<td class="r"><button type="button" class="btn btn-sm" data-tlweek="' + w + '" aria-label="Upload a talk for the week of ' +
+          esc(tlibWeekDay(w)) + '">Upload</button></td></tr>';
+    });
+    var sum = 'This week and the ' + TLIB_AHEAD + ' after it.' + (ok ? ' ' + setN + (setN === 1 ? ' week has' : ' weeks have') +
+      ' a talk set, ' + (weeks.length - setN) + ' not picked yet.' : '');
+    return '<div class="panel" data-tlweeks><div class="panel-hd"><div><h3>Coming up</h3><div class="sub">' + esc(sum) + '</div>' +
+      '<div class="sub tl-say" id="tlib-weeks-note">Uploading tells ConfirmSafety which talk to send that week. ' +
+      'It does not schedule or send anything.</div></div></div>' +
+      '<div class="panel-bd flush" id="tlib-weeks">' + tableWrap([{ t: 'Week' }, { t: 'Talk' }, { t: '', r: 1 }], trs, 'No weeks.') +
+      '</div></div>';
   }
   function tlibWeekField(id, current) {
     var weeks = tlibWeeks();
@@ -6812,42 +6821,61 @@
       bad_week: 'Choose a week from the list.', week_out_of_range: 'Choose a week from this week on.',
       not_found: 'That talk is no longer in the library.' })[code] || 'Could not save. Try again.';
   }
+  // Nov 27: styled like the next-version demo's Toolbox Talks page (company bar, Coming up, Library), with this
+  // app's own colors and buttons. Kept here, not in office.css, so the office.css cache number does not change.
+  var TLIB_CSS = '<style>' +
+    '.tl-view{margin:0 0 14px}' +
+    '.tl-co{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 16px;padding:10px 16px;border:1px solid var(--line);' +
+      'border-radius:8px;background:var(--card);box-shadow:var(--shadow)}' +
+    '.tl-co-l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}' +
+    '.tl-co-me{font-size:14px;font-weight:700;color:var(--ink);margin-right:auto}' +
+    '.tl-co-q{font-size:12.5px;color:var(--ink-3)}' +
+    '.tl-co a.btn{text-decoration:none;white-space:nowrap}.tl-co a.btn svg{width:12px;height:12px;flex:none}' +
+    '[data-tlweeks] .panel-hd,[data-tllib] .panel-hd{flex-wrap:wrap}' +
+    '.panel-hd .sub.tl-say{color:var(--ink-3);margin-top:4px}' +
+    '[data-tlweeks] td:first-child{width:230px}[data-tlweeks] td:last-child{width:1%}' +
+    '[data-tlweeks] tr.tl-now td{background:#f8fafc}' +
+    '.tl-hol{color:#92400e !important;font-weight:600;max-width:28ch;line-height:1.4;margin-top:4px}' +
+    '.tl-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}.tl-line+.tl-line{margin-top:6px}' +
+    '.tl-ppl{font-size:12px;color:var(--ink-4)}' +
+    '.tl-none{font-size:13px;font-weight:600;color:#92400e}' +
+    '.tl-up{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin-top:8px}' +
+    '.tl-up-k{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-4)}' +
+    '.tl-wk-talk{border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--accent);cursor:pointer;text-align:left}' +
+    '.tl-wk-talk:hover{text-decoration:underline}' +
+    '.pill.tl-p-sched{background:var(--accent-tt);color:var(--accent);border-color:#c7d2fe}' +
+    '.fbar.tl-libbar{margin:0;padding:12px 18px;border-bottom:1px solid var(--line)}' +
+    '.tl-libbar .search{min-width:200px}.tl-libbar select{max-width:100%}' +
+    '.tl-acts{display:inline-flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end}' +
+    '[data-tllib] td:nth-child(2),[data-tllib] td:nth-child(4){white-space:nowrap}[data-tllib] td:nth-child(3) .t-sub{max-width:22ch}' +
+    '[data-tllib] td:last-child{width:1%}.tl-acts .btn{white-space:nowrap}' +
+    '.t-sub.tl-ready{color:var(--ok);font-weight:600}' +
+    '.tl-files{margin:6px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--ink-3)}' +
+    '@media (max-width:1180px){[data-tlweeks] th,[data-tlweeks] td,[data-tllib] th,[data-tllib] td{padding-left:12px;padding-right:12px}' +
+      '[data-tlweeks] td:first-child{width:180px}}' +
+    '@media (max-width:640px){' +
+      '[data-tlweeks] thead,[data-tllib] thead{display:none}' +
+      '[data-tlweeks] table,[data-tlweeks] tbody,[data-tlweeks] tr,[data-tlweeks] td,' +
+      '[data-tllib] table,[data-tllib] tbody,[data-tllib] tr,[data-tllib] td{display:block;width:auto !important}' +
+      '[data-tlweeks] tr,[data-tllib] tr{padding:12px 14px;border-bottom:1px solid var(--line)}' +
+      '[data-tlweeks] tr:last-child,[data-tllib] tr:last-child{border-bottom:0}' +
+      '[data-tlweeks] td,[data-tllib] td{padding:0;border:0;white-space:normal !important;text-align:left}' +
+      '[data-tlweeks] td+td,[data-tllib] td+td{margin-top:8px}' +
+      '[data-tlweeks] tr.tl-now{background:#f8fafc}[data-tlweeks] tr.tl-now td{background:none}' +
+      '[data-tllib] td[data-l]::before{content:attr(data-l);display:block;font-size:11px;font-weight:700;text-transform:uppercase;' +
+        'letter-spacing:.05em;color:var(--ink-4);margin:0 0 2px}' +
+      '[data-tllib] td[data-l]{display:grid;grid-template-columns:96px minmax(0,1fr);column-gap:8px;align-items:baseline}' +
+      '[data-tllib] td[data-l]::before{grid-row:1/3;margin:0}[data-tllib] td[data-l]+td[data-l]{margin-top:4px}' +
+      '[data-tllib] td:nth-child(3) .t-sub{max-width:none}' +
+      '.tl-acts{justify-content:flex-start}.fbar.tl-libbar{padding:12px 14px}' +
+      '.tl-co-me{margin-right:0;flex-basis:100%}' +
+    '}' +
+    '</style>';
   function tlibHtml(right) {
     var html = head('Toolbox Talks',
-      'Greiner\'s talk library. Upload a talk once and file it under a category. ' +
-      'Uploading a talk does not send it to anyone.', right);
+      'Greiner\'s talk library. Upload talks for the weeks coming up, and find any talk you uploaded.', right);
     tlibLoad(false);
-    html += '<style>' +
-      '.tl-cats{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}' +
-      '.tl-cat{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font:inherit;' +
-        'font-size:13px;font-weight:600;color:var(--ink-2,var(--ink));cursor:pointer;min-height:36px}' +
-      '.tl-cat b{font-weight:600;color:var(--ink-4);margin-left:6px}' +
-      '.tl-cat.on{background:var(--accent);border-color:var(--accent);color:#fff}.tl-cat.on b{color:#fff}' +
-      '.tl-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:0 0 14px}' +
-      '[data-tlopen]{white-space:nowrap}' +
-      '.tl-other{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;font-size:13px;color:var(--ink-3)}' +
-      '.tl-other-k{font-weight:600;color:var(--ink-2,var(--ink))}' +
-      '.tl-other a{color:var(--accent);font-weight:600;text-decoration:none}.tl-other a:hover{text-decoration:underline}' +
-      '.tl-other-sep{color:var(--ink-4)}' +
-      '.tl-files{margin:6px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--ink-3)}' +
-      '.tl-view{margin:0 0 14px}' +
-      '.tl-wk-intro{font-size:13.5px;line-height:1.5;color:var(--ink-3);background:#f8fafc;border:1px solid var(--line);' +
-        'border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;margin:0 0 14px}' +
-      '.tl-wk-intro strong{color:var(--ink)}' +
-      '.tl-wk{display:grid;grid-template-columns:minmax(170px,1.1fr) minmax(0,1.4fr) minmax(0,1.4fr) auto;gap:10px 18px;' +
-        'align-items:start;padding:14px 18px;border-top:1px solid var(--line)}' +
-      '.tl-wk:first-child{border-top:0}.tl-wk.is-now{background:#f8fafc}' +
-      '.tl-wk-d b{display:block;color:var(--ink)}' +
-      '.tl-wk-when{display:inline-block;margin-top:3px;font-size:12px;font-weight:600;color:var(--accent)}' +
-      '.tl-wk-note{margin-top:4px;font-size:12px;color:var(--warn);line-height:1.4}' +
-      '.tl-wk-k{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-4);font-weight:600;margin-bottom:4px}' +
-      '.tl-wk-item+.tl-wk-item{margin-top:6px}' +
-      '.tl-wk-talk{border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--accent);cursor:pointer;text-align:left}' +
-      '.tl-wk-talk:hover{text-decoration:underline}' +
-      '.tl-wk-a{align-self:center}.tl-wk-a .btn{white-space:nowrap}' +
-      '@media (max-width:900px){.tl-wk{grid-template-columns:1fr 1fr}.tl-wk-d{grid-column:1/-1}.tl-wk-a{grid-column:1/-1}}' +
-      '@media (max-width:560px){.tl-wk{grid-template-columns:1fr}.tl-wk-a .btn{width:100%;justify-content:center}}' +
-      '</style>';
+    html += TLIB_CSS;
     if (TLIB.state === 'loading' || TLIB.state === 'idle') {
       return html + '<div class="panel"><div class="panel-bd"><p class="muted" style="margin:0">Loading the talk library…</p></div></div>';
     }
@@ -6860,46 +6888,50 @@
     }
     var rows = TLIB.rows, f = TLIB.f, q = f.q.trim().toLowerCase();
     tbtxLoad(false);
+    html += '<div class="tl-view">' + subtabs(TLIB.view, [['weeks', 'Coming up'], ['all', 'Library']], 'tlview') + '</div>' + tlibOtherHtml();
+    if (TLIB.view === 'weeks') return html + tlibWeeksHtml();
     var counts = {}; rows.forEach(function (r) { counts[r.category] = (counts[r.category] || 0) + 1; });
     var catsUsed = Object.keys(counts).sort(function (a, b) { return a.localeCompare(b); });
-    html += '<div class="tl-top"><div class="small muted">' + rows.length + ' talk' + (rows.length === 1 ? '' : 's') +
-      ' in ' + Object.keys(rows.reduce(function (m, r) { m[r.category] = 1; return m; }, {})).length + ' categor' +
-      (Object.keys(rows.reduce(function (m, r) { m[r.category] = 1; return m; }, {})).length === 1 ? 'y' : 'ies') + '</div>' +
-      '<button class="btn btn-gold" id="tlib-upload">Upload talks</button></div>' + tlibOtherHtml() +
-      '<div class="tl-view">' + subtabs(TLIB.view, [['weeks', 'Weeks ahead'], ['all', 'All talks']], 'tlview') + '</div>';
-    if (TLIB.view === 'weeks') return html + tlibWeeksHtml();
+    if (f.cat && !counts[f.cat]) f.cat = '';
+    var sub = rows.length + ' talk' + (rows.length === 1 ? '' : 's') + ' in ' + catsUsed.length + ' categor' +
+      (catsUsed.length === 1 ? 'y' : 'ies') + ', by category. Uploading a talk does not send it to anyone.';
+    html += '<div class="panel" data-tllib><div class="panel-hd"><div><h3>Library</h3><div class="sub">' + esc(sub) + '</div></div>' +
+      '<button class="btn btn-gold" id="tlib-upload">Upload talks</button></div>';
     if (!rows.length) {
-      return html + '<div class="panel"><div class="panel-bd"><div class="empty">No talks in the library yet. ' +
+      return html + '<div class="panel-bd"><div class="empty">No talks in the library yet. ' +
         'Choose Upload talks to add your first one.</div></div></div>';
     }
-    html += '<div class="tl-cats" role="group" aria-label="Category">' +
-      '<button class="tl-cat' + (!f.cat ? ' on' : '') + '" data-tlcat="">All categories<b>' + rows.length + '</b></button>' +
-      catsUsed.map(function (c) {
-        return '<button class="tl-cat' + (f.cat === c ? ' on' : '') + '" data-tlcat="' + esc(c) + '">' + esc(c) +
-          '<b>' + counts[c] + '</b></button>';
-      }).join('') + '</div>';
-    html += '<div class="fbar">' +
-      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+    html += '<div class="fbar tl-libbar">' +
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
         '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-        '<input id="tlib-q" placeholder="Search talks…" value="' + esc(f.q) + '"></div></div>';
+        '<input id="tlib-q" placeholder="Search talks" aria-label="Search talks" value="' + esc(f.q) + '"></div>' +
+      '<select id="tlib-cat" aria-label="Category"><option value="">All categories</option>' +
+        catsUsed.map(function (c) {
+          return '<option value="' + esc(c) + '"' + (f.cat === c ? ' selected' : '') + '>' + esc(c + ' (' + counts[c] + ')') + '</option>';
+        }).join('') + '</select></div>';
     var shown = rows.filter(function (r) {
       if (f.cat && r.category !== f.cat) return false;
       if (q && (r.title + ' ' + r.category + ' ' + (r.filename || '')).toLowerCase().indexOf(q) === -1) return false;
       return true;
+    }).sort(function (a, b) {
+      return String(a.category).localeCompare(String(b.category)) || String(a.title).localeCompare(String(b.title));
     });
     var trs = shown.map(function (r) {
+      var wk = r.planned_week ? String(r.planned_week).slice(0, 10) : '';
       return '<tr class="click" data-tlib="' + esc(r.id) + '">' +
-        '<td><span class="t-main">' + esc(r.title) + '</span><div class="t-sub">' + esc(r.filename || '') +
-          (r.planned_week ? ' · for the week of ' + esc(tlibWeekDay(String(r.planned_week).slice(0, 10))) : '') + '</div></td>' +
-        '<td>' + esc(r.category) + '</td>' +
-        '<td>' + (r.status === 'ready' ? pill('p-ok', 'Ready for foremen')
-                                       : pill('p-grey', 'Received, phone version being prepared')) + '</td>' +
-        '<td>' + esc(fmtDate(String(r.created_at || '').slice(0, 10))) + '</td>' +
-        '<td>' + (r.last_week ? esc(fmtDate(r.last_week)) : '<span class="muted">Not sent yet</span>') + '</td>' +
-        '<td class="r"><button class="btn btn-sm" data-tlopen="' + esc(r.doc_id) + '">Open file</button></td></tr>';
+        '<td><span class="t-main">' + esc(r.title) + '</span><div class="t-sub">' + esc(r.filename || '') + '</div>' +
+          (wk ? '<div class="t-sub">For the week of ' + esc(tlibWeekDay(wk)) + '</div>' : '') + '</td>' +
+        '<td data-l="Category">' + esc(r.category) + '</td>' +
+        '<td data-l="Uploaded">' + esc(fmtDate(String(r.created_at || '').slice(0, 10))) +
+          (r.status === 'ready' ? '<div class="t-sub tl-ready">Ready for foremen</div>'
+                                : '<div class="t-sub">Received, phone version being prepared</div>') + '</td>' +
+        '<td data-l="Last sent">' + (r.last_week ? 'Week of ' + esc(tlibWeekDay(String(r.last_week).slice(0, 10)))
+                                                 : '<span class="t-sub">Not sent yet</span>') + '</td>' +
+        '<td class="r"><div class="tl-acts"><button class="btn btn-sm" data-tlopen="' + esc(r.doc_id) + '">Open file</button>' +
+          '<button class="btn btn-sm" data-tledit="' + esc(r.id) + '">Edit</button></div></td></tr>';
     });
-    html += '<div class="panel"><div class="panel-bd flush">' + tableWrap(
-      [{ t: 'Talk' }, { t: 'Category' }, { t: 'Status' }, { t: 'Uploaded' }, { t: 'Last sent, week of' }, { t: '', r: 1 }],
+    html += '<div class="panel-bd flush">' + tableWrap(
+      [{ t: 'Talk' }, { t: 'Category' }, { t: 'Uploaded' }, { t: 'Last sent' }, { t: '', r: 1 }],
       trs, 'No talks match.') + '</div></div>';
     return html;
   }
@@ -6909,18 +6941,21 @@
     $$('[data-tlweek]').forEach(function (b) { b.onclick = function () { openTlibUpload(b.dataset.tlweek); }; });
     $$('[data-tlibw]').forEach(function (b) { b.onclick = function () { openTlibEdit(b.dataset.tlibw); }; });
     var rt = $('#tlib-retry'); if (rt) rt.onclick = function () { tlibLoad(true); pgTalks(); };
-    $$('[data-tlcat]').forEach(function (b) { b.onclick = function () { TLIB.f.cat = b.dataset.tlcat; pgTalks(); }; });
+    var cs = $('#tlib-cat'); if (cs) cs.onchange = function () { TLIB.f.cat = cs.value; pgTalks(); };
     var q = $('#tlib-q'); if (q) {
       q.oninput = function () { TLIB.f.q = q.value; pgTalks(); };
       if (TLIB.f.q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
     }
     $$('[data-tlib]').forEach(function (r) { r.onclick = function () { openTlibEdit(r.dataset.tlib); }; });
+    $$('[data-tledit]').forEach(function (b) {
+      b.onclick = function (ev) { ev.stopPropagation(); openTlibEdit(b.dataset.tledit); };
+    });
     $$('[data-tlopen]').forEach(function (b) {
       b.onclick = function (ev) {
         ev.stopPropagation(); b.disabled = true;
         docsEdge({ action: 'url', id: b.dataset.tlopen }).then(function (j) {
           b.disabled = false; window.open(j.url, '_blank', 'noopener');
-        }).catch(function (e) { b.disabled = false; toast('Could not open the file — ' + e.message); });
+        }).catch(function (e) { b.disabled = false; toast('Could not open the file. ' + e.message); });
       };
     });
   }
