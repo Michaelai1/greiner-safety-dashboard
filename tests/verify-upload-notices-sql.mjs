@@ -275,6 +275,15 @@ await check('a talk uploaded for a week says which week in the email', async () 
   const q = await one(db, 'select body from net.requests order by id desc limit 1');
   assert.ok(q.body.text.includes('Toolbox Talks > Talk Library > Cold Weather > for the week of ' + label + ' | Cold Weather Safety'), q.body.text);
 });
+await check('a talk uploaded for Peine says "for Peine" in the email (Nov 27)', async () => {
+  const id = await addDoc(db, GREINER, 'Toolbox Talks', 'Peine_Ladders.pdf');
+  const r = (await one(db, `select cs_portal_tbt_library_add('office', $1, 'Peine Ladders', 'Ladders', 'peine') as r`, [id])).r;
+  assert.equal(r.ok, true);
+  await age(db);
+  assert.equal((await send(db)).sent, 1);
+  const q = await one(db, 'select body from net.requests order by id desc limit 1');
+  assert.ok(q.body.text.includes('Toolbox Talks > Talk Library > for Peine > Ladders | Peine Ladders'), q.body.text);
+});
 await check('if the notice cannot be written, the upload still succeeds', async () => {
   await db.exec(`alter table cs_upload_notices add constraint break_it check (false) not valid`);
   const id = await addDoc(db, GREINER, 'Other', 'Still uploads.pdf');

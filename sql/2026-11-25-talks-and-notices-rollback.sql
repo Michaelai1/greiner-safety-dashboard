@@ -28,12 +28,16 @@ select cron.unschedule(jobid) from cron.job where jobname = 'cs-upload-notices';
 -- Redeploying the previous office page (see RELEASE-TALKS.md) removes the tab itself.
 begin;
 drop function if exists public.cs_portal_tbt_library(text);
+drop function if exists public.cs_portal_tbt_library_add(text, uuid, text, text, text);
+drop function if exists public.cs_portal_tbt_library_set(text, uuid, text, text, boolean, text);
+drop function if exists public.cs_portal_tbt_library_add_week(text, uuid, text, text, date, text);
+-- The argument lists before Nov 27 (no p_for), in case an earlier draft was ever installed.
 drop function if exists public.cs_portal_tbt_library_add(text, uuid, text, text);
 drop function if exists public.cs_portal_tbt_library_set(text, uuid, text, text, boolean);
 drop function if exists public.cs_portal_tbt_library_add_week(text, uuid, text, text, date);
 drop function if exists public.cs_portal_tbt_library_week(text, uuid, date);
--- The cs_tbt_library table is kept, with its planned_week column (it only names files already in
--- Documents > Toolbox Talks and the week each was uploaded for).
+-- The cs_tbt_library table is kept, with its planned_week and for_company columns (it only names files already in
+-- Documents > Toolbox Talks, the week each was uploaded for and which company it is for).
 commit;
 
 select 'done: rollback ran; no file, document or talk record was deleted' as result,

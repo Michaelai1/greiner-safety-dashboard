@@ -48,7 +48,9 @@ begin
   end if;
   if to_regclass('public.cs_tbt_library') is null
      or not exists (select 1 from information_schema.columns where table_schema = 'public'
-                     and table_name = 'cs_tbt_library' and column_name = 'planned_week') then
+                     and table_name = 'cs_tbt_library' and column_name = 'planned_week')
+     or not exists (select 1 from information_schema.columns where table_schema = 'public'
+                     and table_name = 'cs_tbt_library' and column_name = 'for_company') then
     raise exception 'Install the Talk Library first (2026-11-25-tbt-talk-library.sql). Nothing was changed.';
   end if;
   if to_regprocedure('net.http_post(text,jsonb,jsonb,jsonb,integer)') is null
@@ -213,14 +215,18 @@ begin
 
   -- 3. Everything waiting for at least 2 minutes (so a talk's name and category are filed), oldest first,
   --    in ONE email. 50 files make one email, not 50.
-  for r in select u.*, l.title as talk_title, l.category as talk_category, l.planned_week as talk_week
+  for r in select u.*, l.title as talk_title, l.category as talk_category, l.planned_week as talk_week,
+                    l.for_company as talk_for
              from cs_upload_notices u
              left join cs_tbt_library l on u.source_table = 'cs_company_docs' and l.doc_id = u.source_id
             where u.email_status = 'waiting' and u.created_at < now() - interval '2 minutes'
             order by u.id limit 100 for update of u skip locked loop
     n := n + 1; v_ids := array_append(v_ids, r.id);
     if r.talk_title is not null then
-      v_where := 'Toolbox Talks > Talk Library > ' || r.talk_category
+      -- Nov 27: a talk Tony uploaded for Peine or Choice says so ("Talk Library > for Peine > Cold Weather").
+      v_where := 'Toolbox Talks > Talk Library > '
+        || case r.talk_for when 'peine' then 'for Peine > ' when 'choice' then 'for Choice > ' else '' end
+        || r.talk_category
         || case when r.talk_week is not null then ' > for the week of ' || to_char(r.talk_week, 'Mon FMDD') else '' end;
       v_name := r.talk_title;
     elsif r.kind = 'job_document' then

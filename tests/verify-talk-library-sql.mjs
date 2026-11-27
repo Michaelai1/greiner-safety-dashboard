@@ -24,7 +24,9 @@ try {
 }
 const GREINER = '8ca1fccf-ffc2-49c9-b4ca-a7ba35e124b2', CHOICE = '3da7dc46-30d3-4870-bbd9-a85bd2227a3c';
 const D = { fall: '30000000-0000-4000-8000-000000000001', step: '30000000-0000-4000-8000-000000000002',
-  other: '30000000-0000-4000-8000-000000000003', choice: '30000000-0000-4000-8000-000000000009' };
+  other: '30000000-0000-4000-8000-000000000003', peine: '30000000-0000-4000-8000-000000000004',
+  choiceFor: '30000000-0000-4000-8000-000000000005', peineWk: '30000000-0000-4000-8000-000000000006',
+  choice: '30000000-0000-4000-8000-000000000009' };
 const STANDINS = `
   create table cs_company_docs (id uuid primary key default gen_random_uuid(), company_id uuid not null references cs_companies(id),
     category text, filename text not null, path text not null, size_bytes bigint, created_at timestamptz not null default now());
@@ -48,6 +50,9 @@ const SEED = `
     ('${D.fall}', '${GREINER}', 'Toolbox Talks', 'Fall Protection.pdf', 'g/fall.pdf', 1000),
     ('${D.step}', '${GREINER}', 'Toolbox Talks', 'Step_Ladder_Safety.pdf', 'g/step.pdf', 2000),
     ('${D.other}', '${GREINER}', 'Toolbox Talks', 'Arc Welding.pdf', 'g/arc.pdf', 3000),
+    ('${D.peine}', '${GREINER}', 'Toolbox Talks', 'Peine Ladders.pdf', 'g/pl.pdf', 400),
+    ('${D.choiceFor}', '${GREINER}', 'Toolbox Talks', 'Choice Trenching.pdf', 'g/ct.pdf', 500),
+    ('${D.peineWk}', '${GREINER}', 'Toolbox Talks', 'Peine Cold Weather.pdf', 'g/pc.pdf', 600),
     ('${D.choice}', '${CHOICE}', 'Toolbox Talks', 'Choice only.pdf', 'c/x.pdf', 10);`;
 
 let checks = 0, failures = 0;
@@ -109,11 +114,11 @@ await check('the table is closed to the browser roles; only the three functions 
   assert.deepEqual(r, { rls: true, a: false, b: false });
 });
 let fallId;
-await check('the office files an uploaded document as a talk with a category; it belongs to Greiner only', async () => {
+await check('the office files an uploaded document as a talk with a category (old 4-argument call): Greiner\'s, for Greiner', async () => {
   const r = (await one(db, `select cs_portal_tbt_library_add('office', '${D.fall}', '  Fall Protection ', 'Fall Protection') as r`)).r;
   assert.equal(r.ok, true); fallId = r.id;
-  const row = await one(db, `select title, category, status, company_id from cs_tbt_library where id = $1`, [fallId]);
-  assert.deepEqual(row, { title: 'Fall Protection', category: 'Fall Protection', status: 'received', company_id: GREINER });
+  const row = await one(db, `select title, category, status, company_id, for_company from cs_tbt_library where id = $1`, [fallId]);
+  assert.deepEqual(row, { title: 'Fall Protection', category: 'Fall Protection', status: 'received', company_id: GREINER, for_company: 'greiner' });
   const cols = (await db.query(`select column_name from information_schema.columns where table_name = 'cs_tbt_library'`)).rows.map((x) => x.column_name);
   assert.ok(!cols.includes('companies'), 'no "which companies" list: each upload is Greiner\'s');
   await assert.rejects(db.query(`select cs_portal_tbt_library_add('office', '${D.step}', 'Step', 'Ladders', array['greiner','choice'])`), /does not exist/);
@@ -141,9 +146,9 @@ await check('a crew sign-in, a signed-out token and no token are all refused', a
 await check('the library lists the talk with its file; "last sent" is empty until the phone version is linked', async () => {
   await db.query(`select cs_portal_tbt_library_add('office', '${D.step}', 'Step Ladder Safety', 'Ladders')`);
   const rows = (await one(db, `select cs_portal_tbt_library('office') as r`)).r;
-  assert.deepEqual(rows.map((x) => [x.category, x.title, x.filename, x.status, x.times_sent, x.last_week, 'companies' in x]), [
-    ['Fall Protection', 'Fall Protection', 'Fall Protection.pdf', 'received', 0, null, false],
-    ['Ladders', 'Step Ladder Safety', 'Step_Ladder_Safety.pdf', 'received', 0, null, false]]);
+  assert.deepEqual(rows.map((x) => [x.category, x.title, x.filename, x.status, x.times_sent, x.last_week, x.for_company, 'companies' in x]), [
+    ['Fall Protection', 'Fall Protection', 'Fall Protection.pdf', 'received', 0, null, 'greiner', false],
+    ['Ladders', 'Step Ladder Safety', 'Step_Ladder_Safety.pdf', 'received', 0, null, 'greiner', false]]);
   assert.ok(!JSON.stringify(rows).includes('g/fall.pdf'), 'the storage path is never returned');
 });
 await check('once the owner links the phone version it reads Ready, with real sends counted and tests left out', async () => {
@@ -213,11 +218,94 @@ await check('a talk can be moved to another week or have its week cleared; other
     await assert.rejects(db.query(`select cs_portal_tbt_library_week($1, '${weekId}', '${wk(1)}')`, [t]), /insufficient scope|invalid token/);
   }
 });
-await check('the week functions are callable by the browser roles; the 4-argument add is still there unchanged', async () => {
-  const r = await one(db, `select has_function_privilege('anon', 'public.cs_portal_tbt_library_add_week(text,uuid,text,text,date)', 'execute') as a,
+await check('every library function is callable by the browser roles, one argument list each (no ambiguous leftovers)', async () => {
+  const r = await one(db, `select has_function_privilege('anon', 'public.cs_portal_tbt_library_add_week(text,uuid,text,text,date,text)', 'execute') as a,
     has_function_privilege('anon', 'public.cs_portal_tbt_library_week(text,uuid,date)', 'execute') as b,
-    to_regprocedure('public.cs_portal_tbt_library_add(text,uuid,text,text)') is not null as c`);
-  assert.deepEqual(r, { a: true, b: true, c: true });
+    has_function_privilege('anon', 'public.cs_portal_tbt_library_add(text,uuid,text,text,text)', 'execute') as c,
+    has_function_privilege('anon', 'public.cs_portal_tbt_library_set(text,uuid,text,text,boolean,text)', 'execute') as d,
+    has_function_privilege('anon', 'public.cs_portal_tbt_library(text)', 'execute') as e,
+    (select count(*)::int from pg_proc where proname like 'cs_portal_tbt_library%') as n`);
+  assert.deepEqual(r, { a: true, b: true, c: true, d: true, e: true, n: 5 });
+});
+// ---- Nov 27: Tony uploads for Greiner, Peine and Choice from one page ------------
+await check('for_company is a label column: not null, default greiner, only greiner, peine or choice', async () => {
+  const c = await one(db, `select data_type, is_nullable, column_default from information_schema.columns where table_name = 'cs_tbt_library' and column_name = 'for_company'`);
+  assert.deepEqual([c.data_type, c.is_nullable, /'greiner'/.test(c.column_default)], ['text', 'NO', true]);
+  await assert.rejects(db.exec(`update cs_tbt_library set for_company = 'acme' where id = '${fallId}'`), /cs_tbt_library_for_check/);
+  await assert.rejects(db.exec(`update cs_tbt_library set for_company = null where id = '${fallId}'`), /null/);
+});
+let peineId, choiceId, peineWkId;
+await check('upload for Peine and for Choice (p_for): the row stays Greiner\'s, labelled for that company', async () => {
+  const p = (await one(db, `select cs_portal_tbt_library_add('office', '${D.peine}', 'Peine Ladders', 'Ladders', 'peine') as r`)).r;
+  const c = (await one(db, `select cs_portal_tbt_library_add('office', '${D.choiceFor}', 'Choice Trenching', 'Trenching', p_for => ' Choice ') as r`)).r;
+  const w = (await one(db, `select cs_portal_tbt_library_add_week('office', '${D.peineWk}', 'Peine Cold Weather', 'Cold Weather', '${wk(1)}', 'peine') as r`)).r;
+  assert.equal(p.ok && c.ok && w.ok, true); peineId = p.id; choiceId = c.id; peineWkId = w.id;
+  const rows = (await db.query(`select id, company_id, for_company, planned_week::text as w from cs_tbt_library where id in ($1, $2, $3) order by title`, [peineId, choiceId, peineWkId])).rows;
+  assert.deepEqual(rows.map((x) => [x.company_id, x.for_company, x.w]),
+    [[GREINER, 'choice', null], [GREINER, 'peine', wk(1)], [GREINER, 'peine', null]]);
+  const lib = (await one(db, `select cs_portal_tbt_library('office') as r`)).r;
+  assert.equal(lib.find((x) => x.id === peineWkId).for_company, 'peine');
+  assert.equal(lib.find((x) => x.id === choiceId).for_company, 'choice');
+});
+await check('an unknown company is refused and nothing is filed; null means Greiner', async () => {
+  const n = (await one(db, 'select count(*)::int as n from cs_tbt_library')).n;
+  assert.equal((await one(db, `select cs_portal_tbt_library_add('office', '${D.step}', 'X', 'Y', 'acme') as r`)).r.error, 'bad_company');
+  assert.equal((await one(db, `select cs_portal_tbt_library_add_week('office', '${D.step}', 'X', 'Y', '${wk(1)}', '') as r`)).r.error, 'bad_company');
+  assert.equal((await one(db, `select cs_portal_tbt_library_set('office', '${peineId}', p_for => 'acme') as r`)).r.error, 'bad_company');
+  assert.equal((await one(db, 'select count(*)::int as n from cs_tbt_library')).n, n);
+  assert.equal((await one(db, `select for_company from cs_tbt_library where id = $1`, [peineId])).for_company, 'peine');
+});
+await check('the change function can move a talk to another company; leaving p_for out keeps it', async () => {
+  assert.equal((await one(db, `select cs_portal_tbt_library_set('office', '${choiceId}', p_for => 'peine') as r`)).r.ok, true);
+  assert.equal((await one(db, `select for_company from cs_tbt_library where id = $1`, [choiceId])).for_company, 'peine');
+  assert.equal((await one(db, `select cs_portal_tbt_library_set('office', '${choiceId}', 'Choice Trenching', 'Trenching', null) as r`)).r.ok, true);
+  assert.equal((await one(db, `select for_company from cs_tbt_library where id = $1`, [choiceId])).for_company, 'peine', 'old 5-argument call leaves it');
+  await db.query(`select cs_portal_tbt_library_set('office', '${choiceId}', p_for => 'choice')`);
+  assert.equal((await one(db, `select for_company from cs_tbt_library where id = $1`, [choiceId])).for_company, 'choice');
+  assert.equal((await one(db, `select cs_portal_tbt_library_set('choice-office', '${choiceId}', p_for => 'greiner') as r`)).r.error, 'not_found');
+});
+await check('old argument lists still work by name, the way the office page calls them (no p_for)', async () => {
+  const before = (await one(db, 'select count(*)::int as n from cs_tbt_library')).n;
+  await db.exec(`insert into cs_company_docs (id, company_id, category, filename, path) values
+    ('30000000-0000-4000-8000-0000000000a1', '${GREINER}', 'Toolbox Talks', 'Old Call.pdf', 'g/old.pdf'),
+    ('30000000-0000-4000-8000-0000000000a2', '${GREINER}', 'Toolbox Talks', 'Old Week.pdf', 'g/oldw.pdf')`);
+  const a = (await one(db, `select cs_portal_tbt_library_add(p_token => 'office', p_doc_id => '30000000-0000-4000-8000-0000000000a1', p_title => 'Old Call', p_category => 'General Safety') as r`)).r;
+  const b = (await one(db, `select cs_portal_tbt_library_add_week(p_token => 'office', p_doc_id => '30000000-0000-4000-8000-0000000000a2', p_title => 'Old Week', p_category => 'General Safety', p_week => '${wk(2)}') as r`)).r;
+  const c = (await one(db, `select cs_portal_tbt_library_set(p_token => 'office', p_id => '${a.id}', p_title => 'Old Call Renamed') as r`)).r;
+  assert.equal(a.ok && b.ok && c.ok, true);
+  const rows = (await db.query(`select title, for_company from cs_tbt_library where id in ($1, $2) order by title`, [a.id, b.id])).rows;
+  assert.deepEqual(rows, [{ title: 'Old Call Renamed', for_company: 'greiner' }, { title: 'Old Week', for_company: 'greiner' }]);
+  assert.equal((await one(db, 'select count(*)::int as n from cs_tbt_library')).n, before + 2);
+  for (const t of ['crew', 'nope']) {
+    await assert.rejects(db.query(`select cs_portal_tbt_library_add($1, '${D.step}', 'S', 'L', 'peine')`, [t]), /insufficient scope|invalid token/);
+  }
+});
+await check('a Peine or Choice talk never counts Greiner\'s sends, even if it carries the same talk key', async () => {
+  await db.exec(`update cs_tbt_library set status = 'ready', talk_key = 'fall-protection' where id = '${peineId}'`);
+  const x = (await one(db, `select cs_portal_tbt_library('office') as r`)).r.find((y) => y.id === peineId);
+  assert.equal(x.times_sent, 0); assert.equal(x.last_week, null);
+});
+await check('another company\'s office still sees none of the Peine or Choice uploads', async () => {
+  assert.deepEqual((await one(db, `select cs_portal_tbt_library('choice-office') as r`)).r, []);
+});
+await check('an install over an earlier draft (argument lists without p_for) leaves one function each, and calls are not ambiguous', async () => {
+  const d2 = new PGlite({ extensions: { pgcrypto } });
+  await d2.exec(fs.readFileSync(FIXTURE, 'utf8')); await d2.exec(STANDINS); await d2.exec(SEED);
+  const old = fs.readFileSync(MIGRATION, 'utf8')
+    .replace(/, p_for text default 'greiner'/g, '').replace(/, p_for text default null/g, '')
+    .replace(/\(text, uuid, text, text, text\)/g, '(text, uuid, text, text)')
+    .replace(/\(text, uuid, text, text, boolean, text\)/g, '(text, uuid, text, text, boolean)')
+    .replace(/\(text, uuid, text, text, date, text\)/g, '(text, uuid, text, text, date)')
+    .replace(/drop function if exists[^\n]*\n/g, '')
+    .replace(/v_for := case when p_for[\s\S]*?end;/g, "v_for := 'greiner';");
+  await d2.exec(old);
+  assert.equal((await one(d2, `select count(*)::int as n from pg_proc where proname like 'cs_portal_tbt_library%'`)).n, 5, 'the stand-in old draft installed');
+  assert.ok(await one(d2, `select to_regprocedure('public.cs_portal_tbt_library_add(text,uuid,text,text)') as f`).then((x) => x.f));
+  await d2.exec(fs.readFileSync(MIGRATION, 'utf8'));
+  assert.equal((await one(d2, `select count(*)::int as n from pg_proc where proname like 'cs_portal_tbt_library%'`)).n, 5);
+  const r = (await one(d2, `select cs_portal_tbt_library_add('office', '${D.fall}', 'Fall', 'Fall Protection') as r`)).r;
+  assert.equal(r.ok, true);
+  await d2.close();
 });
 await check('installing again keeps every planned week', async () => {
   await db.query(`select cs_portal_tbt_library_week('office', '${weekId}', '${wk(4)}')`);
