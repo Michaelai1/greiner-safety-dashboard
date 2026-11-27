@@ -2,6 +2,7 @@
  * (no ?demo=1). Every RPC and the document store are answered inside this test with made-up talks; nothing
  * leaves the machine. The browser clock is fixed at Thu Nov 26 2026 (Thanksgiving) for the "Coming up" view
  * (called "Weeks ahead" before Nov 27, when the page took the next-version demo's look).
+ * Nov 27: Tony uploads for Greiner, Peine and Choice here; a company switcher shows one company at a time.
  *
  * Needs playwright-webkit (PLAYWRIGHT_NODE_MODULES). SCREENSHOT_DIR saves screenshots.
  */
@@ -58,7 +59,7 @@ let libraryOn = true, storeReturnsId = true;
 let seq = 0;
 const docs = [];
 const LIB = [
-  { id: 'l-fall', title: 'Fall Protection', category: 'Fall Protection', status: 'ready',
+  { id: 'l-fall', title: 'Fall Protection', category: 'Fall Protection', status: 'ready', for_company: 'greiner',
     doc_id: 'd-fall', filename: 'Fall Protection.pdf', size_bytes: 180000, created_at: '2026-11-20T15:00:00Z',
     times_sent: 2, last_week: '2026-11-23' },
   { id: 'l-holes', title: 'Fall Protection - Hole Covers', category: 'Fall Protection', status: 'received',
@@ -66,7 +67,18 @@ const LIB = [
     times_sent: 0, last_week: null },
   { id: 'l-step', title: 'Step Ladder Safety', category: 'Ladders', status: 'received',
     doc_id: 'd-step', filename: 'Step_Ladder_Safety.pdf', size_bytes: 220000, created_at: '2026-11-24T15:05:00Z',
+    times_sent: 0, last_week: null, planned_week: '2026-12-07', for_company: 'greiner' },
+  // l-holes has no for_company at all (an older read): the page treats it as Greiner's.
+  // Uploaded by the Greiner office FOR Peine and Choice (Nov 27). Same row owner; only the label differs.
+  { id: 'l-peine-cold', title: 'Peine Cold Weather', category: 'Cold Weather', status: 'received', for_company: 'peine',
+    doc_id: 'd-pcold', filename: 'Peine Cold Weather.pdf', size_bytes: 90000, created_at: '2026-11-25T15:00:00Z',
     times_sent: 0, last_week: null, planned_week: '2026-12-07' },
+  { id: 'l-peine-lift', title: 'Peine Forklift Basics', category: 'Driving and Vehicles', status: 'received', for_company: 'peine',
+    doc_id: 'd-plift', filename: 'Peine Forklift Basics.pdf', size_bytes: 80000, created_at: '2026-11-25T15:10:00Z',
+    times_sent: 0, last_week: null },
+  { id: 'l-choice-trench', title: 'Choice Trench Safety', category: 'Trenching and Excavation', status: 'received', for_company: 'choice',
+    doc_id: 'd-ctrench', filename: 'Choice Trench Safety.pdf', size_bytes: 70000, created_at: '2026-11-25T15:20:00Z',
+    times_sent: 0, last_week: null, planned_week: '2026-11-30' },
 ];
 const calls = [], offMachine = [], edge = [], adds = [], sets = [], weekAdds = [], weekSets = [];
 function rpc(fn, body) {
@@ -82,7 +94,7 @@ function rpc(fn, body) {
     const d = docs.find((x) => x.id === body.p_doc_id);
     if (!d) return { ok: false, error: 'bad_doc' };
     const id = 'l-new' + (++seq);
-    LIB.push({ id, title: body.p_title, category: body.p_category, status: 'received',
+    LIB.push({ id, title: body.p_title, category: body.p_category, status: 'received', for_company: body.p_for || 'greiner',
       doc_id: d.id, filename: d.filename, size_bytes: d.size, created_at: '2026-11-25T18:00:00Z', times_sent: 0, last_week: null });
     return { ok: true, id };
   }
@@ -91,7 +103,7 @@ function rpc(fn, body) {
     const d = docs.find((x) => x.id === body.p_doc_id);
     if (!d) return { ok: false, error: 'bad_doc' };
     const id = 'l-wk' + (weekAdds.length);
-    LIB.push({ id, title: body.p_title, category: body.p_category, status: 'received', planned_week: body.p_week,
+    LIB.push({ id, title: body.p_title, category: body.p_category, status: 'received', planned_week: body.p_week, for_company: body.p_for || 'greiner',
       doc_id: d.id, filename: d.filename, size_bytes: d.size, created_at: '2026-11-26T18:00:00Z', times_sent: 0, last_week: null });
     return { ok: true, id };
   }
@@ -106,6 +118,7 @@ function rpc(fn, body) {
     if (body.p_title) r.title = body.p_title;
     if (body.p_category) r.category = body.p_category;
     if (body.p_archived) r.archived = true;
+    if (body.p_for) r.for_company = body.p_for;
     return { ok: true };
   }
   return [];
@@ -120,7 +133,7 @@ const ALLOWED = new Set(['cs_portal_field_inspections', 'cs_portal_incidents', '
 let checks = 0, failures = 0;
 async function check(name, fn) {
   try { await fn(); checks++; console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.log(`  FAIL ${name}\n       ${String(e.message).split('\n')[0]}`); }
+  catch (e) { failures++; console.log(`  FAIL ${name}\n       ${String(e.message).split("\n").slice(0, 3).join(" | ")}`); }
 }
 const pdf = (name) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 sample talk ' + name) });
 
@@ -183,7 +196,7 @@ try {
       [['Coming up', true], ['Library', false]]);
     assert.deepEqual(await page.$$eval('[data-tlweeks] th', (h) => h.map((x) => x.innerText.trim().toLowerCase())), ['week', 'talk', '']);
     assert.match(await page.$eval('[data-tlweeks] .panel-hd', (e) => e.innerText.replace(/\s+/g, ' ')),
-      /^Coming up This week and the 8 after it\. 2 weeks have a talk set, 7 not picked yet\./);
+      /^Coming up for Greiner Brothers This week and the 8 after it\. 2 weeks have a talk set, 7 not picked yet\./);
     assert.deepEqual(await page.$$eval('[data-tlweekrow]', (r) => r.map((x) => x.dataset.tlweekrow)), WEEKS);
     for (const w of WEEKS) assert.equal(new Date(w + 'T12:00:00').getDay(), 1, w + ' is a Monday');
     assert.match(await weekRow('2026-11-23'), /^Week of Mon, Nov 23 This week/);
@@ -210,17 +223,20 @@ try {
     assert.equal((await page.$$('[data-tlnone]')).length, 7);
   });
   await check('a talk already uploaded for a week shows under that week; every week has an "Upload" button', async () => {
-    assert.match(await weekRow('2026-12-07'), /Not picked yet Uploaded Step Ladder Safety Received Ladders/i);
-    assert.ok(!/Uploaded/i.test(await weekRow('2026-11-30')), 'a week with nothing uploaded shows no upload line');
+    assert.match(await weekRow('2026-12-07'), /Not picked yet Uploaded Step Ladder Safety Received Ladders Upload$/i);
+    assert.ok(!/Peine/.test(await weekRow('2026-12-07')), 'Peine\'s upload for that week is not in Greiner\'s view');
+    assert.ok(!/Uploaded|Choice/i.test(await weekRow('2026-11-30')), 'a week with nothing uploaded for Greiner shows no upload line');
     assert.deepEqual(await page.$$eval('[data-tlweek]', (b) => b.map((x) => x.innerText.trim() + '|' + x.dataset.tlweek)),
       WEEKS.map((w) => 'Upload|' + w));
     assert.equal(await page.$eval('[data-tlweek="2026-12-21"]', (b) => b.getAttribute('aria-label')), 'Upload a talk for the week of Mon, Dec 21');
   });
-  await check('the three companies: Greiner uploads here, Peine links to its own page, Choice talks go to ConfirmSafety', async () => {
-    const line = await page.$eval('#tlib-other', (e) => e.innerText.replace(/\s+/g, ' ').trim());
-    assert.match(line, /^Companies Greiner Brothers, this page/i);
-    assert.match(line, /Peine Toolbox Talks/); assert.match(line, /Choice has no page yet\. Send Choice talks to ConfirmSafety\./);
-    assert.match(await page.$eval('.pg-hd p', (e) => e.innerText), /^Greiner's talk library/);
+  await check('the company bar is a switcher: Greiner Brothers (picked), Peine, Choice; no links away', async () => {
+    assert.deepEqual(await page.$$eval('[data-tlcompany]', (b) => b.map((x) => [x.innerText.trim(), x.classList.contains('on'), x.getAttribute('aria-pressed')])),
+      [['Greiner Brothers', true, 'true'], ['Peine', false, 'false'], ['Choice', false, 'false']]);
+    assert.match(await page.$eval('#tlib-co', (e) => e.innerText.replace(/\s+/g, ' ').trim()), /^Company Greiner Brothers Peine Choice$/i);
+    assert.equal(await page.$('#tlib-co a'), null, 'no link to another page');
+    assert.equal(await page.$('#tlib-other'), null);
+    assert.match(await page.$eval('.pg-hd p', (e) => e.innerText), /^Talks for Greiner Brothers, Peine and Choice\./);
   });
   for (const [w, name] of [[1440, 'talk-library-weeks-1440.png'], [1024, 'talk-library-weeks-1024.png'], [390, 'talk-library-weeks-phone.png']]) {
     await check(`"Coming up" fits a ${w}px window without sideways scroll`, async () => {
@@ -287,19 +303,8 @@ try {
     const heads = await page.$$eval('#main table th', (h) => h.map((x) => x.innerText.trim().toLowerCase()));
     assert.deepEqual(heads, ['talk', 'category', 'uploaded', 'last sent', '']);
     assert.match(await page.$eval('[data-tllib] .panel-hd', (e) => e.innerText.replace(/\s+/g, ' ')),
-      /^Library 3 talks in 2 categories, by category\. Uploading a talk does not send it to anyone\. Upload talks$/);
-    assert.equal(await page.$('#tlib-co'), null, 'no company filter');
-    assert.ok(!/Choice Mechanical|Peine Engineering/.test(await page.$eval('#main table', (e) => e.innerText)));
-  });
-  await check('the company bar links to Peine\'s own office page and says where Choice talks go', async () => {
-    const line = await page.$eval('#tlib-other', (e) => e.innerText.replace(/\s+/g, ' ').trim());
-    assert.match(line, /^Companies Greiner Brothers, this page/i);
-    const a = await page.$eval('[data-tlother="Peine Engineering"]', (e) => ({ tag: e.tagName, href: e.href, target: e.target, rel: e.rel, t: e.innerText }));
-    assert.deepEqual([a.tag, a.href, a.target, a.rel], ['A', 'https://peine.confirmsafety.com/office/', '_blank', 'noopener']);
-    assert.equal(a.t.trim(), 'Peine Toolbox Talks');
-    const c = await page.$eval('[data-tlother="Choice"]', (e) => ({ tag: e.tagName, t: e.innerText }));
-    assert.equal(c.tag, 'SPAN', 'Choice has no office page yet, so it is not a link');
-    assert.equal(c.t, 'Choice has no page yet. Send Choice talks to ConfirmSafety.');
+      /^Library for Greiner Brothers 3 talks in 2 categories, by category\. Uploading a talk does not send it to anyone\. Upload talks$/);
+    assert.ok(!/Peine|Choice/.test(await page.$eval('#main table', (e) => e.innerText)), 'Greiner\'s library shows Greiner\'s talks only');
   });
   await check('the category list shows a count each and filters the list', async () => {
     const cats = await page.$$eval('#tlib-cat option', (b) => b.map((x) => x.textContent.trim()));
@@ -335,9 +340,13 @@ try {
 
   await page.click('#tlib-upload');
   await page.waitForSelector('#tlu-file');
-  await check('Upload has no company tick boxes, says the talk is Greiner\'s, and refuses a talk with no file or no category', async () => {
+  await check('Upload asks "For which company" (Greiner Brothers picked from Greiner\'s view), and refuses a talk with no file or no category', async () => {
     assert.equal((await page.$$('[data-tlco]')).length, 0, 'no company tick boxes');
-    assert.match(await page.$eval('#tl-own', (e) => e.innerText), /for Greiner Brothers only.*Peine.*Choice/s);
+    assert.equal(await page.$('#tl-own'), null, 'the old "for Greiner only, Peine on Peine\'s page" note is gone');
+    assert.ok(!/Peine's own office page|for Greiner Brothers only/i.test(await page.$eval('.drawer', (e) => e.innerText)));
+    assert.equal(await page.$eval('#tl-forlbl', (e) => e.innerText.trim().toLowerCase()), 'for which company');
+    assert.deepEqual(await page.$$eval('[data-tlfor]', (b) => b.map((x) => [x.innerText.trim(), x.classList.contains('on')])),
+      [['Greiner Brothers', true], ['Peine', false], ['Choice', false]]);
     await page.click('#tlu-save');
     assert.match(await page.$eval('#tlu-err', (e) => e.innerText), /Choose a file/);
     await page.setInputFiles('#tlu-file', [pdf('Ladder_Inspection.pdf')]);
@@ -357,6 +366,7 @@ try {
     assert.equal(adds.length, 1);
     assert.equal(adds[0].p_doc_id, 'd-new1'); assert.equal(adds[0].p_title, 'Ladder Inspection');
     assert.equal(adds[0].p_category, 'Ladders'); assert.ok(!('p_companies' in adds[0]), 'no company list is sent');
+    assert.equal(adds[0].p_for, 'greiner');
     assert.equal(adds[0].p_token, 'fake-session-for-test');
     const r = await page.$eval('[data-tlib="l-new1"]', (e) => e.innerText);
     assert.match(r, /Ladder Inspection/); assert.match(r, /phone version being prepared/);
@@ -425,6 +435,127 @@ try {
     assert.ok(o <= 1, 'overflow ' + o);
     await shot(page, 'talk-library-phone-width.png');
     await page.setViewportSize({ width: 1440, height: 1000 });
+  });
+  // ---- Nov 27: Peine and Choice from the same page ---------------------------------------------------------
+  await page.click('[data-tlview="weeks"]'); await page.waitForSelector('[data-tlweekrow]');
+  await check('Greiner\'s Coming up still shows the scheduled sends (and only Greiner\'s uploads)', async () => {
+    assert.match(await weekRow('2026-11-30'), /Next week Ladder Safety Scheduled 2 people/i);
+    assert.ok((await page.$$('[data-tlsched]')).length >= 2);
+    assert.equal(await page.$eval('[data-tlweeks]', (e) => e.dataset.tlweeksco), 'greiner');
+    assert.ok(!/Peine|Choice/.test(await page.$eval('#tlib-weeks', (e) => e.innerText)));
+  });
+  await check('switching to Peine: Coming up shows only Peine\'s uploads per week, no schedule, one plain line', async () => {
+    await page.click('[data-tlcompany="peine"]');
+    await page.waitForSelector('[data-tlweeksco="peine"]');
+    assert.deepEqual(await page.$$eval('[data-tlcompany]', (b) => b.map((x) => x.classList.contains('on'))), [false, true, false]);
+    const hd = await page.$eval('[data-tlweeks] .panel-hd', (e) => e.innerText.replace(/\s+/g, ' ').trim());
+    assert.match(hd, /^Coming up for Peine This week and the 8 after it\. 1 week has an upload\./);
+    assert.match(await page.$eval('#tlib-weeks-note', (e) => e.innerText),
+      /^ConfirmSafety sets up Peine's send from what you upload here\. Uploading does not schedule or send anything\.$/);
+    assert.equal((await page.$$('[data-tlsched]')).length, 0, 'no scheduled talks for Peine on this page');
+    assert.equal((await page.$$('[data-tlnone]')).length, 0, 'no "Not picked yet" for Peine');
+    assert.equal((await page.$$('[data-tlnote]')).length, 0, 'the Greiner send note is not shown for Peine');
+    assert.match(await weekRow('2026-12-07'), /Week of Mon, Dec 7 Uploaded Peine Cold Weather Received Cold Weather Upload$/i);
+    assert.ok(!/Step Ladder/.test(await weekRow('2026-12-07')), 'Greiner\'s upload is not in Peine\'s view');
+    assert.match(await weekRow('2026-11-30'), /Nothing uploaded yet/);
+    assert.ok(!/Ladder Safety|Scheduled|Choice/.test(await weekRow('2026-11-30')));
+    assert.equal((await page.$$('[data-tlempty]')).length, 8);
+    assert.equal(await page.$eval('[data-tlweek="2026-12-21"]', (b) => b.getAttribute('aria-label')), 'Upload a Peine talk for the week of Mon, Dec 21');
+  });
+  for (const [w, name] of [[1440, 'talk-library-peine-weeks-1440.png'], [1024, 'talk-library-peine-weeks-1024.png'], [390, 'talk-library-peine-weeks-phone.png']]) {
+    await check(`Peine's Coming up fits a ${w}px window without sideways scroll`, async () => {
+      await page.setViewportSize({ width: w, height: w === 390 ? 2000 : 1200 }); await page.waitForTimeout(200);
+      assert.ok(await noSideScroll() <= 1, 'overflow ' + await noSideScroll());
+      if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name), fullPage: true });
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await check('a week\'s Upload from Peine\'s view pre-picks Peine and sends p_for "peine"', async () => {
+    const n = weekAdds.length;
+    await page.click('[data-tlweek="2027-01-04"]'); await page.waitForSelector('#tlu-file');
+    assert.deepEqual(await page.$$eval('[data-tlfor]', (b) => b.map((x) => [x.dataset.tlfor, x.classList.contains('on')])),
+      [['greiner', false], ['peine', true], ['choice', false]]);
+    assert.equal(await page.$eval('#tlu-week', (e) => e.value), '2027-01-04');
+    await page.setInputFiles('#tlu-file', [pdf('ZZ TEST talk delete me.pdf')]);
+    await page.selectOption('#tlu-cat', 'General Safety');
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'talk-library-upload-peine.png') });
+    await page.click('#tlu-save');
+    await page.waitForFunction(() => /ZZ TEST talk delete me/.test((document.querySelector('[data-tlweekrow="2027-01-04"]') || {}).innerText || ''));
+    assert.equal(weekAdds.length, n + 1);
+    const a = weekAdds[n];
+    assert.deepEqual([a.p_for, a.p_week, a.p_title, a.p_category], ['peine', '2027-01-04', 'ZZ TEST talk delete me', 'General Safety']);
+    assert.equal(await page.$eval('[data-tlweeks]', (e) => e.dataset.tlweeksco), 'peine', 'still on Peine');
+  });
+  await check('switching to Choice shows only Choice\'s uploads; Greiner again shows its schedule and not Peine\'s test upload', async () => {
+    await page.click('[data-tlcompany="choice"]'); await page.waitForSelector('[data-tlweeksco="choice"]');
+    assert.match(await weekRow('2026-11-30'), /Uploaded Choice Trench Safety Received Trenching and Excavation Upload$/i);
+    assert.ok(!/ZZ TEST|Peine/.test(await page.$eval('#tlib-weeks', (e) => e.innerText)));
+    assert.match(await page.$eval('#tlib-weeks-note', (e) => e.innerText), /^ConfirmSafety sets up Choice's send from what you upload here\./);
+    await page.click('[data-tlcompany="greiner"]'); await page.waitForSelector('[data-tlweeksco="greiner"]');
+    assert.match(await weekRow('2026-11-30'), /Ladder Safety Scheduled 2 people/i);
+    assert.ok(!/ZZ TEST|Choice|Peine/.test(await page.$eval('#tlib-weeks', (e) => e.innerText)));
+  });
+  await check('Library switches with the company: Peine shows Peine\'s talks only, without a Last sent column', async () => {
+    await page.click('[data-tlcompany="peine"]'); await page.click('[data-tlview="all"]');
+    await page.waitForSelector('[data-tllibco="peine"]');
+    assert.deepEqual((await page.$$eval('[data-tlib]', (r) => r.map((x) => x.dataset.tlib))).sort(),
+      ['l-peine-cold', 'l-peine-lift', 'l-wk2']);
+    assert.deepEqual(await page.$$eval('[data-tllib] th', (h) => h.map((x) => x.innerText.trim().toLowerCase())), ['talk', 'category', 'uploaded', '']);
+    assert.match(await page.$eval('[data-tllib] .panel-hd', (e) => e.innerText.replace(/\s+/g, ' ')), /^Library for Peine 3 talks in 3 categories/);
+    const cats = await page.$$eval('#tlib-cat option', (b) => b.map((x) => x.textContent.trim()));
+    assert.deepEqual(cats, ['All categories', 'Cold Weather (1)', 'Driving and Vehicles (1)', 'General Safety (1)']);
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'talk-library-peine-list.png') });
+  });
+  for (const [w, name] of [[1024, 'talk-library-peine-list-1024.png'], [390, 'talk-library-peine-list-phone.png']]) {
+    await check(`Peine's Library fits a ${w}px window without sideways scroll`, async () => {
+      await page.setViewportSize({ width: w, height: w === 390 ? 1600 : 1000 }); await page.waitForTimeout(200);
+      assert.ok(await noSideScroll() <= 1, 'overflow ' + await noSideScroll());
+      if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name), fullPage: true });
+    });
+  }
+  await check('the upload drawer with "For which company" fits a phone-width window', async () => {
+    await page.setViewportSize({ width: 390, height: 900 }); await page.waitForTimeout(150);
+    await page.click('#tlib-upload'); await page.waitForSelector('[data-tlfor]');
+    const boxes = await page.$$eval('[data-tlfor]', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.right]; }));
+    for (const [l, r] of boxes) assert.ok(l >= 0 && r <= 390, 'company button off screen ' + l + '-' + r);
+    assert.ok(await noSideScroll() <= 1, 'overflow ' + await noSideScroll());
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'talk-library-upload-phone.png') });
+    await page.click('.drawer .x'); await page.waitForFunction(() => !document.querySelector('.drawer'), null, { timeout: 3000 });
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await check('Upload talks from Greiner\'s Library, picking Choice in the drawer, sends p_for "choice" and shows Choice', async () => {
+    await page.click('[data-tlcompany="greiner"]'); await page.waitForSelector('[data-tllibco="greiner"]');
+    const n = adds.length;
+    await page.click('#tlib-upload'); await page.waitForSelector('#tlu-file');
+    assert.equal(await page.$eval('[data-tlfor].on', (e) => e.dataset.tlfor), 'greiner');
+    await page.click('[data-tlfor="choice"]');
+    assert.deepEqual(await page.$$eval('[data-tlfor]', (b) => b.map((x) => x.getAttribute('aria-pressed'))), ['false', 'false', 'true']);
+    await page.setInputFiles('#tlu-file', [pdf('Choice_Silica_Dust.pdf')]);
+    await page.selectOption('#tlu-cat', 'Health and Wellness');
+    await page.click('#tlu-save');
+    await page.waitForSelector('[data-tllibco="choice"] [data-tlib]');
+    assert.equal(adds.length, n + 1);
+    assert.deepEqual([adds[n].p_for, adds[n].p_title], ['choice', 'Choice Silica Dust']);
+    assert.deepEqual(await page.$$eval('[data-tlcompany]', (b) => b.map((x) => x.classList.contains('on'))), [false, false, true]);
+    assert.match(await page.$eval('[data-tllib]', (e) => e.innerText), /Choice Silica Dust/);
+  });
+  await check('Edit can move a talk to another company (p_for only when it changed)', async () => {
+    const id = adds[adds.length - 1] && LIB.find((r) => r.title === 'Choice Silica Dust').id;
+    await page.click(`[data-tlib="${id}"]`); await page.waitForSelector('#tle-save');
+    assert.equal(await page.$eval('[data-tlfor].on', (e) => e.dataset.tlfor), 'choice');
+    const n = sets.length;
+    await page.click('#tle-save'); await page.waitForFunction(() => !document.querySelector('.drawer'));
+    assert.ok(!('p_for' in sets[n]), 'unchanged company is not sent');
+    await page.click(`[data-tlib="${id}"]`); await page.waitForSelector('#tle-save');
+    await page.click('[data-tlfor="peine"]');
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'talk-library-edit-company.png') });
+    await page.click('#tle-save');
+    await page.waitForSelector(`[data-tllibco="peine"] [data-tlib="${id}"]`);
+    assert.equal(sets[n + 1].p_for, 'peine');
+    // Remove it again so nothing below depends on it.
+    await page.click(`[data-tlib="${id}"]`); await page.waitForSelector('#tle-remove'); await page.click('#tle-remove');
+    await page.waitForFunction((x) => !document.querySelector(`[data-tlib="${x}"]`), id);
+    await page.click('[data-tlcompany="greiner"]'); await page.waitForSelector('[data-tllibco="greiner"]');
   });
   await check('nothing was issued, scheduled or sent: only the expected server calls were made', async () => {
     const odd = calls.filter((c) => !ALLOWED.has(c));
