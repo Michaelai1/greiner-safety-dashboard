@@ -6945,18 +6945,32 @@
     var h = (week ? '<p class="small" id="tlu-weeknote" style="margin:0 0 12px;line-height:1.5"><strong>For the week of ' +
         esc(tlibWeekDay(week)) + '.</strong> Uploading tells ConfirmSafety which talk to send that week. ' +
         'It does not schedule or send anything.</p>' : '') +
-      '<div class="f"><label for="tlu-file">Talk files <span class="small muted" style="text-transform:none;font-weight:400;letter-spacing:0">· PDF or Word · 15 MB each · pick one or many</span></label>' +
-        '<input type="file" id="tlu-file" multiple accept="application/pdf,.pdf,.doc,.docx">' +
+      '<style>' +
+        '.f label.tlu-drop{text-transform:none;letter-spacing:0;font-weight:400;margin:0;width:100%;box-sizing:border-box}' +
+        '.tlu-drop b,.tlu-drop span{display:block}.tlu-drop .tlu-pick{display:inline-block}' +
+        '.tlu-drop{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:20px 14px;border:1.5px dashed var(--line-2);border-radius:10px;background:#fafbfc;text-align:center;cursor:pointer}' +
+        '.tlu-drop:hover,.tlu-drop.on{border-color:var(--accent);background:#fff}' +
+        '.tlu-drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}' +
+        '.tlu-drop b{font-size:14.5px;color:var(--ink)}.tlu-drop span{font-size:12.5px;color:var(--ink-3)}' +
+        '.tlu-drop .tlu-pick{margin-top:8px;padding:7px 14px;border:1px solid var(--line-2);border-radius:7px;background:#fff;font-weight:600;font-size:13px;color:var(--ink)}' +
+        '.tlu-drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}' +
+        '.tlu-box .f select{-webkit-appearance:none;appearance:none;height:40px;padding:8px 34px 8px 11px;font-size:14px;' +
+          'background:var(--card) url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%2364748b%27 stroke-width=%272.5%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E") no-repeat right 12px center}' +
+        '.tlu-box .f input[type=text]{height:40px;font-size:14px}' +
+      '</style>' +
+      '<div class="f"><label for="tlu-file">Talk files</label>' +
+        '<label class="tlu-drop" id="tlu-drop"><b id="tlu-droptxt">Drop talk files here</b><span>PDF or Word, up to 15 MB each. One or many.</span>' +
+          '<span class="tlu-pick">Choose files</span>' +
+          '<input type="file" id="tlu-file" multiple accept="application/pdf,.pdf,.doc,.docx"></label>' +
         '<ul class="tl-files" id="tlu-list"></ul></div>' +
       '<div class="f hide" id="tlu-titlewrap"><label for="tlu-title">Talk name</label><input type="text" id="tlu-title" maxlength="160"></div>' +
       tlibCatField('tlu-cat', TLIB.f.cat) +
       tlibWeekField('tlu-week', week || '') +
       tlibOwnNote() +
-      '<p class="small muted" style="margin:0 0 10px">Uploading does not send the talk to anyone. ' +
-        'ConfirmSafety prepares the phone version, then the talk shows as Ready for foremen.</p>' +
+      '<p class="small muted" style="margin:0 0 10px">ConfirmSafety prepares the phone version, then the talk shows as Ready for foremen.</p>' +
       '<p class="small" id="tlu-err" style="color:var(--fail);min-height:1em"></p>' +
       '<button class="btn btn-gold" id="tlu-save" style="width:100%;justify-content:center">Upload</button>';
-    drawer(week ? 'Upload for the week of ' + tlibWeekDay(week) : 'Upload talks', 'Stored privately — never on a public URL', h);
+    drawer(week ? 'Upload for the week of ' + tlibWeekDay(week) : 'Upload talks', 'Only your office can open these files.', '<div class="tlu-box">' + h + '</div>');
     var getCat = tlibWireCat('tlu-cat');
     var fi = $('#tlu-file'), err = $('#tlu-err'), sv = $('#tlu-save');
     fi.onchange = function () {
@@ -6966,6 +6980,16 @@
       $('#tlu-list').innerHTML = fs.length > 1 ? fs.map(function (f) {
         return '<li>' + esc(tlibTitleFromFile(f.name)) + '</li>'; }).join('') : '';
       sv.textContent = fs.length > 1 ? 'Upload ' + fs.length + ' talks' : 'Upload';
+      $('#tlu-droptxt').textContent = !fs.length ? 'Drop talk files here' : fs.length === 1 ? fs[0].name : fs.length + ' files chosen';
+    };
+    var dz = $('#tlu-drop');
+    dz.ondragover = function (e) { e.preventDefault(); dz.classList.add('on'); };
+    dz.ondragleave = function () { dz.classList.remove('on'); };
+    dz.ondrop = function (e) {
+      e.preventDefault(); dz.classList.remove('on');
+      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+      try { fi.files = e.dataTransfer.files; } catch (x) { return; }
+      fi.onchange();
     };
     function readB64(f) {
       return new Promise(function (res, rej) {
